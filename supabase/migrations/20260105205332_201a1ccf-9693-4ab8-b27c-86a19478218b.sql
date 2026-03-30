@@ -1,0 +1,1 @@
+ALTER TABLE public.feature_suggestions ADD COLUMN display_name text;

@@ -1,0 +1,1063 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom scrollbar for chat */
+.chat-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+.chat-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.chat-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+}
+.chat-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+/* Firefox */
+.chat-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
+}
+
+/* Ambient glow animation for empty chat state */
+@keyframes ambient-glow {
+  0%, 100% { opacity: 0.5; transform: scale(1) translateX(0); }
+  50% { opacity: 1; transform: scale(1.05) translateX(10px); }
+}
+.animate-ambient-glow {
+  animation: ambient-glow 8s ease-in-out infinite;
+}
+
+/* ========================================
+   MOBILE SCALING — tighter, smaller on <768px
+   ======================================== */
+@layer base {
+  @media (max-width: 767px) {
+    html {
+      font-size: 14px; /* ~87.5% of 16px default — shrinks everything rem-based */
+    }
+  }
+}
+
+/* Glassmorphism Design System for SaaS MVP
+All colors MUST be HSL. Glassmorphism with teal-blue gradients.
+*/
+
+@layer base {
+  /* ========================================
+     THEME: Light (Default - Free)
+     Clean, professional white theme
+  ======================================== */
+  :root,
+  [data-theme="light"] {
+    --background: 0 0% 100%;
+
+    /* Label dashboard tokens */
+    --bg: #F4F3F0;
+    --bg-subtle: #EEEDEA;
+    --surface: #FFFFFF;
+    --surface-hover: #FAFAF8;
+    --ink: #1A1A18;
+    --ink-secondary: #6B6B66;
+    --ink-tertiary: #9C9C96;
+    --ink-faint: #C4C4BE;
+    --border: #E8E6E1;
+    --border-hover: #D5D3CE;
+    --accent: #E8430A;
+    --accent-light: #FEF3EE;
+    --accent-hover: #D13A08;
+    --green: #1A8917;
+    --green-light: #F0FDF0;
+    --yellow: #B45309;
+    --yellow-light: #FFFBEB;
+    --red: #DC2626;
+    --red-light: #FEF2F2;
+    --shadow-sm: 0 1px 3px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.03);
+    --shadow-md: 0 2px 8px rgba(0,0,0,0.06), 0 8px 24px rgba(0,0,0,0.04);
+    --shadow-lg: 0 4px 16px rgba(0,0,0,0.08), 0 12px 32px rgba(0,0,0,0.06);
+    --radius: 14px;
+    --radius-sm: 8px;
+    --foreground: 0 0% 10%;
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 10%;
+    --glass: 0 0% 0% / 0.04;
+    --glass-hover: 0 0% 0% / 0.08;
+    --glass-border: 0 0% 0% / 0.06;
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 10%;
+    --primary: 220 90% 56%;
+    --primary-foreground: 0 0% 100%;
+    --primary-glow: 220 90% 70%;
+    --secondary: 0 0% 100%;
+    --secondary-foreground: 0 0% 10%;
+    --muted: 0 0% 96%;
+    --muted-foreground: 0 0% 45%;
+    --accent: 220 90% 96%;
+    --accent-foreground: 220 90% 40%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 152 76% 40%;
+    --success-foreground: 0 0% 100%;
+    --success-muted: 152 60% 96%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 100%;
+    --warning-muted: 38 80% 96%;
+    --info: 220 90% 56%;
+    --info-foreground: 0 0% 100%;
+    --info-muted: 220 80% 96%;
+    --border: 0 0% 0% / 0.1;
+    --input: 0 0% 0% / 0.05;
+    --ring: 220 90% 56%;
+    --gradient-primary: linear-gradient(135deg, hsl(220 90% 56%), hsl(220 90% 70%));
+    --gradient-hero: linear-gradient(135deg, hsl(220 90% 56%) 0%, hsl(220 90% 65%) 50%, hsl(220 90% 60%) 100%);
+    --gradient-bg: hsl(0 0% 100%);
+    --gradient-glass: linear-gradient(135deg, hsl(0 0% 100% / 0.9) 0%, hsl(0 0% 100% / 0.8) 100%);
+    --gradient-accent: linear-gradient(90deg, hsl(220 90% 96%) 0%, hsl(220 90% 92%) 100%);
+    --shadow-glass: 0 10px 40px hsl(0 0% 0% / 0.1), 0 0 0 1px hsl(0 0% 0% / 0.05);
+    --shadow-glow: 0 0 40px hsl(220 90% 56% / 0.2);
+    --shadow-accent: 0 10px 30px hsl(0 0% 0% / 0.1);
+    --radius: 1rem;
+    --theme-is-dark: 0;
+  }
+
+  /* ========================================
+     THEME: Dark (Free)
+     Deep blue-gray dark theme
+  ======================================== */
+  .dark,
+  [data-theme="dark"] {
+    --background: 220 25% 12%;
+    --foreground: 0 0% 98%;
+    --card: 220 20% 18%;
+    --card-foreground: 0 0% 98%;
+    --glass: 0 0% 100% / 0.08;
+    --glass-hover: 0 0% 100% / 0.14;
+    --glass-border: 0 0% 100% / 0.12;
+    --popover: 220 22% 16%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 220 90% 65%;
+    --primary-foreground: 0 0% 100%;
+    --primary-glow: 220 90% 75%;
+    --secondary: 220 20% 24%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 220 15% 22%;
+    --muted-foreground: 0 0% 70%;
+    --accent: 220 60% 70%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 98%;
+    --success: 152 76% 55%;
+    --success-foreground: 0 0% 100%;
+    --success-muted: 152 40% 18%;
+    --warning: 38 92% 60%;
+    --warning-foreground: 0 0% 10%;
+    --warning-muted: 38 40% 18%;
+    --info: 220 90% 65%;
+    --info-foreground: 0 0% 100%;
+    --info-muted: 220 40% 18%;
+    --border: 0 0% 100% / 0.015;
+    --input: 0 0% 100% / 0.02;
+    --ring: 220 90% 65%;
+    --gradient-primary: linear-gradient(135deg, hsl(220 90% 65%), hsl(220 90% 75%));
+    --gradient-hero: linear-gradient(135deg, hsl(220 90% 65%) 0%, hsl(220 90% 70%) 50%, hsl(220 90% 75%) 100%);
+    --gradient-bg: radial-gradient(ellipse at top, hsl(220 25% 16%) 0%, hsl(220 25% 12%) 60%);
+    --gradient-glass: linear-gradient(135deg, hsl(0 0% 100% / 0.1) 0%, hsl(0 0% 100% / 0.04) 100%);
+    --gradient-accent: linear-gradient(90deg, hsl(220 60% 70%) 0%, hsl(220 60% 80%) 100%);
+    --shadow-glass: 0 10px 40px hsl(0 0% 0% / 0.25), 0 0 0 1px hsl(0 0% 100% / 0.1);
+    --shadow-glow: 0 0 40px hsl(220 90% 65% / 0.2);
+    --shadow-accent: 0 10px 30px hsl(0 0% 0% / 0.3);
+    --theme-is-dark: 1;
+  }
+
+  /* ========================================
+     LABEL LIGHT MODE
+     Light theme for /label pages using label tokens
+  ======================================== */
+  [data-label-theme="light"] {
+    --bg: #FAFAF9;
+    --bg-subtle: #F3F3F1;
+    --surface: #FFFFFF;
+    --surface-hover: #F5F5F3;
+    --ink: #1A1A18;
+    --ink-secondary: #6B6B66;
+    --ink-tertiary: #A3A39E;
+    --ink-faint: #D4D4D0;
+    --border: #E5E5E2;
+    --border-hover: #D4D4D0;
+    --accent: #F25D24;
+    --accent-light: #FFF0E8;
+    --accent-hover: #E04D15;
+    --green: #16A34A;
+    --green-light: #DCFCE7;
+    --yellow: #CA8A04;
+    --yellow-light: #FEF9C3;
+    --red: #DC2626;
+    --red-light: #FEE2E2;
+    --shadow-sm: 0 1px 3px rgba(0,0,0,0.06);
+    --shadow-md: 0 2px 8px rgba(0,0,0,0.08);
+    --shadow-lg: 0 4px 16px rgba(0,0,0,0.1);
+
+    /* Bridge to Tailwind/shadcn tokens */
+    --background: 40 3% 98%;
+    --foreground: 40 5% 10%;
+    --card: 0 0% 100%;
+    --card-foreground: 40 5% 10%;
+    --muted: 40 3% 95%;
+    --muted-foreground: 40 2% 42%;
+    --border: 40 3% 89%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 40 5% 10%;
+    --primary: 16 90% 55%;
+    --primary-foreground: 0 0% 100%;
+    --accent: 40 3% 95%;
+    --accent-foreground: 40 5% 10%;
+    --input: 40 3% 89%;
+    --ring: 16 90% 55%;
+  }
+
+  /* ========================================
+     LABEL DARK MODE
+     Dark theme for /label pages using label tokens
+  ======================================== */
+  [data-label-theme="dark"] {
+    --bg: #111110;
+    --bg-subtle: #1A1A18;
+    --surface: #1E1E1C;
+    --surface-hover: #2A2A27;
+    --ink: #EDEDEB;
+    --ink-secondary: #A3A39E;
+    --ink-tertiary: #6B6B66;
+    --ink-faint: #4A4A46;
+    --border: #2E2E2B;
+    --border-hover: #3D3D39;
+    --accent: #F25D24;
+    --accent-light: #2A1A10;
+    --accent-hover: #FF6B35;
+    --green: #34D399;
+    --green-light: #0D2818;
+    --yellow: #FBBF24;
+    --yellow-light: #2A2008;
+    --red: #F87171;
+    --red-light: #2A0E0E;
+    --shadow-sm: 0 1px 3px rgba(0,0,0,0.2), 0 4px 12px rgba(0,0,0,0.15);
+    --shadow-md: 0 2px 8px rgba(0,0,0,0.3), 0 8px 24px rgba(0,0,0,0.2);
+    --shadow-lg: 0 4px 16px rgba(0,0,0,0.35), 0 12px 32px rgba(0,0,0,0.25);
+
+    /* Bridge to Tailwind/shadcn tokens */
+    --background: 0 0% 7%;
+    --foreground: 60 3% 93%;
+    --card: 40 4% 12%;
+    --card-foreground: 60 3% 93%;
+    --muted: 40 4% 15%;
+    --muted-foreground: 40 2% 64%;
+    --border: 40 4% 18%;
+    --popover: 40 4% 12%;
+    --popover-foreground: 60 3% 93%;
+    --primary: 16 90% 55%;
+    --primary-foreground: 0 0% 100%;
+    --accent: 40 4% 15%;
+    --accent-foreground: 60 3% 93%;
+    --input: 40 4% 18%;
+    --ring: 16 90% 55%;
+  }
+
+  /* ========================================
+     THEME: Rose (Premium - Feminine)
+     Soft pink and rose tones
+  ======================================== */
+  [data-theme="rose"] {
+    --background: 350 30% 98%;
+    --foreground: 350 25% 15%;
+    --card: 350 40% 99%;
+    --card-foreground: 350 25% 15%;
+    --glass: 350 50% 50% / 0.04;
+    --glass-hover: 350 50% 50% / 0.08;
+    --glass-border: 350 50% 50% / 0.1;
+    --popover: 350 40% 99%;
+    --popover-foreground: 350 25% 15%;
+    --primary: 350 80% 60%;
+    --primary-foreground: 0 0% 100%;
+    --primary-glow: 350 80% 75%;
+    --secondary: 350 30% 95%;
+    --secondary-foreground: 350 25% 20%;
+    --muted: 350 20% 94%;
+    --muted-foreground: 350 15% 45%;
+    --accent: 350 70% 94%;
+    --accent-foreground: 350 80% 45%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 160 60% 45%;
+    --success-foreground: 0 0% 100%;
+    --success-muted: 160 50% 94%;
+    --warning: 35 90% 55%;
+    --warning-foreground: 0 0% 100%;
+    --warning-muted: 35 70% 94%;
+    --info: 350 80% 60%;
+    --info-foreground: 0 0% 100%;
+    --info-muted: 350 60% 94%;
+    --border: 350 30% 50% / 0.12;
+    --input: 350 30% 50% / 0.06;
+    --ring: 350 80% 60%;
+    --gradient-primary: linear-gradient(135deg, hsl(350 80% 60%), hsl(330 70% 65%));
+    --gradient-hero: linear-gradient(135deg, hsl(350 80% 60%) 0%, hsl(340 75% 65%) 50%, hsl(330 70% 60%) 100%);
+    --gradient-bg: linear-gradient(135deg, hsl(350 30% 98%) 0%, hsl(340 25% 96%) 100%);
+    --gradient-glass: linear-gradient(135deg, hsl(350 40% 100% / 0.9) 0%, hsl(350 30% 98% / 0.8) 100%);
+    --gradient-accent: linear-gradient(90deg, hsl(350 70% 94%) 0%, hsl(340 60% 92%) 100%);
+    --shadow-glass: 0 10px 40px hsl(350 50% 50% / 0.1), 0 0 0 1px hsl(350 40% 50% / 0.08);
+    --shadow-glow: 0 0 40px hsl(350 80% 60% / 0.25);
+    --shadow-accent: 0 10px 30px hsl(350 40% 50% / 0.1);
+    --theme-is-dark: 0;
+  }
+
+  /* ========================================
+     THEME: Lavender (Premium - Feminine)
+     Soft purple and lilac tones
+  ======================================== */
+  [data-theme="lavender"] {
+    --background: 270 30% 98%;
+    --foreground: 270 25% 15%;
+    --card: 270 35% 99%;
+    --card-foreground: 270 25% 15%;
+    --glass: 270 40% 50% / 0.04;
+    --glass-hover: 270 40% 50% / 0.08;
+    --glass-border: 270 40% 50% / 0.1;
+    --popover: 270 35% 99%;
+    --popover-foreground: 270 25% 15%;
+    --primary: 270 70% 60%;
+    --primary-foreground: 0 0% 100%;
+    --primary-glow: 270 70% 75%;
+    --secondary: 270 25% 95%;
+    --secondary-foreground: 270 25% 20%;
+    --muted: 270 18% 94%;
+    --muted-foreground: 270 12% 45%;
+    --accent: 270 60% 94%;
+    --accent-foreground: 270 70% 45%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 155 55% 45%;
+    --success-foreground: 0 0% 100%;
+    --success-muted: 155 45% 94%;
+    --warning: 40 85% 55%;
+    --warning-foreground: 0 0% 100%;
+    --warning-muted: 40 65% 94%;
+    --info: 270 70% 60%;
+    --info-foreground: 0 0% 100%;
+    --info-muted: 270 55% 94%;
+    --border: 270 25% 50% / 0.12;
+    --input: 270 25% 50% / 0.06;
+    --ring: 270 70% 60%;
+    --gradient-primary: linear-gradient(135deg, hsl(270 70% 60%), hsl(290 60% 65%));
+    --gradient-hero: linear-gradient(135deg, hsl(270 70% 60%) 0%, hsl(280 65% 65%) 50%, hsl(290 60% 60%) 100%);
+    --gradient-bg: linear-gradient(135deg, hsl(270 30% 98%) 0%, hsl(280 25% 96%) 100%);
+    --gradient-glass: linear-gradient(135deg, hsl(270 35% 100% / 0.9) 0%, hsl(270 25% 98% / 0.8) 100%);
+    --gradient-accent: linear-gradient(90deg, hsl(270 60% 94%) 0%, hsl(280 50% 92%) 100%);
+    --shadow-glass: 0 10px 40px hsl(270 40% 50% / 0.1), 0 0 0 1px hsl(270 30% 50% / 0.08);
+    --shadow-glow: 0 0 40px hsl(270 70% 60% / 0.25);
+    --shadow-accent: 0 10px 30px hsl(270 35% 50% / 0.1);
+    --theme-is-dark: 0;
+  }
+
+  /* ========================================
+     THEME: Ocean (Premium - Masculine)
+     Deep blue and teal tones
+  ======================================== */
+  [data-theme="ocean"] {
+    --background: 200 35% 10%;
+    --foreground: 200 15% 95%;
+    --card: 200 30% 14%;
+    --card-foreground: 200 15% 95%;
+    --glass: 200 50% 60% / 0.08;
+    --glass-hover: 200 50% 60% / 0.14;
+    --glass-border: 200 50% 60% / 0.12;
+    --popover: 200 30% 12%;
+    --popover-foreground: 200 15% 95%;
+    --primary: 190 85% 55%;
+    --primary-foreground: 200 40% 10%;
+    --primary-glow: 190 85% 70%;
+    --secondary: 200 25% 20%;
+    --secondary-foreground: 200 15% 90%;
+    --muted: 200 20% 18%;
+    --muted-foreground: 200 10% 65%;
+    --accent: 190 70% 50%;
+    --accent-foreground: 200 40% 10%;
+    --destructive: 0 80% 55%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 165 70% 50%;
+    --success-foreground: 165 50% 10%;
+    --success-muted: 165 40% 18%;
+    --warning: 45 90% 55%;
+    --warning-foreground: 45 50% 10%;
+    --warning-muted: 45 40% 18%;
+    --info: 190 85% 55%;
+    --info-foreground: 200 40% 10%;
+    --info-muted: 190 40% 18%;
+    --border: 200 40% 60% / 0.04;
+    --input: 200 40% 60% / 0.04;
+    --ring: 190 85% 55%;
+    --gradient-primary: linear-gradient(135deg, hsl(190 85% 55%), hsl(170 75% 50%));
+    --gradient-hero: linear-gradient(135deg, hsl(200 80% 50%) 0%, hsl(190 85% 55%) 50%, hsl(180 75% 50%) 100%);
+    --gradient-bg: radial-gradient(ellipse at top, hsl(200 35% 14%) 0%, hsl(200 35% 10%) 60%);
+    --gradient-glass: linear-gradient(135deg, hsl(200 50% 60% / 0.1) 0%, hsl(200 40% 50% / 0.04) 100%);
+    --gradient-accent: linear-gradient(90deg, hsl(190 70% 50%) 0%, hsl(180 65% 55%) 100%);
+    --shadow-glass: 0 10px 40px hsl(200 50% 10% / 0.4), 0 0 0 1px hsl(200 50% 60% / 0.1);
+    --shadow-glow: 0 0 40px hsl(190 85% 55% / 0.3);
+    --shadow-accent: 0 10px 30px hsl(200 40% 10% / 0.4);
+    --theme-is-dark: 1;
+  }
+
+  /* ========================================
+     THEME: Midnight (Premium - Masculine)
+     Deep black with electric blue accents
+  ======================================== */
+  [data-theme="midnight"] {
+    --background: 230 20% 8%;
+    --foreground: 0 0% 95%;
+    --card: 230 18% 12%;
+    --card-foreground: 0 0% 95%;
+    --glass: 230 50% 60% / 0.06;
+    --glass-hover: 230 50% 60% / 0.12;
+    --glass-border: 230 50% 60% / 0.1;
+    --popover: 230 18% 10%;
+    --popover-foreground: 0 0% 95%;
+    --primary: 250 90% 65%;
+    --primary-foreground: 0 0% 100%;
+    --primary-glow: 250 90% 80%;
+    --secondary: 230 15% 18%;
+    --secondary-foreground: 0 0% 90%;
+    --muted: 230 12% 16%;
+    --muted-foreground: 230 8% 60%;
+    --accent: 250 80% 70%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 75% 55%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 150 65% 50%;
+    --success-foreground: 0 0% 100%;
+    --success-muted: 150 35% 16%;
+    --warning: 42 85% 55%;
+    --warning-foreground: 42 50% 10%;
+    --warning-muted: 42 35% 16%;
+    --info: 250 90% 65%;
+    --info-foreground: 0 0% 100%;
+    --info-muted: 250 35% 16%;
+    --border: 230 30% 50% / 0.04;
+    --input: 230 30% 50% / 0.04;
+    --ring: 250 90% 65%;
+    --gradient-primary: linear-gradient(135deg, hsl(250 90% 65%), hsl(280 80% 60%));
+    --gradient-hero: linear-gradient(135deg, hsl(240 85% 60%) 0%, hsl(250 90% 65%) 50%, hsl(260 85% 65%) 100%);
+    --gradient-bg: radial-gradient(ellipse at top, hsl(230 20% 12%) 0%, hsl(230 20% 8%) 60%);
+    --gradient-glass: linear-gradient(135deg, hsl(230 50% 60% / 0.08) 0%, hsl(230 40% 50% / 0.03) 100%);
+    --gradient-accent: linear-gradient(90deg, hsl(250 80% 70%) 0%, hsl(270 75% 65%) 100%);
+    --shadow-glass: 0 10px 40px hsl(230 30% 5% / 0.5), 0 0 0 1px hsl(230 50% 60% / 0.08);
+    --shadow-glow: 0 0 50px hsl(250 90% 65% / 0.35);
+    --shadow-accent: 0 10px 30px hsl(230 25% 5% / 0.5);
+    --theme-is-dark: 1;
+  }
+
+  /* ========================================
+     THEME: Sunset (Premium - Warm & Creative)
+     Warm orange and coral tones
+  ======================================== */
+  [data-theme="sunset"] {
+    --background: 25 35% 97%;
+    --foreground: 25 30% 12%;
+    --card: 25 40% 99%;
+    --card-foreground: 25 30% 12%;
+    --glass: 25 50% 50% / 0.04;
+    --glass-hover: 25 50% 50% / 0.08;
+    --glass-border: 25 50% 50% / 0.1;
+    --popover: 25 40% 99%;
+    --popover-foreground: 25 30% 12%;
+    --primary: 20 90% 55%;
+    --primary-foreground: 0 0% 100%;
+    --primary-glow: 20 90% 70%;
+    --secondary: 25 30% 94%;
+    --secondary-foreground: 25 30% 18%;
+    --muted: 25 20% 93%;
+    --muted-foreground: 25 15% 45%;
+    --accent: 20 80% 94%;
+    --accent-foreground: 20 90% 40%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 145 60% 45%;
+    --success-foreground: 0 0% 100%;
+    --success-muted: 145 50% 94%;
+    --warning: 45 90% 55%;
+    --warning-foreground: 0 0% 10%;
+    --warning-muted: 45 70% 94%;
+    --info: 20 90% 55%;
+    --info-foreground: 0 0% 100%;
+    --info-muted: 20 60% 94%;
+    --border: 25 30% 50% / 0.12;
+    --input: 25 30% 50% / 0.06;
+    --ring: 20 90% 55%;
+    --gradient-primary: linear-gradient(135deg, hsl(20 90% 55%), hsl(35 85% 55%));
+    --gradient-hero: linear-gradient(135deg, hsl(15 90% 55%) 0%, hsl(25 90% 55%) 50%, hsl(35 85% 55%) 100%);
+    --gradient-bg: linear-gradient(135deg, hsl(25 35% 97%) 0%, hsl(30 30% 95%) 100%);
+    --gradient-glass: linear-gradient(135deg, hsl(25 40% 100% / 0.9) 0%, hsl(25 30% 98% / 0.8) 100%);
+    --gradient-accent: linear-gradient(90deg, hsl(20 80% 94%) 0%, hsl(30 70% 92%) 100%);
+    --shadow-glass: 0 10px 40px hsl(25 40% 50% / 0.1), 0 0 0 1px hsl(25 35% 50% / 0.08);
+    --shadow-glow: 0 0 40px hsl(20 90% 55% / 0.25);
+    --shadow-accent: 0 10px 30px hsl(25 35% 50% / 0.1);
+    --theme-is-dark: 0;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  /* Ensure Radix dropdown/popover portals always sit above fixed headers */
+  [data-radix-popper-content-wrapper] {
+    z-index: 100 !important;
+  }
+
+  body {
+    @apply text-foreground bg-background;
+    min-height: 100vh;
+    position: relative;
+    transition: background-color 0.3s ease, color 0.3s ease;
+  }
+  
+  /* Dark theme backgrounds with gradient overlay */
+  .dark body,
+  body:has(.dark),
+  [data-theme="ocean"] body,
+  body:has([data-theme="ocean"]),
+  [data-theme="midnight"] body,
+  body:has([data-theme="midnight"]) {
+    background: hsl(var(--background));
+  }
+  
+  .dark body::before,
+  body:has(.dark)::before,
+  [data-theme="ocean"] body::before,
+  body:has([data-theme="ocean"])::before,
+  [data-theme="midnight"] body::before,
+  body:has([data-theme="midnight"])::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: var(--gradient-bg);
+    z-index: -1;
+  }
+}
+
+@layer components {
+  /* Glass morphism base classes */
+  .glass-card {
+    background: rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 1rem;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(255, 255, 255, 0.1);
+  }
+
+  .dark .glass-card {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+  }
+
+  .glass-hover {
+    transition: all 0.3s ease;
+  }
+
+  .glass-hover:hover {
+    background: rgba(255, 255, 255, 0.12);
+    transform: scale(1.01) translateY(-2px);
+  }
+
+  .dark .glass-hover:hover {
+    background: rgba(255, 255, 255, 0.16);
+  }
+
+  .badge-glass {
+    @apply rounded-full px-3 py-1 text-sm backdrop-blur-sm;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+  }
+
+  /* Typography improvements */
+  .text-hero {
+    @apply text-5xl md:text-7xl lg:text-8xl font-bold tracking-tight leading-[1.1];
+  }
+
+  .text-subtitle {
+    @apply text-lg md:text-xl lg:text-2xl text-muted-foreground tracking-wide;
+  }
+
+  /* Gradient text */
+  .text-gradient {
+    background: var(--gradient-hero);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* Animation utilities */
+  .animate-glow {
+    animation: glow-pulse 3s ease-in-out infinite;
+  }
+
+  @keyframes glow-pulse {
+    0%, 100% { 
+      filter: drop-shadow(0 0 15px hsl(0 0% 100% / 0.2));
+    }
+    50% { 
+      filter: drop-shadow(0 0 25px hsl(0 0% 100% / 0.3));
+    }
+  }
+
+  /* Shimmer effect for CTA buttons */
+  /* Floating cloud animations */
+  @keyframes float-slow {
+    0%, 100% {
+      transform: translateX(0) translateY(0);
+    }
+    50% {
+      transform: translateX(20px) translateY(-10px);
+    }
+  }
+
+  @keyframes float-slower {
+    0%, 100% {
+      transform: translateX(0) translateY(0);
+    }
+    50% {
+      transform: translateX(-15px) translateY(-8px);
+    }
+  }
+
+  .animate-float-slow {
+    animation: float-slow 8s ease-in-out infinite;
+  }
+
+  .animate-float-slower {
+    animation: float-slower 12s ease-in-out infinite;
+  }
+
+  /* Shimmer effect for CTA buttons */
+  .btn-shimmer {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .btn-shimmer::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      hsl(0 0% 100% / 0.3),
+      transparent
+    );
+    animation: shimmer 2.5s infinite;
+  }
+
+  @keyframes shimmer {
+    0% {
+      left: -100%;
+    }
+    50%, 100% {
+      left: 100%;
+    }
+  }
+
+  .hover-scale {
+    @apply transition-all duration-300 hover:scale-105;
+  }
+
+  .feature-card {
+    @apply glass-card p-6 relative overflow-hidden;
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .feature-card::before {
+    content: '';
+    @apply absolute inset-0 opacity-0;
+    background: var(--gradient-accent);
+    opacity: 0;
+    transition: opacity 0.4s ease;
+  }
+
+  .feature-card:hover::before {
+    opacity: 0.05;
+  }
+
+  .feature-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 15px 40px hsl(0 0% 0% / 0.5), 0 0 0 1px hsl(0 0% 100% / 0.15);
+  }
+
+  /* Selection counter */
+  .selection-counter {
+    @apply fixed bottom-4 left-1/2 transform -translate-x-1/2 z-50;
+    @apply px-6 py-3 flex items-center gap-4;
+    background: rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 1rem;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+  }
+
+  /* ========================================
+     ADMIN DASHBOARD PREMIUM CARDS
+     3D depth, glass surface, lifted feel
+  ======================================== */
+  .admin-card {
+    background: var(--gradient-glass);
+    border: 1px solid hsl(var(--border));
+    border-radius: 1.25rem;
+    box-shadow:
+      0 1px 2px hsl(0 0% 0% / 0.06),
+      0 4px 12px hsl(0 0% 0% / 0.08),
+      0 16px 40px -8px hsl(0 0% 0% / 0.12);
+    transition: box-shadow 0.3s ease, transform 0.3s ease;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .admin-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, hsl(0 0% 100% / 0.15), transparent);
+    pointer-events: none;
+  }
+
+  .admin-card:hover {
+    box-shadow:
+      0 2px 4px hsl(0 0% 0% / 0.08),
+      0 8px 20px hsl(0 0% 0% / 0.12),
+      0 24px 48px -8px hsl(0 0% 0% / 0.16);
+    transform: translateY(-1px);
+  }
+
+  .admin-metric-card {
+    background: var(--gradient-glass);
+    border: 1px solid hsl(var(--border));
+    border-radius: 1rem;
+    box-shadow:
+      0 1px 3px hsl(0 0% 0% / 0.06),
+      0 6px 16px -4px hsl(0 0% 0% / 0.1);
+    transition: all 0.25s ease;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .admin-metric-card::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 10%;
+    right: 10%;
+    height: 2px;
+    border-radius: 2px;
+    background: var(--gradient-primary);
+    opacity: 0;
+    transition: opacity 0.25s ease;
+  }
+
+  .admin-metric-card:hover {
+    box-shadow:
+      0 2px 6px hsl(0 0% 0% / 0.08),
+      0 12px 24px -4px hsl(0 0% 0% / 0.14);
+    transform: translateY(-2px);
+  }
+
+  .admin-metric-card:hover::after {
+    opacity: 1;
+  }
+
+  .admin-header {
+    background: hsl(var(--background) / 0.8);
+    backdrop-filter: blur(20px) saturate(1.4);
+    border-bottom: 1px solid hsl(var(--border));
+    box-shadow: 0 1px 3px hsl(0 0% 0% / 0.06), 0 4px 16px hsl(0 0% 0% / 0.04);
+  }
+}
+
+/* Hide scrollbar for horizontal scroll containers */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+/* Word breaking utility for chat messages */
+.overflow-wrap-anywhere {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* Aurora mesh animation for Create page hero */
+@keyframes aurora {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
+@keyframes create-float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-4px); }
+}
+
+@keyframes fade-up-in {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.dot-grid {
+  background-image: radial-gradient(circle, hsl(var(--foreground) / 0.04) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+/* Showcase attention animation - subtle, elegant glow */
+@keyframes showcase-pop {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.008); }
+  100% { transform: scale(1); }
+}
+
+@keyframes showcase-glow {
+  0% { opacity: 0; }
+  40% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+.showcase-attention {
+  position: relative;
+  isolation: isolate;
+  animation: showcase-pop 2.4s ease-in-out forwards;
+  will-change: transform;
+}
+
+.showcase-attention::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: 1rem;
+  pointer-events: none;
+  box-shadow:
+    0 0 0 1px hsl(var(--primary) / 0.5),
+    0 0 16px 1px hsl(var(--primary) / 0.2);
+  opacity: 0;
+  animation: showcase-glow 2.4s ease-in-out forwards;
+  will-change: opacity;
+  z-index: 0;
+}
+
+/* ========================================
+   CHAT PANEL — Hidden scrollbar (still scrollable)
+   ======================================== */
+.chat-scroll-area [data-radix-scroll-area-viewport] {
+  scrollbar-width: none;
+}
+
+.chat-scroll-area [data-radix-scroll-area-viewport]::-webkit-scrollbar {
+  display: none;
+}
+
+.chat-scroll-area {
+  --scrollbar-size: 0px;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.chat-scroll-area::-webkit-scrollbar {
+  display: none;
+}
+
+.chat-scroll-area [data-radix-scroll-area-scrollbar] {
+  display: none !important;
+}
+
+/* ========================================
+   STREAMDOWN MARKDOWN — Wavebound dark theme
+   ======================================== */
+.streamdown-container h1 {
+  color: #FFFFFF;
+  font-weight: 600;
+  font-size: 1.25rem;
+  margin-top: 1.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.streamdown-container h2 {
+  color: #FFFFFF;
+  font-weight: 600;
+  font-size: 1.125rem;
+  margin-top: 1.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.streamdown-container h3 {
+  color: #FFFFFF;
+  font-weight: 600;
+  font-size: 1rem;
+  margin-top: 1.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.streamdown-container p {
+  color: #E5E5E5;
+  line-height: 1.625;
+  margin-bottom: 0.75rem;
+}
+
+.streamdown-container strong {
+  color: #FFFFFF;
+  font-weight: 600;
+}
+
+.streamdown-container em {
+  color: #A3A3A3;
+  font-style: italic;
+}
+
+.streamdown-container ul {
+  padding-left: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.streamdown-container ul li {
+  color: #E5E5E5;
+  margin-bottom: 0.375rem;
+  line-height: 1.625;
+}
+
+.streamdown-container ul li::marker {
+  color: #8B5CF6;
+}
+
+.streamdown-container ol {
+  padding-left: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.streamdown-container ol li {
+  color: #E5E5E5;
+  margin-bottom: 0.375rem;
+  line-height: 1.625;
+}
+
+.streamdown-container ol li::marker {
+  color: #A78BFA;
+}
+
+.streamdown-container code:not(pre code) {
+  background: rgba(255, 255, 255, 0.1);
+  color: #C4B5FD;
+  padding: 0.125rem 0.375rem;
+  border-radius: 0.25rem;
+  font-size: 0.875rem;
+  font-family: 'Roboto Mono', monospace;
+}
+
+.streamdown-container pre {
+  background: #141414;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 0.5rem;
+  padding: 1rem;
+  overflow-x: auto;
+  margin: 0.5rem 0;
+}
+
+.streamdown-container pre code {
+  background: transparent;
+  color: #E5E5E5;
+  padding: 0;
+  font-size: 0.875rem;
+  font-family: 'Roboto Mono', monospace;
+}
+
+.streamdown-container a {
+  color: #A78BFA;
+  text-decoration: underline;
+  transition: color 0.15s;
+}
+
+.streamdown-container a:hover {
+  color: #C4B5FD;
+}
+
+.streamdown-container blockquote {
+  border-left: 2px solid rgba(139, 92, 246, 0.5);
+  padding-left: 1rem;
+  color: #A3A3A3;
+  font-style: italic;
+  margin: 0.75rem 0;
+}
+
+.streamdown-container hr {
+  border-color: rgba(255, 255, 255, 0.1);
+  margin: 1rem 0;
+}
+
+.streamdown-container table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.75rem 0;
+  border-radius: 0.5rem;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.streamdown-container th {
+  background: rgba(255, 255, 255, 0.08);
+  color: #FFFFFF;
+  font-weight: 600;
+  text-align: left;
+  padding: 0.625rem 0.75rem;
+  font-size: 0.875rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.streamdown-container td {
+  color: #E5E5E5;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.streamdown-container tr:last-child td {
+  border-bottom: none;
+}
+
+.streamdown-container tr:hover td {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+/* Global scrollbar styling */
+*::-webkit-scrollbar {
+  width: 6px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
+}

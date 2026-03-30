@@ -1,0 +1,51 @@
+project_id = "kxvgbowrkmowuyezoeke"
+
+[functions.receive-analysis-results]
+verify_jwt = false
+
+[functions.test-webhook]
+verify_jwt = false
+
+[functions.fetch-instagram-oembed]
+verify_jwt = false
+
+[functions.create-checkout]
+verify_jwt = false
+
+[functions.check-subscription]
+verify_jwt = false
+
+[functions.customer-portal]
+verify_jwt = false
+
+[functions.trigger-audio-analysis]
+verify_jwt = false
+
+[functions.trigger-audio-analysis-proxy]
+verify_jwt = false
+
+[functions.poll-n8n-response]
+verify_jwt = false
+
+[functions.chat-proxy]
+verify_jwt = false
+
+[functions.guest-login]
+verify_jwt = false
+
+[functions.admin-stats]
+verify_jwt = false
+
+[functions.trigger-artist-research]
+verify_jwt = false
+
+[functions.label-signup]
+verify_jwt = false
+
+[functions.admin-data]
+verify_jwt = false
+
+[functions.admin-onboarding]
+verify_jwt = false
+
+

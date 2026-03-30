@@ -1,0 +1,29 @@
+# Wavebound Robots.txt
+User-agent: *
+Allow: /
+
+# Sitemap
+Sitemap: https://wavebound.app/sitemap.xml
+
+# Disallow private/authenticated paths
+Disallow: /me
+Disallow: /favorites
+Disallow: /workspace
+Disallow: /analyze/
+Disallow: /analyze-audio/
+Disallow: /tiktok-audit/
+Disallow: /my-analyses
+Disallow: /share/
+Disallow: /shared-plan/
+Disallow: /calendar
+Disallow: /assistant
+
+# Allow crawlers to index public pages
+Allow: /
+Allow: /explore
+Allow: /about
+Allow: /subscription
+Allow: /help
+Allow: /roadmap
+Allow: /terms
+Allow: /privacy
