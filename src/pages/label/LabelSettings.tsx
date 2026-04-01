@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
+import ConfirmDialog from "@/components/label/ConfirmDialog";
 
 interface LabelInfo {
   id: string;
@@ -86,6 +87,23 @@ export default function LabelSettings() {
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [assigningMember, setAssigningMember] = useState<string | null>(null); // user_id being edited
   const [assignDropdownOpen, setAssignDropdownOpen] = useState(false);
+
+  // Confirm dialog state
+  const [confirmDialog, setConfirmDialog] = useState<{
+    open: boolean;
+    title: string;
+    description: string;
+    confirmLabel: string;
+    variant: "default" | "destructive";
+    onConfirm: () => void;
+  }>({
+    open: false,
+    title: "",
+    description: "",
+    confirmLabel: "Confirm",
+    variant: "default",
+    onConfirm: () => {},
+  });
 
   const fetchData = useCallback(async () => {
     if (!labelId) {
@@ -170,36 +188,44 @@ export default function LabelSettings() {
     if (ok) setEditingEmail(false);
   };
 
-  const handleToggleActive = async () => {
+  const handleToggleActive = () => {
     if (!label) return;
     const next = !label.is_active;
-    const confirmed = window.confirm(
-      next
-        ? "Reactivate this label?"
-        : "Deactivate this label? Team members will lose access.",
-    );
-    if (confirmed) await updateLabel({ is_active: next });
+    setConfirmDialog({
+      open: true,
+      title: next ? "Reactivate this label?" : "Deactivate this label?",
+      description: next
+        ? "This will restore access for all team members."
+        : "Team members will lose access immediately.",
+      confirmLabel: next ? "Reactivate" : "Deactivate",
+      variant: next ? "default" : "destructive",
+      onConfirm: () => updateLabel({ is_active: next }),
+    });
   };
 
-  const handleRegenerateInvite = async () => {
+  const handleRegenerateInvite = () => {
     if (!label) return;
-    if (
-      !window.confirm(
-        "Regenerate invite code? The old code will stop working immediately.",
-      )
-    )
-      return;
-    const prefix =
-      label.name
-        .split(/\s+/)
-        .filter(Boolean)
-        .map((w) => w[0])
-        .join("")
-        .toUpperCase()
-        .slice(0, 4) || "WB";
-    const suffix = Math.random().toString(36).substring(2, 6).toUpperCase();
-    const newCode = `${prefix}-${suffix}`;
-    await updateLabel({ invite_code: newCode });
+    setConfirmDialog({
+      open: true,
+      title: "Regenerate invite code?",
+      description:
+        "The old code will stop working immediately. Anyone with the old link will no longer be able to join.",
+      confirmLabel: "Regenerate",
+      variant: "destructive",
+      onConfirm: async () => {
+        const prefix =
+          label.name
+            .split(/\s+/)
+            .filter(Boolean)
+            .map((w) => w[0])
+            .join("")
+            .toUpperCase()
+            .slice(0, 4) || "WB";
+        const suffix = Math.random().toString(36).substring(2, 6).toUpperCase();
+        const newCode = `${prefix}-${suffix}`;
+        await updateLabel({ invite_code: newCode });
+      },
+    });
   };
 
   const handleChangeRole = async (targetUserId: string, newRole: LabelRole) => {
@@ -229,31 +255,34 @@ export default function LabelSettings() {
     toast({ title: `Role updated to ${ROLE_CONFIG[newRole].label}` });
   };
 
-  const handleRemoveMember = async (member: TeamMember) => {
+  const handleRemoveMember = (member: TeamMember) => {
     if (!labelId) return;
-    if (
-      !window.confirm(
-        `Remove ${member.email} from this label? They will lose access immediately.`,
-      )
-    )
-      return;
-    setSaving(true);
-    const { error } = await supabase.rpc("remove_label_member", {
-      p_label_id: labelId,
-      p_target_user_id: member.user_id,
-    });
-    setSaving(false);
+    setConfirmDialog({
+      open: true,
+      title: `Remove ${member.email}?`,
+      description: "They will lose access to this label immediately.",
+      confirmLabel: "Remove",
+      variant: "destructive",
+      onConfirm: async () => {
+        setSaving(true);
+        const { error } = await supabase.rpc("remove_label_member", {
+          p_label_id: labelId,
+          p_target_user_id: member.user_id,
+        });
+        setSaving(false);
 
-    if (error) {
-      toast({
-        title: "Failed to remove member",
-        description: error.message,
-        variant: "destructive",
-      });
-      return;
-    }
-    setMembers((prev) => prev.filter((m) => m.user_id !== member.user_id));
-    toast({ title: `${member.email} removed` });
+        if (error) {
+          toast({
+            title: "Failed to remove member",
+            description: error.message,
+            variant: "destructive",
+          });
+          return;
+        }
+        setMembers((prev) => prev.filter((m) => m.user_id !== member.user_id));
+        toast({ title: `${member.email} removed` });
+      },
+    });
   };
 
   const handleAssignArtist = async (userId: string, artistHandle: string) => {
@@ -1534,6 +1563,16 @@ export default function LabelSettings() {
           )}
         </div>
       </div>
+
+      <ConfirmDialog
+        open={confirmDialog.open}
+        onOpenChange={(open) => setConfirmDialog((prev) => ({ ...prev, open }))}
+        title={confirmDialog.title}
+        description={confirmDialog.description}
+        confirmLabel={confirmDialog.confirmLabel}
+        variant={confirmDialog.variant}
+        onConfirm={confirmDialog.onConfirm}
+      />
     </LabelLayout>
   );
 }
