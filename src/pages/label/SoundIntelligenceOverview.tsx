@@ -252,6 +252,7 @@ export default function SoundIntelligenceOverview() {
                 setUrlWarning(null);
               }}
               onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
+              aria-label="TikTok sound URL"
               placeholder="Paste a TikTok sound URL to analyze"
               style={{
                 flex: 1,

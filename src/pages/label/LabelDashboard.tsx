@@ -286,6 +286,7 @@ export default function LabelDashboard() {
             <input
               type="text"
               placeholder="Search artists..."
+              aria-label="Search artists"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="bg-transparent border-none outline-none text-sm w-full text-foreground placeholder:text-muted-foreground"
