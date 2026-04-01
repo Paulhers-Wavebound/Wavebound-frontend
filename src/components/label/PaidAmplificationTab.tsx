@@ -272,8 +272,8 @@ export default function PaidAmplificationTab({
         .sort((a: VideoWithER, b: VideoWithER) => b.er - a.er);
 
       setAllVideos(enriched);
-    } catch (err) {
-      console.error("Paid amplification data fetch failed:", err);
+    } catch {
+      // Error handled by empty state UI
     } finally {
       setLoading(false);
     }
