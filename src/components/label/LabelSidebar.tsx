@@ -122,12 +122,14 @@ export default function LabelSidebar({
   }, [switcherOpen]);
 
   const displayName = labelName || "Label Portal";
-  const initials = displayName
-    .split(" ")
-    .map((w) => w[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
+  const initials =
+    displayName
+      .split(" ")
+      .filter(Boolean)
+      .map((w) => w[0])
+      .join("")
+      .slice(0, 2)
+      .toUpperCase() || "??";
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
