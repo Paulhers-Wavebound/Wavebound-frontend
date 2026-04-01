@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import LabelLayout from "@/pages/label/LabelLayout";
-import { SoundAnalysis } from "@/types/soundIntelligence";
+import { SoundAnalysis, SoundMonitoring } from "@/types/soundIntelligence";
 import {
   getSoundAnalysis,
   formatNumber,
@@ -36,11 +36,15 @@ import GeoSpreadSection from "@/components/sound-intelligence/GeoSpreadSection";
 import LifecycleCard from "@/components/sound-intelligence/LifecycleCard";
 import PostingHoursChart from "@/components/sound-intelligence/PostingHoursChart";
 import ConfirmDialog from "@/components/label/ConfirmDialog";
+import SoundAlertBell from "@/components/sound-intelligence/SoundAlertBell";
+import MonitoringTrendChart from "@/components/sound-intelligence/MonitoringTrendChart";
+import { useUserProfile } from "@/contexts/UserProfileContext";
 
 export default function SoundIntelligenceDetail() {
   const { jobId } = useParams<{ jobId: string }>();
   const navigate = useNavigate();
   const { canManage } = useLabelPermissions();
+  const { labelId } = useUserProfile();
   const [analysis, setAnalysis] = useState<SoundAnalysis | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [loadingStatus, setLoadingStatus] = useState<string | null>(null);
@@ -51,6 +55,7 @@ export default function SoundIntelligenceDetail() {
     videos_analyzed: number;
   } | null>(null);
   const [userCount, setUserCount] = useState<number | null>(null);
+  const [monitoring, setMonitoring] = useState<SoundMonitoring | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [expandedFormat, setExpandedFormat] = useState<number | null>(null);
   const [expandedTier, setExpandedTier] = useState<number | null>(null);
@@ -80,6 +85,8 @@ export default function SoundIntelligenceDetail() {
           const res = await getSoundAnalysis({ job_id: id });
           if (!res) return;
           if (res.user_count != null) setUserCount(res.user_count);
+          if (res.monitoring !== undefined)
+            setMonitoring(res.monitoring ?? null);
           const a: SoundAnalysis | null =
             res.formats || res.velocity
               ? res
@@ -235,33 +242,36 @@ export default function SoundIntelligenceDetail() {
             Back to Sound Intelligence
           </button>
 
-          {analysis && (
-            <div style={{ display: "flex", gap: 8 }}>
-              <ExportButton
-                icon={FileText}
-                label={exporting ? "Exporting..." : "PDF Report"}
-                onClick={handleExportPDF}
-                disabled={exporting}
-                accent
-              />
-              <ExportButton
-                icon={Table2}
-                label="Full CSV"
-                onClick={() => {
-                  exportFullAnalysisCSV(analysis);
-                  toast({ title: "CSV exported" });
-                }}
-              />
-              <ExportButton
-                icon={Download}
-                label="Formats CSV"
-                onClick={() => {
-                  exportFormatBreakdownCSV(analysis.formats, analysis);
-                  toast({ title: "CSV exported" });
-                }}
-              />
-            </div>
-          )}
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            {analysis && (
+              <>
+                <ExportButton
+                  icon={FileText}
+                  label={exporting ? "Exporting..." : "PDF Report"}
+                  onClick={handleExportPDF}
+                  disabled={exporting}
+                  accent
+                />
+                <ExportButton
+                  icon={Table2}
+                  label="Full CSV"
+                  onClick={() => {
+                    exportFullAnalysisCSV(analysis);
+                    toast({ title: "CSV exported" });
+                  }}
+                />
+                <ExportButton
+                  icon={Download}
+                  label="Formats CSV"
+                  onClick={() => {
+                    exportFormatBreakdownCSV(analysis.formats, analysis);
+                    toast({ title: "CSV exported" });
+                  }}
+                />
+              </>
+            )}
+            {labelId && <SoundAlertBell labelId={labelId} />}
+          </div>
         </div>
 
         {/* Loading */}
@@ -375,7 +385,7 @@ export default function SoundIntelligenceDetail() {
             style={{ display: "flex", flexDirection: "column", gap: 16 }}
           >
             <div style={{ animation: "fadeInUp 0.35s ease both" }}>
-              <SoundHeader analysis={analysis} />
+              <SoundHeader analysis={analysis} monitoring={monitoring} />
             </div>
             <div
               style={{
@@ -385,6 +395,18 @@ export default function SoundIntelligenceDetail() {
             >
               <HeroStatsRow analysis={analysis} userCount={userCount} />
             </div>
+            {jobId &&
+              monitoring &&
+              monitoring.monitoring_interval !== "paused" && (
+                <div
+                  style={{
+                    animation: "fadeInUp 0.35s ease both",
+                    animationDelay: "0.07s",
+                  }}
+                >
+                  <MonitoringTrendChart jobId={jobId} />
+                </div>
+              )}
             <div
               data-pdf-stack
               style={{
@@ -459,6 +481,7 @@ export default function SoundIntelligenceDetail() {
                   setExpandedFormat((prev) => (prev === i ? null : i))
                 }
                 songDuration={analysis.avg_duration_seconds}
+                spikeFormat={monitoring?.spike_format}
               />
             </div>
             <div

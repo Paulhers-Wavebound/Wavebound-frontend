@@ -1,7 +1,7 @@
 import { FormatBreakdown, getFormatColor } from "@/types/soundIntelligence";
 import { formatNumber } from "@/utils/soundIntelligenceApi";
 import { BarChart, Bar, ResponsiveContainer, Cell, Tooltip } from "recharts";
-import { ChevronDown, ChevronUp, ExternalLink } from "lucide-react";
+import { ChevronDown, ChevronUp, ExternalLink, TrendingUp } from "lucide-react";
 import SongTimestampHeatmap from "./SongTimestampHeatmap";
 import { useState, useMemo } from "react";
 
@@ -10,6 +10,7 @@ interface Props {
   expandedFormat: number | null;
   onToggle: (i: number) => void;
   songDuration?: number;
+  spikeFormat?: string | null;
 }
 
 const VERDICT_COLORS: Record<string, { bg: string; text: string }> = {
@@ -69,6 +70,7 @@ export default function FormatBreakdownTable({
   expandedFormat,
   onToggle,
   songDuration,
+  spikeFormat,
 }: Props) {
   const [sortKey, setSortKey] = useState<SortKey | null>(null);
   const [sortDir, setSortDir] = useState<SortDir>("desc");
@@ -223,6 +225,7 @@ export default function FormatBreakdownTable({
         const verdict = computeVerdict(f);
         const vc = VERDICT_COLORS[verdict];
         const zebra = rowIdx % 2 === 1 ? "var(--overlay-subtle)" : "none";
+        const isSpiking = spikeFormat != null && f.name === spikeFormat;
 
         return (
           <div key={f.name}>
@@ -238,9 +241,16 @@ export default function FormatBreakdownTable({
                 gap: 8,
                 width: "100%",
                 padding: "12px 8px",
-                background: isOpen ? "var(--overlay-hover)" : zebra,
+                background: isSpiking
+                  ? "rgba(255,69,58,0.06)"
+                  : isOpen
+                    ? "var(--overlay-hover)"
+                    : zebra,
                 border: "none",
                 borderBottom: "1px solid var(--border)",
+                borderLeft: isSpiking
+                  ? "3px solid #FF453A"
+                  : "3px solid transparent",
                 cursor: "pointer",
                 alignItems: "center",
                 textAlign: "left",
@@ -267,6 +277,16 @@ export default function FormatBreakdownTable({
                 >
                   {f.name}
                 </span>
+                {isSpiking && (
+                  <TrendingUp
+                    size={14}
+                    color="#FF453A"
+                    style={{
+                      flexShrink: 0,
+                      animation: "monitorPulse 1.5s ease-in-out infinite",
+                    }}
+                  />
+                )}
               </div>
               <span
                 style={{

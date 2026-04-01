@@ -30,6 +30,9 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { exportOverviewPDF } from "@/utils/exportAnalysis";
+import MonitoringBadge from "@/components/sound-intelligence/MonitoringBadge";
+import NextCheckCountdown from "@/components/sound-intelligence/NextCheckCountdown";
+import SoundAlertBell from "@/components/sound-intelligence/SoundAlertBell";
 
 /** Stall threshold: 3 min for refreshing (fast), 15 min for others */
 function stallThresholdMs(status: string): number {
@@ -176,6 +179,7 @@ export default function SoundIntelligenceOverview() {
           completed_at: null,
           last_refresh_at: null,
           refresh_count: 0,
+          monitoring: null,
           summary: null,
         };
         setEntries((prev) => [
@@ -206,29 +210,39 @@ export default function SoundIntelligenceOverview() {
         style={{ maxWidth: 1200, margin: "0 auto", padding: "32px 24px 80px" }}
       >
         {/* Header */}
-        <div style={{ marginBottom: 32 }}>
-          <h1
-            style={{
-              fontFamily: '"DM Sans", sans-serif',
-              fontSize: 28,
-              fontWeight: 700,
-              color: "var(--ink)",
-              marginBottom: 8,
-            }}
-          >
-            Sound Intelligence
-          </h1>
-          <p
-            style={{
-              fontFamily: '"DM Sans", sans-serif',
-              fontSize: 15,
-              color: "var(--ink-tertiary)",
-              lineHeight: 1.5,
-            }}
-          >
-            Analyze any TikTok sound to uncover format performance, creator
-            tiers, and viral patterns
-          </p>
+        <div
+          style={{
+            marginBottom: 32,
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "flex-start",
+          }}
+        >
+          <div>
+            <h1
+              style={{
+                fontFamily: '"DM Sans", sans-serif',
+                fontSize: 28,
+                fontWeight: 700,
+                color: "var(--ink)",
+                marginBottom: 8,
+              }}
+            >
+              Sound Intelligence
+            </h1>
+            <p
+              style={{
+                fontFamily: '"DM Sans", sans-serif',
+                fontSize: 15,
+                color: "var(--ink-tertiary)",
+                lineHeight: 1.5,
+              }}
+            >
+              Analyze any TikTok sound to uncover format performance, creator
+              tiers, and viral patterns
+            </p>
+          </div>
+          {labelId && <SoundAlertBell labelId={labelId} />}
         </div>
 
         {/* Search bar */}
@@ -592,7 +606,7 @@ export default function SoundIntelligenceOverview() {
                   style={{
                     display: "grid",
                     gridTemplateColumns:
-                      "36px 1.8fr 1fr 0.6fr 0.7fr 0.7fr 0.6fr 0.6fr 1.1fr 0.7fr 0.7fr",
+                      "36px 1.6fr 0.9fr 0.5fr 0.6fr 0.6fr 0.5fr 0.5fr 1fr 0.7fr 0.7fr 0.7fr",
                     gap: 8,
                     padding: "12px 20px",
                     borderBottom: "1px solid var(--border)",
@@ -609,6 +623,7 @@ export default function SoundIntelligenceOverview() {
                     "Peak",
                     "Winner Format",
                     "Status",
+                    "Monitoring",
                     "Refreshed",
                   ].map((h) => (
                     <div
@@ -823,6 +838,12 @@ export default function SoundIntelligenceOverview() {
                           {vCfg.label}
                         </span>
                       </div>
+                      <div>
+                        <MonitoringBadge
+                          monitoring={entry.monitoring}
+                          size="sm"
+                        />
+                      </div>
                       <div
                         style={{
                           display: "flex",
@@ -988,6 +1009,22 @@ export default function SoundIntelligenceOverview() {
                           </span>
                         </div>
                       </div>
+
+                      {entry.monitoring && (
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 8,
+                            marginBottom: 12,
+                          }}
+                        >
+                          <MonitoringBadge monitoring={entry.monitoring} />
+                          <NextCheckCountdown
+                            nextCheckAt={entry.monitoring.next_check_at}
+                          />
+                        </div>
+                      )}
 
                       {s && (
                         <div
