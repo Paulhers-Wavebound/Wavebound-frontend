@@ -1,48 +1,67 @@
-import { useEffect, useState, useMemo, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { supabase } from '@/integrations/supabase/client';
-import LabelLayout from './LabelLayout';
-import SEOHead from '@/components/SEOHead';
-import RosterCard, { type RosterMetric } from '@/components/label/RosterCard';
-import RosterListView from '@/components/label/RosterListView';
-import AddArtistModal from '@/components/label/AddArtistModal';
-import PipelineProgress from '@/components/label/PipelineProgress';
-import RiskAlertsPanel from '@/components/label/RiskAlertsPanel';
-import { useAdminRole } from '@/hooks/useAdminRole';
-import { useUserProfile } from '@/contexts/UserProfileContext';
-import { Search, Plus, RefreshCw, LayoutGrid, List } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Skeleton } from '@/components/ui/skeleton';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useEffect, useState, useMemo, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
+import { supabase } from "@/integrations/supabase/client";
+import LabelLayout from "./LabelLayout";
+import SEOHead from "@/components/SEOHead";
+import RosterCard, { type RosterMetric } from "@/components/label/RosterCard";
+import RosterListView from "@/components/label/RosterListView";
+import AddArtistModal from "@/components/label/AddArtistModal";
+import PipelineProgress from "@/components/label/PipelineProgress";
+import RiskAlertsPanel from "@/components/label/RiskAlertsPanel";
+import { useAdminRole } from "@/hooks/useAdminRole";
+import { useUserProfile } from "@/contexts/UserProfileContext";
+import { useLabelPermissions } from "@/hooks/useLabelPermissions";
+import { Search, Plus, RefreshCw, LayoutGrid, List } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
+import { motion, AnimatePresence } from "framer-motion";
 
-type Filter = 'all' | 'attention' | 'momentum' | 'stalled';
+type Filter = "all" | "attention" | "momentum" | "stalled";
 export default function LabelDashboard() {
   const navigate = useNavigate();
   const { isAdmin } = useAdminRole();
   const { labelId } = useUserProfile();
+  const { canEdit } = useLabelPermissions();
 
   const [metrics, setMetrics] = useState<RosterMetric[]>([]);
-  const [alertDots, setAlertDots] = useState<Map<string, 'celebration' | 'warning'>>(new Map());
+  const [alertDots, setAlertDots] = useState<
+    Map<string, "celebration" | "warning">
+  >(new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
-  const [search, setSearch] = useState('');
-  const [activeFilter, setActiveFilter] = useState<Filter>('all');
+  const [search, setSearch] = useState("");
+  const [activeFilter, setActiveFilter] = useState<Filter>("all");
   const [refreshing, setRefreshing] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>(() =>
-    (localStorage.getItem('label-roster-view') as 'grid' | 'list') || 'grid'
+  const [viewMode, setViewMode] = useState<"grid" | "list">(
+    () =>
+      (localStorage.getItem("label-roster-view") as "grid" | "list") || "grid",
   );
-  const [processing, setProcessing] = useState<{ tempId: string; artist_handle: string; artist_name: string }[]>([]);
+  const [processing, setProcessing] = useState<
+    { tempId: string; artist_handle: string; artist_name: string }[]
+  >([]);
 
   const fetchMetrics = useCallback(async () => {
-    const [viewRes, aiRes] = await Promise.all([
-      supabase.from('roster_dashboard_metrics' as any).select('*').order('risk_level', { ascending: false }),
-      supabase.from('artist_intelligence' as any).select('artist_handle, artist_name, avatar_url, status, content_plan_html').eq('status', 'completed'),
-    ]);
+    let viewQuery = supabase
+      .from("roster_dashboard_metrics" as any)
+      .select("*")
+      .order("risk_level", { ascending: false });
+    let aiQuery = supabase
+      .from("artist_intelligence" as any)
+      .select(
+        "artist_handle, artist_name, avatar_url, status, content_plan_html, label_id",
+      )
+      .eq("status", "completed");
+
+    if (labelId) {
+      viewQuery = viewQuery.eq("label_id", labelId);
+      aiQuery = aiQuery.eq("label_id", labelId);
+    }
+
+    const [viewRes, aiRes] = await Promise.all([viewQuery, aiQuery]);
 
     if (viewRes.error && aiRes.error) {
-      console.error('[LabelDashboard] fetch error:', viewRes.error, aiRes.error);
       setError(true);
       setLoading(false);
       return;
@@ -53,25 +72,26 @@ export default function LabelDashboard() {
 
     // Build set of confirmed-completed handles from artist_intelligence
     const aiCompletedHandles = new Set(
-      aiData.map(a => (a.artist_handle || '').trim().toLowerCase())
+      aiData.map((a) => (a.artist_handle || "").trim().toLowerCase()),
     );
 
     // Build merged map: start with view data, then upsert from AI data
     const mergedMap = new Map<string, RosterMetric>();
     for (const m of viewData) {
-      const key = (m.artist_handle || '').trim().toLowerCase();
+      const key = (m.artist_handle || "").trim().toLowerCase();
       mergedMap.set(key, m);
     }
 
     for (const a of aiData) {
-      const key = (a.artist_handle || '').trim().toLowerCase();
+      const key = (a.artist_handle || "").trim().toLowerCase();
       if (!key) continue;
       const existing = mergedMap.get(key);
       if (existing) {
         // Override pipeline_status to completed since AI confirms it
-        (existing as any).pipeline_status = 'completed';
+        (existing as any).pipeline_status = "completed";
         // Backfill name/avatar if missing
-        if (!existing.artist_name) existing.artist_name = a.artist_name || a.artist_handle;
+        if (!existing.artist_name)
+          existing.artist_name = a.artist_name || a.artist_handle;
         if (!existing.avatar_url) existing.avatar_url = a.avatar_url || null;
         // Backfill plan status from AI data
         if (a.content_plan_html && !(existing as any).has_content_plan) {
@@ -83,16 +103,15 @@ export default function LabelDashboard() {
           artist_handle: a.artist_handle,
           artist_name: a.artist_name || a.artist_handle,
           avatar_url: a.avatar_url || null,
-          pipeline_status: 'completed',
+          pipeline_status: "completed",
           momentum_tier: null,
-          risk_level: 'ok',
+          risk_level: "ok",
           has_content_plan: !!a.content_plan_html,
         } as any);
       }
     }
 
     const merged = Array.from(mergedMap.values());
-    console.log('[LabelDashboard] viewData:', viewData.length, 'aiCompleted:', aiData.length, 'merged:', merged.length);
 
     setMetrics(merged);
     setLoading(false);
@@ -100,61 +119,78 @@ export default function LabelDashboard() {
     // Fetch recent alerts for dot indicators
     const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
     const { data: alertData } = await supabase
-      .from('artist_alerts' as any)
-      .select('artist_handle, severity, created_at')
-      .gte('created_at', cutoff)
-      .in('severity', ['celebration', 'warning']);
+      .from("artist_alerts" as any)
+      .select("artist_handle, severity, created_at")
+      .gte("created_at", cutoff)
+      .in("severity", ["celebration", "warning"]);
 
-    const dotMap = new Map<string, 'celebration' | 'warning'>();
+    const dotMap = new Map<string, "celebration" | "warning">();
     for (const a of (alertData as any[]) || []) {
-      const h = (a.artist_handle || '').trim().toLowerCase();
+      const h = (a.artist_handle || "").trim().toLowerCase();
       const existing = dotMap.get(h);
-      if (!existing || a.severity === 'celebration') {
+      if (!existing || a.severity === "celebration") {
         dotMap.set(h, a.severity);
       }
     }
     setAlertDots(dotMap);
-  }, []);
+  }, [labelId]);
 
-  useEffect(() => { fetchMetrics(); }, [fetchMetrics]);
+  useEffect(() => {
+    fetchMetrics();
+  }, [fetchMetrics]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
-    await supabase.rpc('refresh_roster_metrics' as any);
+    await supabase.rpc("refresh_roster_metrics");
     await fetchMetrics();
     setRefreshing(false);
   };
 
   const handleArtistAdded = useCallback((handle: string, name: string) => {
-    setProcessing(prev => [...prev, { tempId: crypto.randomUUID(), artist_handle: handle, artist_name: name }]);
+    setProcessing((prev) => [
+      ...prev,
+      { tempId: crypto.randomUUID(), artist_handle: handle, artist_name: name },
+    ]);
   }, []);
 
-  const handlePipelineComplete = useCallback(async (handle: string) => {
-    setProcessing(prev => prev.filter(p => p.artist_handle !== handle));
-    await supabase.rpc('refresh_roster_metrics' as any);
-    fetchMetrics();
-  }, [fetchMetrics]);
+  const handlePipelineComplete = useCallback(
+    async (handle: string) => {
+      setProcessing((prev) => prev.filter((p) => p.artist_handle !== handle));
+      await supabase.rpc("refresh_roster_metrics");
+      fetchMetrics();
+    },
+    [fetchMetrics],
+  );
 
   // Derived data
-  const processingHandles = new Set(processing.map(p => p.artist_handle));
+  const processingHandles = new Set(processing.map((p) => p.artist_handle));
 
   const filtered = useMemo(() => {
     return metrics
-      .filter(a => !processingHandles.has(a.artist_handle))
-      .filter(a => (a as any).pipeline_status === 'completed')
-      .filter(a => {
+      .filter((a) => !processingHandles.has(a.artist_handle))
+      .filter((a) => (a as any).pipeline_status === "completed")
+      .filter((a) => {
         if (!search) return true;
         const q = search.toLowerCase();
-        return a.artist_name?.toLowerCase().includes(q) || a.artist_handle?.toLowerCase().includes(q);
+        return (
+          a.artist_name?.toLowerCase().includes(q) ||
+          a.artist_handle?.toLowerCase().includes(q)
+        );
       })
-      .filter(a => {
+      .filter((a) => {
         const tier = a.momentum_tier?.toLowerCase();
         const risk = a.risk_level?.toLowerCase();
         switch (activeFilter) {
-          case 'attention': return risk !== 'ok';
-          case 'momentum': return tier === 'momentum' || tier === 'breakout' || tier === 'viral';
-          case 'stalled': return tier === 'stalled';
-          default: return true;
+          case "attention":
+            return risk !== "ok";
+          case "momentum":
+            return (
+              tier === "momentum" || tier === "breakout" || tier === "viral"
+            );
+          case "stalled":
+            return tier === "stalled";
+          default:
+            return true;
         }
       });
   }, [metrics, search, activeFilter, processingHandles]);
@@ -163,19 +199,22 @@ export default function LabelDashboard() {
   const tierCounts = useMemo(() => {
     const counts: Record<string, number> = {};
     for (const m of metrics) {
-      const t = m.momentum_tier?.toLowerCase() || 'unknown';
+      const t = m.momentum_tier?.toLowerCase() || "unknown";
       counts[t] = (counts[t] || 0) + 1;
     }
     return counts;
   }, [metrics]);
 
-  const alertCount = useMemo(() => metrics.filter(m => m.risk_level?.toLowerCase() !== 'ok').length, [metrics]);
+  const alertCount = useMemo(
+    () => metrics.filter((m) => m.risk_level?.toLowerCase() !== "ok").length,
+    [metrics],
+  );
 
   const filters: { key: Filter; label: string }[] = [
-    { key: 'all', label: 'All' },
-    { key: 'attention', label: 'Needs Attention' },
-    { key: 'momentum', label: 'Momentum+' },
-    { key: 'stalled', label: 'Stalled' },
+    { key: "all", label: "All" },
+    { key: "attention", label: "Needs Attention" },
+    { key: "momentum", label: "Momentum+" },
+    { key: "stalled", label: "Stalled" },
   ];
 
   if (loading) {
@@ -196,9 +235,15 @@ export default function LabelDashboard() {
     return (
       <LabelLayout>
         <div className="flex flex-col items-center justify-center h-[60vh] gap-3">
-          <p className="text-base font-medium text-foreground">Something went wrong</p>
-          <p className="text-sm text-muted-foreground">Could not load your roster. Try refreshing.</p>
-          <Button variant="outline" onClick={() => window.location.reload()}>Retry</Button>
+          <p className="text-base font-medium text-foreground">
+            Something went wrong
+          </p>
+          <p className="text-sm text-muted-foreground">
+            Could not load your roster. Try refreshing.
+          </p>
+          <Button variant="outline" onClick={() => window.location.reload()}>
+            Retry
+          </Button>
         </div>
       </LabelLayout>
     );
@@ -206,18 +251,27 @@ export default function LabelDashboard() {
 
   return (
     <LabelLayout>
-      <SEOHead title="Dashboard — Wavebound Label" description="Your artist roster dashboard" />
+      <SEOHead
+        title="Dashboard — Wavebound Label"
+        description="Your artist roster dashboard"
+      />
       <div className="p-6 md:p-8 lg:p-10 space-y-5">
         {/* Summary bar */}
         <div className="flex items-center flex-wrap gap-2 text-sm text-muted-foreground">
-          <span className="font-semibold text-foreground">{metrics.length} Artists</span>
-          {['viral', 'breakout', 'momentum', 'stable', 'stalled'].map(t =>
+          <span className="font-semibold text-foreground">
+            {metrics.length} Artists
+          </span>
+          {["viral", "breakout", "momentum", "stable", "stalled"].map((t) =>
             tierCounts[t] ? (
-              <span key={t}>· {tierCounts[t]} {t.charAt(0).toUpperCase() + t.slice(1)}</span>
-            ) : null
+              <span key={t}>
+                · {tierCounts[t]} {t.charAt(0).toUpperCase() + t.slice(1)}
+              </span>
+            ) : null,
           )}
           {alertCount > 0 && (
-            <Badge variant="destructive" className="ml-2 text-xs">{alertCount} alert{alertCount > 1 ? 's' : ''}</Badge>
+            <Badge variant="destructive" className="ml-2 text-xs">
+              {alertCount} alert{alertCount > 1 ? "s" : ""}
+            </Badge>
           )}
         </div>
 
@@ -233,21 +287,21 @@ export default function LabelDashboard() {
               type="text"
               placeholder="Search artists..."
               value={search}
-              onChange={e => setSearch(e.target.value)}
+              onChange={(e) => setSearch(e.target.value)}
               className="bg-transparent border-none outline-none text-sm w-full text-foreground placeholder:text-muted-foreground"
             />
           </div>
 
           {/* Filter pills */}
           <div className="flex items-center gap-1.5">
-            {filters.map(f => (
+            {filters.map((f) => (
               <button
                 key={f.key}
                 onClick={() => setActiveFilter(f.key)}
                 className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors border ${
                   activeFilter === f.key
-                    ? 'bg-primary text-primary-foreground border-primary'
-                    : 'bg-card text-muted-foreground border-border hover:text-foreground'
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : "bg-card text-muted-foreground border-border hover:text-foreground"
                 }`}
               >
                 {f.label}
@@ -258,28 +312,44 @@ export default function LabelDashboard() {
           <div className="flex-1" />
 
           {isAdmin && (
-            <Button variant="outline" size="sm" onClick={handleRefresh} disabled={refreshing}>
-              <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleRefresh}
+              disabled={refreshing}
+            >
+              <RefreshCw
+                size={14}
+                className={refreshing ? "animate-spin" : ""}
+              />
               Refresh Metrics
             </Button>
           )}
 
-          <Button size="sm" onClick={() => setAddOpen(true)}>
-            <Plus size={14} />
-            Add Artist
-          </Button>
+          {canEdit && (
+            <Button size="sm" onClick={() => setAddOpen(true)}>
+              <Plus size={14} />
+              Add Artist
+            </Button>
+          )}
 
           {/* View toggle */}
           <div className="flex items-center rounded-lg border border-border overflow-hidden">
             <button
-              onClick={() => { setViewMode('grid'); localStorage.setItem('label-roster-view', 'grid'); }}
-              className={`p-2 transition-colors ${viewMode === 'grid' ? 'bg-primary text-primary-foreground' : 'bg-card text-muted-foreground hover:text-foreground'}`}
+              onClick={() => {
+                setViewMode("grid");
+                localStorage.setItem("label-roster-view", "grid");
+              }}
+              className={`p-2 transition-colors ${viewMode === "grid" ? "bg-primary text-primary-foreground" : "bg-card text-muted-foreground hover:text-foreground"}`}
             >
               <LayoutGrid size={14} />
             </button>
             <button
-              onClick={() => { setViewMode('list'); localStorage.setItem('label-roster-view', 'list'); }}
-              className={`p-2 transition-colors ${viewMode === 'list' ? 'bg-primary text-primary-foreground' : 'bg-card text-muted-foreground hover:text-foreground'}`}
+              onClick={() => {
+                setViewMode("list");
+                localStorage.setItem("label-roster-view", "list");
+              }}
+              className={`p-2 transition-colors ${viewMode === "list" ? "bg-primary text-primary-foreground" : "bg-card text-muted-foreground hover:text-foreground"}`}
             >
               <List size={14} />
             </button>
@@ -289,26 +359,36 @@ export default function LabelDashboard() {
         {/* Processing cards */}
         {processing.length > 0 && (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-            {processing.map(p => (
-              <div key={p.tempId} className="rounded-xl border border-border p-4 space-y-3">
+            {processing.map((p) => (
+              <div
+                key={p.tempId}
+                className="rounded-xl border border-border p-4 space-y-3"
+              >
                 <div className="flex items-center gap-3">
                   <Skeleton className="h-12 w-12 rounded-full" />
                   <div className="space-y-1">
-                    <p className="text-sm font-semibold text-foreground">{p.artist_name}</p>
-                    <p className="text-xs text-muted-foreground">@{p.artist_handle}</p>
+                    <p className="text-sm font-semibold text-foreground">
+                      {p.artist_name}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      @{p.artist_handle}
+                    </p>
                   </div>
                 </div>
-                <PipelineProgress artistHandle={p.artist_handle} onComplete={() => handlePipelineComplete(p.artist_handle)} />
+                <PipelineProgress
+                  artistHandle={p.artist_handle}
+                  onComplete={() => handlePipelineComplete(p.artist_handle)}
+                />
               </div>
             ))}
           </div>
         )}
 
         {/* Roster view */}
-        {viewMode === 'grid' ? (
+        {viewMode === "grid" ? (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
             <AnimatePresence mode="sync">
-              {filtered.map(artist => (
+              {filtered.map((artist) => (
                 <motion.div
                   key={artist.artist_handle}
                   layout
@@ -319,8 +399,12 @@ export default function LabelDashboard() {
                 >
                   <RosterCard
                     artist={artist}
-                    onClick={() => navigate(`/label/artists/${artist.artist_handle}`)}
-                    alertDot={alertDots.get((artist.artist_handle || '').trim().toLowerCase())}
+                    onClick={() =>
+                      navigate(`/label/artists/${artist.artist_handle}`)
+                    }
+                    alertDot={alertDots.get(
+                      (artist.artist_handle || "").trim().toLowerCase(),
+                    )}
                   />
                 </motion.div>
               ))}
@@ -333,18 +417,29 @@ export default function LabelDashboard() {
           />
         )}
 
-        {filtered.length === 0 && !loading && metrics.length === 0 && processing.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-24 gap-3">
-            <p className="text-lg font-semibold text-foreground">Your roster is empty</p>
-            <p className="text-sm text-muted-foreground">Add your first artist to get started</p>
-            <button
-              onClick={() => setAddOpen(true)}
-              className="mt-2 px-5 py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 transition-opacity"
-            >
-              + Add Artist
-            </button>
-          </div>
-        )}
+        {filtered.length === 0 &&
+          !loading &&
+          metrics.length === 0 &&
+          processing.length === 0 && (
+            <div className="flex flex-col items-center justify-center py-24 gap-3">
+              <p className="text-lg font-semibold text-foreground">
+                Your roster is empty
+              </p>
+              <p className="text-sm text-muted-foreground">
+                {canEdit
+                  ? "Add your first artist to get started"
+                  : "No artists on this roster yet"}
+              </p>
+              {canEdit && (
+                <button
+                  onClick={() => setAddOpen(true)}
+                  className="mt-2 px-5 py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 transition-opacity"
+                >
+                  + Add Artist
+                </button>
+              )}
+            </div>
+          )}
 
         {filtered.length === 0 && !loading && metrics.length > 0 && (
           <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
@@ -353,7 +448,14 @@ export default function LabelDashboard() {
         )}
       </div>
 
-      <AddArtistModal open={addOpen} onClose={() => setAddOpen(false)} onAdded={handleArtistAdded} existingHandles={metrics.map(m => (m.artist_handle || '').trim().toLowerCase())} />
+      <AddArtistModal
+        open={addOpen}
+        onClose={() => setAddOpen(false)}
+        onAdded={handleArtistAdded}
+        existingHandles={metrics.map((m) =>
+          (m.artist_handle || "").trim().toLowerCase(),
+        )}
+      />
     </LabelLayout>
   );
 }
