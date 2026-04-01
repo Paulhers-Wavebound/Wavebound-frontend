@@ -1,4 +1,4 @@
-import { supabase } from '@/integrations/supabase/client';
+import { supabase } from "@/integrations/supabase/client";
 
 export interface TikTokOEmbedResponse {
   version: string;
@@ -19,34 +19,28 @@ export interface TikTokOEmbedResponse {
 /**
  * Fetch oEmbed data from TikTok API via Supabase edge function (to avoid CORS)
  */
-export const fetchTikTokOEmbed = async (tiktokUrl: string): Promise<TikTokOEmbedResponse | null> => {
-  console.log('🌐 fetchTikTokOEmbed called with:', tiktokUrl);
-  
+export const fetchTikTokOEmbed = async (
+  tiktokUrl: string,
+): Promise<TikTokOEmbedResponse | null> => {
   // Validate that this is actually a TikTok URL
   if (!isTikTokUrl(tiktokUrl)) {
-    console.log('⚠️ Skipping oEmbed for non-TikTok URL:', tiktokUrl);
     return null;
   }
-  
-  // Photo carousel URLs: TikTok oEmbed returns thumbnail_url but may not return full embed HTML
-  const isPhotoCarousel = tiktokUrl && tiktokUrl.includes('/photo/');
-  if (isPhotoCarousel) {
-    console.log('📸 Fetching oEmbed data for photo carousel (thumbnail only)');
-  }
-  
+
   try {
-    const { data, error } = await supabase.functions.invoke('fetch-tiktok-oembed', {
-      body: { tiktokUrl }
-    });
+    const { data, error } = await supabase.functions.invoke(
+      "fetch-tiktok-oembed",
+      {
+        body: { tiktokUrl },
+      },
+    );
 
     if (error) {
-      console.error('Error fetching TikTok oEmbed:', error);
       return null;
     }
 
     return data;
-  } catch (error) {
-    console.error('Error fetching TikTok oEmbed:', error);
+  } catch {
     return null;
   }
 };
@@ -60,7 +54,7 @@ const isSignedUrlExpired = (url: string): boolean => {
     if (expiresMatch) {
       const expiresTimestamp = parseInt(expiresMatch[1], 10) * 1000; // Convert to ms
       // Consider expired if less than 1 hour remaining
-      return Date.now() > expiresTimestamp - (60 * 60 * 1000);
+      return Date.now() > expiresTimestamp - 60 * 60 * 1000;
     }
   } catch {
     // If we can't parse, assume it's not expired
@@ -73,21 +67,18 @@ const isSignedUrlExpired = (url: string): boolean => {
  */
 export const getCachedThumbnail = async (
   videoId: string | number,
-  tiktokUrl: string
+  tiktokUrl: string,
 ): Promise<string | null> => {
-  console.log(`🎯 getCachedThumbnail [${videoId}]: tiktokUrl="${tiktokUrl}"`);
-  
   if (!tiktokUrl) {
-    console.warn(`🎯 getCachedThumbnail [${videoId}]: Empty tiktokUrl, returning null`);
     return null;
   }
-  
+
   try {
     // Check cache first
     const { data: cached } = await supabase
-      .from('oembed_cache')
-      .select('thumbnail_url, updated_at')
-      .eq('video_id', videoId.toString())
+      .from("oembed_cache")
+      .select("thumbnail_url, updated_at")
+      .eq("video_id", videoId.toString())
       .maybeSingle();
 
     // Return cached if exists, fresh (less than 7 days old), AND not expired (for signed URLs)
@@ -95,41 +86,30 @@ export const getCachedThumbnail = async (
       const cacheAge = Date.now() - new Date(cached.updated_at).getTime();
       const sevenDays = 7 * 24 * 60 * 60 * 1000;
       const isExpired = isSignedUrlExpired(cached.thumbnail_url);
-      
+
       if (cacheAge < sevenDays && !isExpired) {
         return cached.thumbnail_url;
-      }
-      
-      if (isExpired) {
-        console.log(`🎯 getCachedThumbnail [${videoId}]: Cached URL expired, fetching fresh`);
       }
     }
 
     // Fetch fresh data from TikTok
-    console.log(`🎯 getCachedThumbnail [${videoId}]: Fetching fresh oEmbed data from TikTok`);
     const oembed = await fetchTikTokOEmbed(tiktokUrl);
-    
+
     if (!oembed?.thumbnail_url) {
-      console.warn(`🎯 getCachedThumbnail [${videoId}]: No thumbnail_url in oEmbed response`);
       return null;
     }
-    
-    console.log(`🎯 getCachedThumbnail [${videoId}]: Got thumbnail_url:`, oembed.thumbnail_url);
 
     // Update cache
-    await supabase
-      .from('oembed_cache')
-      .upsert({
-        video_id: videoId.toString(),
-        thumbnail_url: oembed.thumbnail_url,
-        embed_html: oembed.html,
-        author_name: oembed.author_name,
-        updated_at: new Date().toISOString(),
-      });
+    await supabase.from("oembed_cache").upsert({
+      video_id: videoId.toString(),
+      thumbnail_url: oembed.thumbnail_url,
+      embed_html: oembed.html,
+      author_name: oembed.author_name,
+      updated_at: new Date().toISOString(),
+    });
 
     return oembed.thumbnail_url;
-  } catch (error) {
-    console.error('Error getting cached thumbnail:', error);
+  } catch {
     return null;
   }
 };
@@ -139,21 +119,21 @@ export const getCachedThumbnail = async (
  */
 export const getCachedEmbedHTML = async (
   videoId: string | number,
-  tiktokUrl: string
+  tiktokUrl: string,
 ): Promise<string | null> => {
   try {
     // Check cache first
     const { data: cached } = await supabase
-      .from('oembed_cache')
-      .select('embed_html, updated_at')
-      .eq('video_id', videoId.toString())
+      .from("oembed_cache")
+      .select("embed_html, updated_at")
+      .eq("video_id", videoId.toString())
       .maybeSingle();
 
     // Return cached if exists and fresh
     if (cached?.embed_html) {
       const cacheAge = Date.now() - new Date(cached.updated_at).getTime();
       const sevenDays = 7 * 24 * 60 * 60 * 1000;
-      
+
       if (cacheAge < sevenDays) {
         return cached.embed_html;
       }
@@ -161,25 +141,22 @@ export const getCachedEmbedHTML = async (
 
     // Fetch fresh data
     const oembed = await fetchTikTokOEmbed(tiktokUrl);
-    
+
     if (!oembed?.html) {
       return null;
     }
 
     // Update cache
-    await supabase
-      .from('oembed_cache')
-      .upsert({
-        video_id: videoId.toString(),
-        thumbnail_url: oembed.thumbnail_url,
-        embed_html: oembed.html,
-        author_name: oembed.author_name,
-        updated_at: new Date().toISOString(),
-      });
+    await supabase.from("oembed_cache").upsert({
+      video_id: videoId.toString(),
+      thumbnail_url: oembed.thumbnail_url,
+      embed_html: oembed.html,
+      author_name: oembed.author_name,
+      updated_at: new Date().toISOString(),
+    });
 
     return oembed.html;
-  } catch (error) {
-    console.error('Error getting cached embed HTML:', error);
+  } catch {
     return null;
   }
 };
@@ -189,5 +166,5 @@ export const getCachedEmbedHTML = async (
  */
 export const isTikTokUrl = (url: string | null | undefined): boolean => {
   if (!url) return false;
-  return url.includes('tiktok.com');
+  return url.includes("tiktok.com");
 };
