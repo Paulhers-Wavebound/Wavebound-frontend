@@ -57,6 +57,7 @@ export default function SoundIntelligenceOverview() {
   >(new Map());
   const [entries, setEntries] = useState<ListAnalysisEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [fetchError, setFetchError] = useState(false);
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -90,7 +91,7 @@ export default function SoundIntelligenceOverview() {
         // else: no change, keep existing lastChanged timestamp
       }
     } catch {
-      // Silently fail — loading state will clear, empty state shown
+      setFetchError(true);
     } finally {
       setIsLoading(false);
     }
@@ -1127,8 +1128,52 @@ export default function SoundIntelligenceOverview() {
           </div>
         )}
 
+        {/* Error state */}
+        {!isLoading && fetchError && entries.length === 0 && (
+          <div style={{ textAlign: "center", padding: "80px 0" }}>
+            <AlertTriangle
+              size={48}
+              color="var(--ink-faint)"
+              style={{ marginBottom: 16, margin: "0 auto 16px" }}
+            />
+            <div
+              style={{
+                fontFamily: '"DM Sans", sans-serif',
+                fontSize: 16,
+                color: "var(--ink-secondary)",
+                maxWidth: 400,
+                margin: "0 auto",
+                lineHeight: 1.6,
+                marginBottom: 16,
+              }}
+            >
+              Failed to load analyses. Try refreshing the page.
+            </div>
+            <button
+              onClick={() => {
+                setFetchError(false);
+                setIsLoading(true);
+                fetchList();
+              }}
+              style={{
+                padding: "8px 20px",
+                borderRadius: 8,
+                border: "1px solid var(--border)",
+                background: "var(--surface)",
+                color: "var(--ink)",
+                fontFamily: '"DM Sans", sans-serif',
+                fontSize: 14,
+                fontWeight: 500,
+                cursor: "pointer",
+              }}
+            >
+              Retry
+            </button>
+          </div>
+        )}
+
         {/* Empty state */}
-        {!isLoading && entries.length === 0 && !isSubmitting && (
+        {!isLoading && !fetchError && entries.length === 0 && !isSubmitting && (
           <div style={{ textAlign: "center", padding: "80px 0" }}>
             <Music
               size={48}
