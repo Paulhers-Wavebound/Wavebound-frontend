@@ -575,7 +575,7 @@ export default function LabelSidebar({
                     {label.logo_url ? (
                       <img
                         src={label.logo_url}
-                        alt=""
+                        alt={`${label.name} logo`}
                         style={{
                           width: 24,
                           height: 24,

@@ -660,7 +660,7 @@ export default function SoundIntelligenceOverview() {
                       {entry.cover_url ? (
                         <img
                           src={entry.cover_url}
-                          alt=""
+                          alt={`${entry.track_name || "Track"} cover art`}
                           style={{
                             width: 32,
                             height: 32,
@@ -909,7 +909,7 @@ export default function SoundIntelligenceOverview() {
                           {entry.cover_url ? (
                             <img
                               src={entry.cover_url}
-                              alt=""
+                              alt={`${entry.track_name || "Track"} cover art`}
                               style={{
                                 width: 40,
                                 height: 40,
