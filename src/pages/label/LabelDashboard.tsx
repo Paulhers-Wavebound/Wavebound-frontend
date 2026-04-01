@@ -371,7 +371,7 @@ export default function LabelDashboard() {
                       {p.artist_name}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      @{p.artist_handle}
+                      @{p.artist_handle?.replace(/^@+/, "")}
                     </p>
                   </div>
                 </div>

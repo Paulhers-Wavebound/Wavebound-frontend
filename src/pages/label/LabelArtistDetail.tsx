@@ -317,7 +317,7 @@ export default function LabelArtistDetailPage() {
                   marginTop: 4,
                 }}
               >
-                @{artist.artist_handle || "unknown"}
+                @{(artist.artist_handle || "unknown").replace(/^@+/, "")}
               </div>
             </div>
           </div>

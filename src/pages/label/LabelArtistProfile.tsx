@@ -608,7 +608,7 @@ export default function LabelArtistProfile() {
                     </span>
                   </div>
                   <p className="text-sm text-muted-foreground">
-                    @{artist.artist_handle}
+                    @{artist.artist_handle?.replace(/^@+/, "")}
                   </p>
 
                   {/* Platform stats */}
