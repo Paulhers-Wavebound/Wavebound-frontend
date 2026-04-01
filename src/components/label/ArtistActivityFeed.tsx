@@ -28,7 +28,7 @@ export default function ArtistActivityFeed({ artistHandle }: { artistHandle: str
     if (!artistHandle) return;
     (async () => {
       const { data } = await supabase
-        .from('artist_alerts' as any)
+        .from('artist_alerts')
         .select('id, title, message, severity, video_url, created_at')
         .eq('artist_handle', artistHandle)
         .order('created_at', { ascending: false })

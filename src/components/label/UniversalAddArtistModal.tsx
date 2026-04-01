@@ -83,7 +83,7 @@ export default function UniversalAddArtistModal({
       } = await supabase.auth.getUser();
 
       await supabase
-        .from("artist_intelligence" as any)
+        .from("artist_intelligence")
         .insert({
           artist_handle: cleanHandle,
           label_id: labelId,
@@ -91,7 +91,7 @@ export default function UniversalAddArtistModal({
         });
 
       await supabase
-        .from("roster_dashboard_metrics" as any)
+        .from("roster_dashboard_metrics")
         .insert({ artist_handle: cleanHandle, label_id: labelId });
 
       const { error: funcError } = await supabase.functions.invoke(

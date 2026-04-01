@@ -72,7 +72,7 @@ export default function LabelArtistDetailPage() {
     if (!id) return;
     const fetchArtist = async () => {
       const { data } = await supabase
-        .from("artist_intelligence" as any)
+        .from("artist_intelligence")
         .select("*")
         .eq("id", id)
         .single();

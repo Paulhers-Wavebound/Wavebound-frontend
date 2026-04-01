@@ -52,7 +52,7 @@ export default function PipelineProgress({
       if (completedRef.current) return;
 
       const { data, error } = await supabase
-        .from("deep_research_jobs" as any)
+        .from("deep_research_jobs")
         .select(PHASES.map((p) => p.key).join(", "))
         .eq("artist_handle", artistHandle)
         .order("created_at", { ascending: false })
@@ -78,7 +78,7 @@ export default function PipelineProgress({
         if (intervalRef.current) clearInterval(intervalRef.current);
 
         const { data: profile } = await supabase
-          .from("profile_tiktok" as any)
+          .from("profile_tiktok")
           .select("avg_views, median_views, avg_engagement, avg_saves")
           .eq("handle", artistHandle)
           .order("created_at", { ascending: false })

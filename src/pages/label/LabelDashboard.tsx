@@ -44,11 +44,11 @@ export default function LabelDashboard() {
 
   const fetchMetrics = useCallback(async () => {
     let viewQuery = supabase
-      .from("roster_dashboard_metrics" as any)
+      .from("roster_dashboard_metrics")
       .select("*")
       .order("risk_level", { ascending: false });
     let aiQuery = supabase
-      .from("artist_intelligence" as any)
+      .from("artist_intelligence")
       .select(
         "artist_handle, artist_name, avatar_url, status, content_plan_html, label_id",
       )
@@ -119,7 +119,7 @@ export default function LabelDashboard() {
     // Fetch recent alerts for dot indicators
     const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
     const { data: alertData } = await supabase
-      .from("artist_alerts" as any)
+      .from("artist_alerts")
       .select("artist_handle, severity, created_at")
       .gte("created_at", cutoff)
       .in("severity", ["celebration", "warning"]);

@@ -47,7 +47,7 @@ export default function LabelRosterPage() {
     const fetch = async () => {
       setLoading(true);
       const { data, error: err } = await supabase
-        .from('artist_intelligence' as any)
+        .from('artist_intelligence')
         .select('id, artist_name, artist_handle, avatar_url, tiktok_followers, spotify_popularity, posting_dates_tiktok, posting_dates_instagram, last_post_date, status, updated_at')
         .order('artist_name');
       if (err) { setError(true); setLoading(false); return; }

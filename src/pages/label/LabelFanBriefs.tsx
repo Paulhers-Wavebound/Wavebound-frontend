@@ -20,7 +20,7 @@ export default function LabelFanBriefs() {
     if (!labelId) return;
     try {
       // Content: pending briefs without a render
-      const contentQuery = (supabase.from as any)("fan_briefs")
+      const contentQuery = supabase.from("fan_briefs")
         .select("*")
         .eq("label_id", labelId)
         .eq("status", "pending")
@@ -29,7 +29,7 @@ export default function LabelFanBriefs() {
         .limit(50);
 
       // Clips: approved briefs (rendered or rendering)
-      const clipsQuery = (supabase.from as any)("fan_briefs")
+      const clipsQuery = supabase.from("fan_briefs")
         .select("*")
         .eq("label_id", labelId)
         .eq("status", "approved")
@@ -60,7 +60,7 @@ export default function LabelFanBriefs() {
   }, [labelId, fetchBriefs]);
 
   const handleApprove = async (briefId: string) => {
-    const { error } = await (supabase.from as any)("fan_briefs")
+    const { error } = await supabase.from("fan_briefs")
       .update({
         status: "approved",
         approved_at: new Date().toISOString(),
@@ -91,7 +91,7 @@ export default function LabelFanBriefs() {
   };
 
   const handleSkip = async (briefId: string) => {
-    const { error } = await (supabase.from as any)("fan_briefs")
+    const { error } = await supabase.from("fan_briefs")
       .update({ status: "skipped" })
       .eq("id", briefId);
 
@@ -108,7 +108,7 @@ export default function LabelFanBriefs() {
 
   const handleModifyHook = async (briefId: string, newHook: string) => {
     // Save modified hook but keep status as pending
-    const { error } = await (supabase.from as any)("fan_briefs")
+    const { error } = await supabase.from("fan_briefs")
       .update({ modified_hook: newHook })
       .eq("id", briefId);
 

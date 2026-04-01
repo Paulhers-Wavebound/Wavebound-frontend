@@ -363,12 +363,12 @@ export default function LabelArtistProfile() {
     const fetchAll = async () => {
       const [metricsRes, timelineRes, drjRes, intelRes] = await Promise.all([
         supabase
-          .from("roster_dashboard_metrics" as any)
+          .from("roster_dashboard_metrics")
           .select("*")
           .eq("artist_handle", artistHandle)
           .maybeSingle(),
         supabase
-          .from("artist_videos_tiktok" as any)
+          .from("artist_videos_tiktok")
           .select(
             "date_posted, video_views, video_likes, video_comments, video_shares, video_saves, video_url, caption, is_ad, is_likely_promoted",
           )
@@ -376,7 +376,7 @@ export default function LabelArtistProfile() {
           .order("date_posted", { ascending: false })
           .limit(30),
         supabase
-          .from("deep_research_jobs" as any)
+          .from("deep_research_jobs")
           .select(
             "content_analysis_data, brand_document, cross_platform_data, comment_data, spotify_data",
           )
@@ -385,7 +385,7 @@ export default function LabelArtistProfile() {
           .limit(1)
           .maybeSingle(),
         supabase
-          .from("artist_intelligence" as any)
+          .from("artist_intelligence")
           .select(
             "content_plan_html, intelligence_report_html, content_plan_30d_html, thirty_day_plan_html, artist_brief_html, invite_code",
           )
