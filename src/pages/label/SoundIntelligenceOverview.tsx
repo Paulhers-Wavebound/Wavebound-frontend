@@ -548,6 +548,7 @@ export default function SoundIntelligenceOverview() {
                     <button
                       key={mode}
                       onClick={() => setViewMode(mode as "grid" | "list")}
+                      aria-label={`${mode === "grid" ? "Grid" : "List"} view`}
                       style={{
                         display: "flex",
                         alignItems: "center",

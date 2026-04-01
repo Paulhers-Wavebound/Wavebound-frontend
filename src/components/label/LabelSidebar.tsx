@@ -331,6 +331,7 @@ export default function LabelSidebar({
       {onClose && (
         <button
           onClick={onClose}
+          aria-label="Close sidebar"
           style={{
             position: "absolute",
             top: 16,

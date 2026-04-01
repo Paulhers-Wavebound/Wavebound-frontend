@@ -340,6 +340,7 @@ export default function LabelDashboard() {
                 setViewMode("grid");
                 localStorage.setItem("label-roster-view", "grid");
               }}
+              aria-label="Grid view"
               className={`p-2 transition-colors ${viewMode === "grid" ? "bg-primary text-primary-foreground" : "bg-card text-muted-foreground hover:text-foreground"}`}
             >
               <LayoutGrid size={14} />
@@ -349,6 +350,7 @@ export default function LabelDashboard() {
                 setViewMode("list");
                 localStorage.setItem("label-roster-view", "list");
               }}
+              aria-label="List view"
               className={`p-2 transition-colors ${viewMode === "list" ? "bg-primary text-primary-foreground" : "bg-card text-muted-foreground hover:text-foreground"}`}
             >
               <List size={14} />
