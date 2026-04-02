@@ -1,6 +1,20 @@
 import { useState, useMemo } from "react";
-import { AlertTriangle, ArrowUp, ArrowDown } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowUp,
+  ArrowDown,
+  ChevronDown,
+  Calendar,
+  BarChart3,
+  User,
+} from "lucide-react";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from "@/components/ui/dropdown-menu";
 import { type RosterMetric, getPostingTier } from "./RosterCard";
 
 type SortCol = "artist" | "status" | "lastPost" | "performance" | "plan";
@@ -43,9 +57,14 @@ function getSortValue(artist: RosterMetric, col: SortCol): string | number {
 export default function RosterListView({
   artists,
   onArtistClick,
+  onOpenDeliverable,
 }: {
   artists: RosterMetric[];
   onArtistClick: (handle: string) => void;
+  onOpenDeliverable?: (
+    handle: string,
+    type: "report" | "plan" | "plan30" | "brief",
+  ) => void;
 }) {
   const [sortCol, setSortCol] = useState<SortCol>("artist");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
@@ -204,16 +223,115 @@ export default function RosterListView({
 
                 {/* Actions */}
                 <td className="px-4 text-right">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onArtistClick(artist.artist_handle);
-                    }}
-                    className="px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:opacity-80"
-                    style={{ background: "#2C2C2E", borderRadius: 8 }}
-                  >
-                    View
-                  </button>
+                  <div className="flex items-center justify-end gap-2">
+                    {onOpenDeliverable && (
+                      <>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button
+                              onClick={(e) => e.stopPropagation()}
+                              disabled={
+                                !(artist as any).has_content_plan &&
+                                !(artist as any).has_30day_plan
+                              }
+                              className="flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-medium text-foreground transition-colors hover:opacity-80 disabled:opacity-30"
+                              style={{ background: "#2C2C2E", borderRadius: 8 }}
+                            >
+                              Plans
+                              <ChevronDown
+                                size={12}
+                                className="text-muted-foreground"
+                              />
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-44">
+                            <DropdownMenuItem
+                              disabled={!(artist as any).has_content_plan}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onOpenDeliverable(artist.artist_handle, "plan");
+                              }}
+                            >
+                              <Calendar size={14} className="mr-2" />
+                              7-Day Plan
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              disabled={!(artist as any).has_30day_plan}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onOpenDeliverable(
+                                  artist.artist_handle,
+                                  "plan30",
+                                );
+                              }}
+                            >
+                              <BarChart3 size={14} className="mr-2" />
+                              30-Day Plan
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button
+                              onClick={(e) => e.stopPropagation()}
+                              disabled={
+                                !(artist as any).has_artist_brief &&
+                                !(artist as any).has_intelligence_report
+                              }
+                              className="flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-medium text-foreground transition-colors hover:opacity-80 disabled:opacity-30"
+                              style={{ background: "#2C2C2E", borderRadius: 8 }}
+                            >
+                              Briefs
+                              <ChevronDown
+                                size={12}
+                                className="text-muted-foreground"
+                              />
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-44">
+                            <DropdownMenuItem
+                              disabled={
+                                !(artist as any).has_intelligence_report
+                              }
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onOpenDeliverable(
+                                  artist.artist_handle,
+                                  "report",
+                                );
+                              }}
+                            >
+                              <User size={14} className="mr-2" />
+                              Intelligence Brief
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              disabled={!(artist as any).has_artist_brief}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onOpenDeliverable(
+                                  artist.artist_handle,
+                                  "brief",
+                                );
+                              }}
+                            >
+                              <User size={14} className="mr-2" />
+                              Artist Brief
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </>
+                    )}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onArtistClick(artist.artist_handle);
+                      }}
+                      className="px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:opacity-80"
+                      style={{ background: "#2C2C2E", borderRadius: 8 }}
+                    >
+                      View
+                    </button>
+                  </div>
                 </td>
               </tr>
             );

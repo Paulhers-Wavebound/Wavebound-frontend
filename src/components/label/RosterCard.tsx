@@ -1,5 +1,11 @@
 import { motion } from "framer-motion";
-import { AlertTriangle } from "lucide-react";
+import {
+  AlertTriangle,
+  ChevronDown,
+  Calendar,
+  BarChart3,
+  User,
+} from "lucide-react";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import {
   Tooltip,
@@ -7,6 +13,12 @@ import {
   TooltipContent,
   TooltipProvider,
 } from "@/components/ui/tooltip";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from "@/components/ui/dropdown-menu";
 
 export interface RosterMetric {
   artist_handle: string;
@@ -19,6 +31,10 @@ export interface RosterMetric {
   release_readiness_score: number | null;
   risk_flags: Array<{ severity: string; message: string }> | null;
   pipeline_status: string | null;
+  has_content_plan?: boolean;
+  has_intelligence_report?: boolean;
+  has_30day_plan?: boolean;
+  has_artist_brief?: boolean;
 }
 
 const tierConfig: Record<
@@ -153,10 +169,15 @@ export default function RosterCard({
   artist,
   onClick,
   alertDot,
+  onOpenDeliverable,
 }: {
   artist: RosterMetric;
   onClick: () => void;
   alertDot?: "celebration" | "warning";
+  onOpenDeliverable?: (
+    handle: string,
+    type: "report" | "plan" | "plan30" | "brief",
+  ) => void;
 }) {
   const tier =
     tierConfig[artist.momentum_tier?.toLowerCase() || "stable"] ||
@@ -246,9 +267,93 @@ export default function RosterCard({
           </span>
           <ReadinessCircle value={readiness} />
         </div>
-        <p className="text-[11px] text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity mt-2 text-right">
-          View details →
-        </p>
+        {/* Deliverable quick-access */}
+        {onOpenDeliverable && (
+          <div
+            className="flex items-center gap-2 mt-3 pt-3"
+            style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}
+          >
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  onClick={(e) => e.stopPropagation()}
+                  disabled={!artist.has_content_plan && !artist.has_30day_plan}
+                  className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors disabled:opacity-30"
+                  style={{
+                    background: "#2C2C2E",
+                    color: "rgba(255,255,255,0.87)",
+                  }}
+                >
+                  Plans
+                  <ChevronDown size={12} className="text-muted-foreground" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-44">
+                <DropdownMenuItem
+                  disabled={!artist.has_content_plan}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onOpenDeliverable(artist.artist_handle, "plan");
+                  }}
+                >
+                  <Calendar size={14} className="mr-2" />
+                  7-Day Plan
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  disabled={!artist.has_30day_plan}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onOpenDeliverable(artist.artist_handle, "plan30");
+                  }}
+                >
+                  <BarChart3 size={14} className="mr-2" />
+                  30-Day Plan
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  onClick={(e) => e.stopPropagation()}
+                  disabled={
+                    !artist.has_artist_brief && !artist.has_intelligence_report
+                  }
+                  className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors disabled:opacity-30"
+                  style={{
+                    background: "#2C2C2E",
+                    color: "rgba(255,255,255,0.87)",
+                  }}
+                >
+                  Briefs
+                  <ChevronDown size={12} className="text-muted-foreground" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-44">
+                <DropdownMenuItem
+                  disabled={!artist.has_intelligence_report}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onOpenDeliverable(artist.artist_handle, "report");
+                  }}
+                >
+                  <User size={14} className="mr-2" />
+                  Intelligence Brief
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  disabled={!artist.has_artist_brief}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onOpenDeliverable(artist.artist_handle, "brief");
+                  }}
+                >
+                  <User size={14} className="mr-2" />
+                  Artist Brief
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        )}
       </motion.div>
     </TooltipProvider>
   );

@@ -48,7 +48,7 @@ export default function LabelDashboard() {
     let aiQuery = supabase
       .from("artist_intelligence")
       .select(
-        "artist_handle, artist_name, avatar_url, status, content_plan_html, label_id",
+        "artist_handle, artist_name, avatar_url, status, content_plan_html, intelligence_report_html, content_plan_30d_html, thirty_day_plan_html, artist_brief_html, label_id",
       )
       .eq("status", "completed");
 
@@ -95,6 +95,21 @@ export default function LabelDashboard() {
         if (a.content_plan_html && !(existing as any).has_content_plan) {
           (existing as any).has_content_plan = true;
         }
+        if (
+          a.intelligence_report_html &&
+          !(existing as any).has_intelligence_report
+        ) {
+          (existing as any).has_intelligence_report = true;
+        }
+        if (
+          (a.content_plan_30d_html || a.thirty_day_plan_html) &&
+          !(existing as any).has_30day_plan
+        ) {
+          (existing as any).has_30day_plan = true;
+        }
+        if (a.artist_brief_html && !(existing as any).has_artist_brief) {
+          (existing as any).has_artist_brief = true;
+        }
       } else {
         // Add stub entry
         mergedMap.set(key, {
@@ -105,6 +120,9 @@ export default function LabelDashboard() {
           momentum_tier: null,
           risk_level: "ok",
           has_content_plan: !!a.content_plan_html,
+          has_intelligence_report: !!a.intelligence_report_html,
+          has_30day_plan: !!(a.content_plan_30d_html || a.thirty_day_plan_html),
+          has_artist_brief: !!a.artist_brief_html,
         } as any);
       }
     }
@@ -151,6 +169,38 @@ export default function LabelDashboard() {
       fetchMetrics();
     },
     [fetchMetrics],
+  );
+
+  const handleOpenDeliverable = useCallback(
+    async (handle: string, type: "report" | "plan" | "plan30" | "brief") => {
+      const nh = (handle || "").replace(/^@/, "").toLowerCase().trim();
+      const columnMap: Record<string, string> = {
+        report: "intelligence_report_html",
+        plan: "content_plan_html",
+        plan30: "content_plan_30d_html",
+        brief: "artist_brief_html",
+      };
+      const { data } = await supabase
+        .from("artist_intelligence")
+        .select(
+          "intelligence_report_html, content_plan_html, content_plan_30d_html, thirty_day_plan_html, artist_brief_html",
+        )
+        .or(`artist_handle.eq.${nh},artist_handle.eq.@${nh}`)
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      const row = data as any;
+      const html =
+        row?.[columnMap[type]] ||
+        (type === "plan30" ? row?.thirty_day_plan_html : null);
+      if (!html) return;
+      const newTab = window.open("", "_blank");
+      if (newTab) {
+        newTab.document.write(html);
+        newTab.document.close();
+      }
+    },
+    [],
   );
 
   // Derived data
@@ -392,6 +442,7 @@ export default function LabelDashboard() {
                     alertDot={alertDots.get(
                       (artist.artist_handle || "").trim().toLowerCase(),
                     )}
+                    onOpenDeliverable={handleOpenDeliverable}
                   />
                 </motion.div>
               ))}
@@ -401,6 +452,7 @@ export default function LabelDashboard() {
           <RosterListView
             artists={filtered}
             onArtistClick={(handle) => navigate(`/label/artists/${handle}`)}
+            onOpenDeliverable={handleOpenDeliverable}
           />
         )}
 
