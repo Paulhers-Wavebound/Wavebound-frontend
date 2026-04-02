@@ -81,11 +81,11 @@ const MOCK_BRIEFS: FanBrief[] = [
     why_now:
       "Concert fancam content peaks 48-72hrs after live events. This window is optimal — post now before the moment fades.",
     confidence_score: 89,
-    source_url: "https://www.youtube.com/watch?v=RuGMq8P1yOo",
-    source_title: "Harry Styles — Daylight (Official Video)",
+    source_url: "https://www.youtube.com/watch?v=E07s5ZYadZg",
+    source_title: "Harry Styles — Watermelon Sugar (Official Video)",
     timestamp_start: 204,
     timestamp_end: 219,
-    youtube_timestamp_url: "https://www.youtube.com/watch?v=RuGMq8P1yOo&t=204",
+    youtube_timestamp_url: "https://www.youtube.com/watch?v=E07s5ZYadZg&t=204",
     clip_storage_url: null,
     clip_duration_seconds: 15,
     rendered_clip_url: null,
@@ -141,11 +141,11 @@ const MOCK_BRIEFS: FanBrief[] = [
     why_now:
       "Reaction content has 1.8x the save rate of other formats. Saves = algorithmic boost = more reach. This is a distribution play.",
     confidence_score: 82,
-    source_url: "https://www.youtube.com/watch?v=nW9Cu6GYqxo",
+    source_url: "https://www.youtube.com/watch?v=VuNIsY6JdUw",
     source_title: "Harry Styles — Adore You (Official Video)",
     timestamp_start: 42,
     timestamp_end: 104,
-    youtube_timestamp_url: "https://www.youtube.com/watch?v=nW9Cu6GYqxo&t=42",
+    youtube_timestamp_url: "https://www.youtube.com/watch?v=VuNIsY6JdUw&t=42",
     clip_storage_url: null,
     clip_duration_seconds: 62,
     rendered_clip_url: null,
@@ -267,6 +267,7 @@ export default function FanBriefsMock() {
             onApprove={noopStr}
             onSkip={noopStr}
             onModifyHook={noopStrStr}
+            staticPreview
           />
         ))}
       </div>

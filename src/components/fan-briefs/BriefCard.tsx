@@ -18,13 +18,20 @@ interface BriefCardProps {
   onApprove: (id: string) => void;
   onSkip: (id: string) => void;
   onModifyHook: (id: string, newHook: string) => void;
+  /** Render a static YouTube thumbnail instead of a live iframe embed */
+  staticPreview?: boolean;
+}
+
+function getVideoId(url: string | null): string | null {
+  if (!url) return null;
+  const match = url.match(/v=([^&]+)/);
+  return match ? match[1] : null;
 }
 
 function getEmbedUrl(brief: FanBrief): string | null {
   if (!brief.source_url || brief.timestamp_start == null) return null;
-  const match = brief.source_url.match(/v=([^&]+)/);
-  if (!match) return null;
-  const videoId = match[1];
+  const videoId = getVideoId(brief.source_url);
+  if (!videoId) return null;
   const start = Math.floor(brief.timestamp_start);
   const end = Math.floor(brief.timestamp_end ?? brief.timestamp_start + 60);
   return `https://www.youtube.com/embed/${videoId}?start=${start}&end=${end}`;
@@ -85,6 +92,7 @@ export default function BriefCard({
   onApprove,
   onSkip,
   onModifyHook,
+  staticPreview = false,
 }: BriefCardProps) {
   const [isEditingHook, setIsEditingHook] = useState(false);
   const [editedHook, setEditedHook] = useState(brief.hook_text);
@@ -382,7 +390,7 @@ export default function BriefCard({
           )}
         </div>
       ) : (
-        /* Content mode — YouTube embed */
+        /* Content mode — YouTube embed or static thumbnail */
         embedUrl && (
           <div style={{ padding: "16px 24px 0" }}>
             <div
@@ -394,21 +402,67 @@ export default function BriefCard({
                 background: "#000",
               }}
             >
-              <iframe
-                key={replayKey}
-                src={embedUrl}
-                title={brief.source_title || "Video preview"}
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                allowFullScreen
-                style={{
-                  position: "absolute",
-                  top: 0,
-                  left: 0,
-                  width: "100%",
-                  height: "100%",
-                  border: "none",
-                }}
-              />
+              {staticPreview ? (
+                <>
+                  <img
+                    src={`https://img.youtube.com/vi/${getVideoId(brief.source_url)}/hqdefault.jpg`}
+                    alt={brief.source_title || "Video preview"}
+                    style={{
+                      position: "absolute",
+                      top: 0,
+                      left: 0,
+                      width: "100%",
+                      height: "100%",
+                      objectFit: "cover",
+                    }}
+                  />
+                  <div
+                    style={{
+                      position: "absolute",
+                      inset: 0,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      background: "rgba(0,0,0,0.25)",
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: 56,
+                        height: 56,
+                        borderRadius: "50%",
+                        background: "rgba(0,0,0,0.6)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
+                      <Play
+                        size={28}
+                        color="#fff"
+                        fill="#fff"
+                        style={{ marginLeft: 3 }}
+                      />
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <iframe
+                  key={replayKey}
+                  src={embedUrl}
+                  title={brief.source_title || "Video preview"}
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                  style={{
+                    position: "absolute",
+                    top: 0,
+                    left: 0,
+                    width: "100%",
+                    height: "100%",
+                    border: "none",
+                  }}
+                />
+              )}
             </div>
             <button
               onClick={() => setReplayKey((k) => k + 1)}

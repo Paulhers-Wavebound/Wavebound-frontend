@@ -15,7 +15,6 @@ import {
   Check,
   Sparkles,
   Radar,
-  Lock,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useUserProfile } from "@/contexts/UserProfileContext";
@@ -110,6 +109,8 @@ interface LabelOption {
   logo_url: string | null;
 }
 
+let cachedAllLabels: LabelOption[] | null = null;
+
 export default function LabelSidebar({
   onClose,
   collapsed = false,
@@ -124,19 +125,25 @@ export default function LabelSidebar({
   const mainNav = getMainNav(isAdmin, labelId);
 
   // Admin label switcher
-  const [allLabels, setAllLabels] = useState<LabelOption[]>([]);
+  const [allLabels, setAllLabels] = useState<LabelOption[]>(
+    cachedAllLabels ?? [],
+  );
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const switcherRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!isAdmin) return;
+    if (cachedAllLabels) return;
     (async () => {
       const { data, error } = await supabase
         .from("labels")
         .select("id, name, slug, logo_url")
         .order("name");
       if (error) return;
-      if (data) setAllLabels(data);
+      if (data) {
+        cachedAllLabels = data;
+        setAllLabels(data);
+      }
     })();
   }, [isAdmin]);
 
@@ -351,7 +358,7 @@ export default function LabelSidebar({
   return (
     <div
       style={{
-        width: 260,
+        width: 290,
         height: "100vh",
         background: "var(--surface)",
         borderRight: "1px solid var(--border)",
@@ -702,11 +709,7 @@ export default function LabelSidebar({
                 border: "none",
                 cursor: "pointer",
                 background: active ? "var(--accent-light)" : "transparent",
-                color: active
-                  ? "var(--ink)"
-                  : isPreview
-                    ? "var(--ink-tertiary)"
-                    : "var(--ink-secondary)",
+                color: active ? "var(--ink)" : "var(--ink-secondary)",
                 fontFamily: '"DM Sans", sans-serif',
                 fontSize: 14,
                 fontWeight: active ? 600 : 500,
@@ -714,7 +717,7 @@ export default function LabelSidebar({
                 position: "relative",
                 textAlign: "left",
                 width: "100%",
-                opacity: comingSoon ? 0.6 : isPreview ? 0.55 : 1,
+                opacity: comingSoon ? 0.6 : 1,
               }}
             >
               {active && (
@@ -734,25 +737,24 @@ export default function LabelSidebar({
                 size={22}
                 strokeWidth={1.8}
                 style={{
-                  color: active
-                    ? "var(--accent)"
-                    : isPreview
-                      ? "var(--ink-faint)"
-                      : "var(--ink-tertiary)",
+                  color: active ? "var(--accent)" : "var(--ink-tertiary)",
                   transition: "color 150ms",
                 }}
               />
               <span>{item.label}</span>
               {isPreview && (
-                <Lock
-                  size={13}
-                  strokeWidth={2}
+                <span
                   style={{
-                    color: "var(--ink-faint)",
+                    fontSize: 10,
+                    fontWeight: 500,
+                    color: "var(--ink-tertiary)",
                     marginLeft: "auto",
                     flexShrink: 0,
+                    whiteSpace: "nowrap",
                   }}
-                />
+                >
+                  Coming soon
+                </span>
               )}
               {comingSoon && !isPreview && (
                 <span
