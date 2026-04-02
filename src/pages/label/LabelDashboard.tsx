@@ -5,13 +5,12 @@ import LabelLayout from "./LabelLayout";
 import SEOHead from "@/components/SEOHead";
 import RosterCard, { type RosterMetric } from "@/components/label/RosterCard";
 import RosterListView from "@/components/label/RosterListView";
-import AddArtistModal from "@/components/label/AddArtistModal";
 import PipelineProgress from "@/components/label/PipelineProgress";
 import RiskAlertsPanel from "@/components/label/RiskAlertsPanel";
 import { useAdminRole } from "@/hooks/useAdminRole";
 import { useUserProfile } from "@/contexts/UserProfileContext";
 import { useLabelPermissions } from "@/hooks/useLabelPermissions";
-import { Search, Plus, RefreshCw, LayoutGrid, List } from "lucide-react";
+import { Search, RefreshCw, LayoutGrid, List } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -33,7 +32,6 @@ export default function LabelDashboard() {
   const [search, setSearch] = useState("");
   const [activeFilter, setActiveFilter] = useState<Filter>("all");
   const [refreshing, setRefreshing] = useState(false);
-  const [addOpen, setAddOpen] = useState(false);
   const [viewMode, setViewMode] = useState<"grid" | "list">(
     () =>
       (localStorage.getItem("label-roster-view") as "grid" | "list") || "grid",
@@ -145,13 +143,6 @@ export default function LabelDashboard() {
     await fetchMetrics();
     setRefreshing(false);
   };
-
-  const handleArtistAdded = useCallback((handle: string, name: string) => {
-    setProcessing((prev) => [
-      ...prev,
-      { tempId: crypto.randomUUID(), artist_handle: handle, artist_name: name },
-    ]);
-  }, []);
 
   const handlePipelineComplete = useCallback(
     async (handle: string) => {
@@ -327,13 +318,6 @@ export default function LabelDashboard() {
             </Button>
           )}
 
-          {canEdit && (
-            <Button size="sm" onClick={() => setAddOpen(true)}>
-              <Plus size={14} />
-              Add Artist
-            </Button>
-          )}
-
           {/* View toggle */}
           <div className="flex items-center rounded-lg border border-border overflow-hidden">
             <button
@@ -433,14 +417,6 @@ export default function LabelDashboard() {
                   ? "Add your first artist to get started"
                   : "No artists on this roster yet"}
               </p>
-              {canEdit && (
-                <button
-                  onClick={() => setAddOpen(true)}
-                  className="mt-2 px-5 py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 transition-opacity"
-                >
-                  + Add Artist
-                </button>
-              )}
             </div>
           )}
 
@@ -450,15 +426,6 @@ export default function LabelDashboard() {
           </div>
         )}
       </div>
-
-      <AddArtistModal
-        open={addOpen}
-        onClose={() => setAddOpen(false)}
-        onAdded={handleArtistAdded}
-        existingHandles={metrics.map((m) =>
-          (m.artist_handle || "").trim().toLowerCase(),
-        )}
-      />
     </LabelLayout>
   );
 }

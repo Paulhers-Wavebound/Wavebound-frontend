@@ -452,7 +452,7 @@ function LabelDetail({ label, onBack, onRefreshLabel }: { label: LabelRow; onBac
   };
 
   const fetchDeliverableHtml = async (handle: string, column: string): Promise<string | null> => {
-    const { data, error } = await (supabase.from as any)('artist_intelligence')
+    const { data, error } = await supabase.from('artist_intelligence')
       .select(column)
       .eq('artist_handle', handle)
       .single();

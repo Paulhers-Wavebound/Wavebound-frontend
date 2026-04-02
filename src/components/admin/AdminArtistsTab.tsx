@@ -76,7 +76,7 @@ export function AdminArtistsTab() {
   }
 
   async function handleDelete() {
-    if (!deleteTarget || confirmText !== deleteTarget.artist_handle) return;
+    if (!deleteTarget || confirmText.trim() !== deleteTarget.artist_handle) return;
     setDeleting(true);
     try {
       await callAdminOnboarding('delete_artist', {
@@ -88,7 +88,15 @@ export function AdminArtistsTab() {
       setDeleteTarget(null);
       setConfirmText('');
     } catch (err: any) {
-      toast.error(err.message || 'Failed to delete');
+      // If already deleted on backend, just remove from local list
+      if (err.message?.includes('not found') || err.message?.includes('Not found')) {
+        setJobs(prev => prev.filter(j => j.artist_handle !== deleteTarget.artist_handle));
+        toast.success(`Removed @${deleteTarget.artist_handle} (already deleted)`);
+        setDeleteTarget(null);
+        setConfirmText('');
+      } else {
+        toast.error(err.message || 'Failed to delete');
+      }
     } finally {
       setDeleting(false);
     }
@@ -192,7 +200,7 @@ export function AdminArtistsTab() {
             <AlertDialogCancel className="bg-transparent border-[#2a2a2e] text-[#a8a29e] hover:bg-white/5">Cancel</AlertDialogCancel>
             <Button
               variant="destructive"
-              disabled={confirmText !== deleteTarget?.artist_handle || deleting}
+              disabled={confirmText.trim() !== deleteTarget?.artist_handle || deleting}
               onClick={handleDelete}
             >
               {deleting ? 'Deleting…' : 'Delete Forever'}

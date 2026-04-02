@@ -55,7 +55,7 @@ export default function IntelReportEditor({ html, artistHandle, onSaved }: Props
     setSaving(true);
     try {
       const newHtml = '<!DOCTYPE html><html>' + doc.documentElement.innerHTML + '</html>';
-      const { error } = await (supabase.from as any)('artist_intelligence')
+      const { error } = await supabase.from('artist_intelligence')
         .update({ intelligence_report_html: newHtml })
         .eq('artist_handle', artistHandle);
       if (error) throw error;

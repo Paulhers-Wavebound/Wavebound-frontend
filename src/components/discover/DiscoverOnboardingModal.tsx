@@ -27,7 +27,7 @@ export function hasCompletedOnboarding(userId?: string): boolean {
 
 export async function checkAndHydrateFromDB(userId: string): Promise<boolean> {
   try {
-    const { data } = await (supabase.from as any)('user_profiles')
+    const { data } = await supabase.from('user_profiles')
       .select('account_type, creator_role, genres')
       .eq('user_id', userId)
       .maybeSingle();
@@ -140,7 +140,7 @@ export default function DiscoverOnboardingModal({ onComplete, userId }: Discover
     // Persist to user_profiles in Supabase
     if (userId) {
       try {
-        await (supabase.from as any)('user_profiles').upsert({
+        await supabase.from('user_profiles').upsert({
           user_id: userId,
           account_type: accountType,
           creator_role: selectedRole,
@@ -149,7 +149,7 @@ export default function DiscoverOnboardingModal({ onComplete, userId }: Discover
         }, { onConflict: 'user_id' });
 
         // Track onboarding completed
-        await (supabase.from as any)('user_activity').insert({
+        await supabase.from('user_activity').insert({
           user_id: userId,
           action: 'onboarding_completed',
           metadata: { accountType, role: selectedRole, genres: selectedGenres },

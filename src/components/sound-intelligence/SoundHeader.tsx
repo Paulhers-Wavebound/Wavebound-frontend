@@ -2,7 +2,6 @@ import { SoundAnalysis, SoundMonitoring } from "@/types/soundIntelligence";
 import { timeAgo } from "@/utils/soundIntelligenceApi";
 import { Calendar, BarChart3, Clock, Music, RefreshCw } from "lucide-react";
 import MonitoringBadge from "./MonitoringBadge";
-import NextCheckCountdown from "./NextCheckCountdown";
 
 interface SoundHeaderProps {
   analysis: SoundAnalysis;
@@ -121,10 +120,11 @@ export default function SoundHeader({
               alignItems: "center",
               padding: "4px 10px",
               borderRadius: 100,
+              fontFamily: '"DM Sans", sans-serif',
               fontSize: 11,
               fontWeight: 600,
               textTransform: "uppercase" as const,
-              letterSpacing: "0.8px",
+              letterSpacing: "0.10em",
               background: status.bg,
               color: status.color,
               flexShrink: 0,
@@ -135,39 +135,25 @@ export default function SoundHeader({
         </div>
       </div>
 
-      {/* Monitoring row */}
-      {monitoring && monitoring.monitoring_interval !== "paused" && (
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 16,
-            marginTop: 12,
-            padding: "10px 14px",
-            borderRadius: 10,
-            background:
-              monitoring.monitoring_interval === "intensive"
-                ? "rgba(255,69,58,0.06)"
-                : "rgba(48,209,88,0.06)",
-            fontFamily: '"DM Sans", sans-serif',
-            fontSize: 12,
-            color: "var(--ink-secondary)",
-          }}
-        >
-          {monitoring.last_monitored_at && (
-            <span>Last checked {timeAgo(monitoring.last_monitored_at)}</span>
-          )}
-          <NextCheckCountdown nextCheckAt={monitoring.next_check_at} />
-          {monitoring.monitoring_interval === "intensive" &&
-            monitoring.spike_format &&
-            monitoring.intensive_since && (
-              <span style={{ color: "#FF453A", fontWeight: 500 }}>
-                {monitoring.spike_format} spiking since{" "}
-                {timeAgo(monitoring.intensive_since)}
-              </span>
-            )}
-        </div>
-      )}
+      {/* Fallback monitoring info when paused (chart won't render) */}
+      {monitoring &&
+        monitoring.monitoring_interval === "paused" &&
+        monitoring.last_monitored_at && (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              marginTop: 12,
+              fontFamily: '"DM Sans", sans-serif',
+              fontSize: 12,
+              color: "var(--ink-faint)",
+            }}
+          >
+            Monitoring paused · Last checked{" "}
+            {timeAgo(monitoring.last_monitored_at)}
+          </div>
+        )}
 
       <div
         style={{

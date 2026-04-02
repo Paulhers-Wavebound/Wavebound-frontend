@@ -1,6 +1,7 @@
 import { ReactNode, useState, useEffect } from 'react';
 import { useIsMobile } from '@/hooks/use-mobile';
 import LabelSidebar from '@/components/label/LabelSidebar';
+import { useUserProfile } from '@/contexts/UserProfileContext';
 import { Menu } from 'lucide-react';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 
@@ -33,6 +34,7 @@ export default function LabelLayout({ children }: LabelLayoutProps) {
   const { dark, toggle } = useLabelTheme();
   const isMobile = useIsMobile();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const { labelId } = useUserProfile();
 
   return (
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: 'var(--bg)' }}>
@@ -72,7 +74,7 @@ export default function LabelLayout({ children }: LabelLayoutProps) {
         overflow: 'auto',
         paddingTop: isMobile ? 48 : 0,
       }}>
-        <div style={{ animation: 'labelFadeIn 250ms ease-out' }}>
+        <div key={labelId ?? 'default'} style={{ animation: 'labelFadeIn 250ms ease-out' }}>
           {children}
         </div>
       </main>

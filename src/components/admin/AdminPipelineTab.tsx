@@ -52,8 +52,8 @@ export function AdminPipelineTab() {
 
   const fetchJobs = useCallback(async () => {
     const [{ data: jobsData }, { data: labels }] = await Promise.all([
-      (supabase.from as any)('deep_research_jobs').select('id, artist_handle, label_id, status, tiktok_status, instagram_status, spotify_status, deep_research_status, synthesis_status, rag_status, deliverable_status, plan_render_status, report_render_status').order('created_at', { ascending: false }),
-      (supabase.from as any)('labels').select('id, name'),
+      supabase.from('deep_research_jobs').select('id, artist_handle, label_id, status, tiktok_status, instagram_status, spotify_status, deep_research_status, synthesis_status, rag_status, deliverable_status, plan_render_status, report_render_status').order('created_at', { ascending: false }),
+      supabase.from('labels').select('id, name'),
     ]);
     const lm: Record<string, string> = {};
     (labels || []).forEach((l: any) => { lm[l.id] = l.name; });

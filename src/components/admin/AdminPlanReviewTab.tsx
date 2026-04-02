@@ -60,7 +60,7 @@ export function AdminPlanReviewTab() {
 
   const refetchDocs = (handle: string) => {
     setDocsLoading(true);
-    (supabase.from as any)('artist_intelligence')
+    supabase.from('artist_intelligence')
       .select('content_plan_html, intelligence_report_html, thirty_day_plan_html, artist_brief_html')
       .eq('artist_handle', handle)
       .single()

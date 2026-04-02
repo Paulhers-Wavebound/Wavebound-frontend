@@ -208,7 +208,7 @@ export default function BrandDocumentEditor({ brandDocument, artistBriefHtml, ar
     if (!doc || !artistHandle) return;
     setSaving(true);
     try {
-      const { error } = await (supabase.from as any)('artist_intelligence')
+      const { error } = await supabase.from('artist_intelligence')
         .update({ brand_document: doc })
         .eq('artist_handle', artistHandle);
       if (error) throw error;
@@ -238,7 +238,7 @@ export default function BrandDocumentEditor({ brandDocument, artistBriefHtml, ar
           pollRef.current = setInterval(async () => {
             attempts++;
             try {
-              const { data } = await (supabase.from as any)('artist_intelligence')
+              const { data } = await supabase.from('artist_intelligence')
                 .select('artist_brief_html')
                 .eq('artist_handle', artistHandle)
                 .single();

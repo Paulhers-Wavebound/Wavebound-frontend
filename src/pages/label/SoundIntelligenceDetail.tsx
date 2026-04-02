@@ -24,6 +24,7 @@ import {
   exportFormatBreakdownCSV,
 } from "@/utils/exportAnalysis";
 import SoundHeader from "@/components/sound-intelligence/SoundHeader";
+import SoundHealthStrip from "@/components/sound-intelligence/SoundHealthStrip";
 import HeroStatsRow from "@/components/sound-intelligence/HeroStatsRow";
 import VelocityChart from "@/components/sound-intelligence/VelocityChart";
 import WinnerCard from "@/components/sound-intelligence/WinnerCard";
@@ -35,6 +36,7 @@ import CreatorTiersSection from "@/components/sound-intelligence/CreatorTiersSec
 import GeoSpreadSection from "@/components/sound-intelligence/GeoSpreadSection";
 import LifecycleCard from "@/components/sound-intelligence/LifecycleCard";
 import PostingHoursChart from "@/components/sound-intelligence/PostingHoursChart";
+import AxisBrowser from "@/components/sound-intelligence/AxisBrowser";
 import ConfirmDialog from "@/components/label/ConfirmDialog";
 import SoundAlertBell from "@/components/sound-intelligence/SoundAlertBell";
 import MonitoringTrendChart from "@/components/sound-intelligence/MonitoringTrendChart";
@@ -63,6 +65,7 @@ export default function SoundIntelligenceDetail() {
   const [disabledTrendLines, setDisabledTrendLines] = useState<Set<string>>(
     new Set(),
   );
+  const [nicheFilter, setNicheFilter] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const exportRef = useRef<HTMLDivElement>(null);
   const [exporting, setExporting] = useState(false);
@@ -95,7 +98,6 @@ export default function SoundIntelligenceDetail() {
                 : null;
 
           if (a) {
-            // cover_url lives on the jobs table, not in the analysis JSONB
             let coverUrl = a.cover_url;
             if (!coverUrl) {
               const { data: jobRow } = await supabase
@@ -152,18 +154,18 @@ export default function SoundIntelligenceDetail() {
     if (!exportRef.current || !analysis) return;
     setExporting(true);
 
-    // Save and reset interactive state for clean PDF capture
     const savedExpandedFormat = expandedFormat;
     const savedExpandedTier = expandedTier;
     const savedExpandedGeo = expandedGeo;
     const savedDisabledTrendLines = disabledTrendLines;
+    const savedNicheFilter = nicheFilter;
 
     setExpandedFormat(null);
     setExpandedTier(null);
     setExpandedGeo(null);
     setDisabledTrendLines(new Set());
+    setNicheFilter(null);
 
-    // Wait for React to flush state changes to DOM
     await new Promise((r) => setTimeout(r, 150));
 
     try {
@@ -176,11 +178,11 @@ export default function SoundIntelligenceDetail() {
         variant: "destructive",
       });
     } finally {
-      // Restore interactive state
       setExpandedFormat(savedExpandedFormat);
       setExpandedTier(savedExpandedTier);
       setExpandedGeo(savedExpandedGeo);
       setDisabledTrendLines(savedDisabledTrendLines);
+      setNicheFilter(savedNicheFilter);
       setExporting(false);
     }
   };
@@ -201,7 +203,7 @@ export default function SoundIntelligenceDetail() {
       setDeleting(false);
       return;
     }
-    toast({ title: `"${name}" deleted` });
+    toast({ title: `"${analysis?.track_name ?? "Analysis"}" deleted` });
     navigate("/label/sound-intelligence", { replace: true });
   };
 
@@ -384,9 +386,22 @@ export default function SoundIntelligenceDetail() {
             ref={exportRef}
             style={{ display: "flex", flexDirection: "column", gap: 16 }}
           >
+            {/* Header */}
             <div style={{ animation: "fadeInUp 0.35s ease both" }}>
               <SoundHeader analysis={analysis} monitoring={monitoring} />
             </div>
+
+            {/* Sound Health Strip */}
+            <div
+              style={{
+                animation: "fadeInUp 0.35s ease both",
+                animationDelay: "0.03s",
+              }}
+            >
+              <SoundHealthStrip analysis={analysis} userCount={userCount} />
+            </div>
+
+            {/* Key Metrics */}
             <div
               style={{
                 animation: "fadeInUp 0.35s ease both",
@@ -395,6 +410,8 @@ export default function SoundIntelligenceDetail() {
             >
               <HeroStatsRow analysis={analysis} userCount={userCount} />
             </div>
+
+            {/* Real-Time Monitoring */}
             {jobId &&
               monitoring &&
               monitoring.monitoring_interval !== "paused" && (
@@ -404,9 +421,11 @@ export default function SoundIntelligenceDetail() {
                     animationDelay: "0.07s",
                   }}
                 >
-                  <MonitoringTrendChart jobId={jobId} />
+                  <MonitoringTrendChart jobId={jobId} monitoring={monitoring} />
                 </div>
               )}
+
+            {/* Velocity + Winner */}
             <div
               data-pdf-stack
               style={{
@@ -422,20 +441,43 @@ export default function SoundIntelligenceDetail() {
               />
               <WinnerCard winner={analysis.winner} />
             </div>
+
+            {/* 6-Axis Browser (replaces AudienceInsightSection + NicheDistributionChart) */}
+            <div
+              style={{
+                animation: "fadeInUp 0.35s ease both",
+                animationDelay: "0.12s",
+              }}
+            >
+              <AxisBrowser
+                formats={analysis.formats}
+                nicheDistribution={analysis.niche_distribution}
+                vibeDistribution={analysis.vibe_distribution}
+                intentBreakdown={analysis.intent_breakdown}
+                creatorDemographics={analysis.creator_demographics}
+                songRoleDistribution={analysis.song_role_distribution}
+                activeNiche={nicheFilter}
+                onNicheClick={setNicheFilter}
+              />
+            </div>
+
+            {/* Posting Hours */}
             {analysis.posting_hours && (
               <div
                 style={{
                   animation: "fadeInUp 0.35s ease both",
-                  animationDelay: "0.12s",
+                  animationDelay: "0.14s",
                 }}
               >
                 <PostingHoursChart postingHours={analysis.posting_hours} />
               </div>
             )}
+
+            {/* Format Trends */}
             <div
               style={{
                 animation: "fadeInUp 0.35s ease both",
-                animationDelay: "0.15s",
+                animationDelay: "0.16s",
               }}
             >
               <FormatTrendsChart
@@ -456,7 +498,6 @@ export default function SoundIntelligenceDetail() {
                         .map((f) => f.name)
                         .filter((n) => n !== name),
                     );
-                    // If already soloed on this format, show all
                     if (
                       prev.size === allOthers.size &&
                       [...allOthers].every((n) => prev.has(n))
@@ -468,6 +509,8 @@ export default function SoundIntelligenceDetail() {
                 }
               />
             </div>
+
+            {/* Format Breakdown */}
             <div
               style={{
                 animation: "fadeInUp 0.35s ease both",
@@ -484,10 +527,12 @@ export default function SoundIntelligenceDetail() {
                 spikeFormat={monitoring?.spike_format}
               />
             </div>
+
+            {/* Hook & Duration */}
             <div
               style={{
                 animation: "fadeInUp 0.35s ease both",
-                animationDelay: "0.25s",
+                animationDelay: "0.24s",
               }}
             >
               <HookDurationSection
@@ -495,18 +540,26 @@ export default function SoundIntelligenceDetail() {
                 duration={analysis.duration}
               />
             </div>
+
+            {/* Top Performers */}
             <div
               style={{
                 animation: "fadeInUp 0.35s ease both",
-                animationDelay: "0.3s",
+                animationDelay: "0.28s",
               }}
             >
-              <TopPerformersGrid topVideos={analysis.top_videos} />
+              <TopPerformersGrid
+                topVideos={analysis.top_videos}
+                nicheFilter={nicheFilter}
+                onClearNicheFilter={() => setNicheFilter(null)}
+              />
             </div>
+
+            {/* Creator Tiers */}
             <div
               style={{
                 animation: "fadeInUp 0.35s ease both",
-                animationDelay: "0.35s",
+                animationDelay: "0.32s",
               }}
             >
               <CreatorTiersSection
@@ -517,10 +570,12 @@ export default function SoundIntelligenceDetail() {
                 }
               />
             </div>
+
+            {/* Geography */}
             <div
               style={{
                 animation: "fadeInUp 0.35s ease both",
-                animationDelay: "0.4s",
+                animationDelay: "0.36s",
               }}
             >
               <GeoSpreadSection
@@ -531,18 +586,37 @@ export default function SoundIntelligenceDetail() {
                 }
               />
             </div>
+
+            {/* Lifecycle */}
             <div
               style={{
                 animation: "fadeInUp 0.35s ease both",
-                animationDelay: "0.45s",
+                animationDelay: "0.4s",
               }}
             >
               <LifecycleCard lifecycle={analysis.lifecycle} />
             </div>
+
+            {analysis.unclassified_count != null &&
+              analysis.unclassified_count > 0 && (
+                <p
+                  style={{
+                    fontFamily: '"DM Sans", sans-serif',
+                    fontSize: 12,
+                    color: "var(--ink-faint)",
+                    textAlign: "center",
+                    padding: "8px 0",
+                  }}
+                >
+                  {analysis.unclassified_count} video
+                  {analysis.unclassified_count !== 1 ? "s" : ""} couldn't be
+                  classified by AI and will be retried automatically.
+                </p>
+              )}
           </div>
         )}
 
-        {/* Delete analysis — admin only, outside export ref so it doesn't appear in PDF */}
+        {/* Delete analysis — admin only */}
         {analysis && canManage && (
           <div
             style={{
@@ -605,7 +679,7 @@ export default function SoundIntelligenceDetail() {
         )}
       </div>
 
-      {/* Export overlay — hides DOM manipulation from user */}
+      {/* Export overlay */}
       {exporting && (
         <div
           style={{

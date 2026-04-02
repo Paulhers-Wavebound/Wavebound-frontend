@@ -33,6 +33,9 @@ export interface FormatBreakdown {
   hooks: FormatHooks;
   topVideos: FormatTopVideo[];
   insight: string;
+  top_niches?: { name: string; count: number }[];
+  top_intents?: { name: string; count: number }[];
+  dominant_vibe?: string;
 }
 
 export interface WinnerFormat {
@@ -68,6 +71,9 @@ export interface TopVideo {
   views: string;
   share_rate: string;
   url: string;
+  niche?: string;
+  intent?: string;
+  vibe?: string;
 }
 
 export interface TierFormatPref {
@@ -124,6 +130,65 @@ export interface LifecycleInfo {
   insight: string;
 }
 
+// === v2 Classification Types ===
+
+export interface NicheEntry {
+  niche: string;
+  video_count: number;
+  pct: number;
+  avg_views: number;
+  engagement: number;
+}
+
+export interface IntentEntry {
+  intent: "organic" | "artist_official" | "paid" | "fan_account";
+  video_count: number;
+  pct: number;
+  avg_views: number;
+  engagement: number;
+}
+
+export interface SongRoleEntry {
+  role: "primary" | "background" | "sound_bite";
+  video_count: number;
+  pct: number;
+  avg_views: number;
+  engagement: number;
+}
+
+export interface VibeEntry {
+  vibe: string;
+  video_count: number;
+  pct: number;
+  avg_views: number;
+  engagement: number;
+}
+
+export interface CreatorProfileEntry {
+  profile: string;
+  video_count: number;
+  pct: number;
+  avg_views: number;
+}
+
+export interface AgeBreakdownEntry {
+  age: string;
+  count: number;
+  pct: number;
+}
+
+export interface GenderBreakdownEntry {
+  gender: string;
+  count: number;
+  pct: number;
+}
+
+export interface CreatorDemographics {
+  profiles: CreatorProfileEntry[];
+  age_breakdown: AgeBreakdownEntry[];
+  gender_breakdown: GenderBreakdownEntry[];
+}
+
 export interface SoundAnalysis {
   sound_url: string;
   cover_url?: string | null;
@@ -157,6 +222,14 @@ export interface SoundAnalysis {
   creator_tiers: CreatorTier[];
   geography: GeoBreakdown[];
   lifecycle: LifecycleInfo;
+
+  // v2 classification axes
+  niche_distribution?: NicheEntry[];
+  intent_breakdown?: IntentEntry[];
+  song_role_distribution?: SongRoleEntry[];
+  vibe_distribution?: VibeEntry[];
+  creator_demographics?: CreatorDemographics;
+  unclassified_count?: number;
 }
 
 // Monitoring state returned by list/get endpoints
@@ -217,6 +290,11 @@ export interface MonitoringSnapshot {
       engagement: number;
     }
   >;
+  niche_stats?: Record<string, { count: number; views: number; likes: number }>;
+  intent_stats?: Record<
+    string,
+    { count: number; views: number; likes: number }
+  >;
 }
 
 export interface FormatGrowth {
@@ -252,17 +330,93 @@ export interface SoundIntelligenceState {
 }
 
 export const FORMAT_COLORS: Record<string, string> = {
+  // === v3 canonical format names ===
+  "Lip Sync / Dance": "#FF453A",
+  "Dance Choreography": "#FF6B6B",
+  "Comedy": "#FF6482",
+  "POV": "#0A84FF",
+  "Talking Head": "#5AC8FA",
+  "Tutorial": "#FF9F0A",
+  "Reaction": "#BF5AF2",
+  "Cover": "#E040FB",
+  "Vlog": "#0A84FF",
+  "Review": "#B5E48C",
   "Lyric Overlay": "#e8430a",
-  "POV / Storytelling": "#0A84FF",
-  "Reaction / Duet": "#BF5AF2",
-  "Aesthetic / Mood": "#64D2FF",
-  "Aesthetic / Mood Edit": "#64D2FF",
+  "Aesthetic Edit": "#64D2FF",
   "Transition Edit": "#30D158",
-  "Concert Fancam": "#FFD60A",
-  "Dance / Challenge": "#FF453A",
+  "Montage": "#7EC8E3",
+  "Slideshow": "#AC8E68",
+  "Text Story": "#C9B1FF",
+  "Concert": "#FFD60A",
+  "BTS": "#FFA726",
+  "ASMR": "#8E8E93",
+  "Pet": "#FFCA28",
+  "Food": "#FF8A65",
+  "Art": "#DA70D6",
+  "Fitness": "#34C759",
+  "Gaming Clip": "#EF5350",
+  // === Legacy mappings (pre-v3 data backwards compat) ===
   "Skit / Comedy": "#FF6482",
+  "Meme / Remix Edit": "#FF6482",
+  "POV / Storytelling": "#0A84FF",
+  "Talking Head / Opinion": "#5AC8FA",
   "Tutorial / GRWM": "#FF9F0A",
+  "GRWM / Tutorial": "#FF9F0A",
+  "Reaction / Duet": "#BF5AF2",
+  "Unboxing / Review": "#B5E48C",
+  "Aesthetic / Mood Edit": "#64D2FF",
+  "Aesthetic / Mood": "#64D2FF",
+  "Compilation / Montage": "#7EC8E3",
+  "Carousel / Slideshow": "#AC8E68",
+  "Text Story / Rant": "#C9B1FF",
+  "Concert / Live Event": "#FFD60A",
+  "Concert Fancam": "#FFD60A",
+  "BTS / Behind the Scenes": "#FFA726",
+  "ASMR / Satisfying": "#8E8E93",
+  "Satisfying / ASMR": "#8E8E93",
+  "Pet / Animal": "#FFCA28",
+  "Food / Cooking": "#FF8A65",
+  "Cooking / Food": "#FF8A65",
+  "Art / Creative Process": "#DA70D6",
+  "Art / Creative": "#DA70D6",
+  "Fitness / Sports": "#34C759",
+  "Fitness / Workout": "#34C759",
+  // === v1 legacy ===
+  "Dance / Challenge": "#FF453A",
   "Audio Edit": "#8E8E93",
+  "Fan Edit": "#FFB4A2",
+  "Product Review": "#B5E48C",
+  "Travel / Adventure": "#64D2FF",
+  "Vlog / Lifestyle": "#0A84FF",
+  "Beauty / Skincare": "#FF6482",
+  "Educational / Informative": "#0A84FF",
+  Other: "#636366",
+};
+
+export const VIBE_COLORS: Record<string, string> = {
+  // v3 canonical single-word vibe names
+  Playful: "#FFD60A",
+  Confident: "#FF453A",
+  Chill: "#64D2FF",
+  Hype: "#FF9F0A",
+  Edgy: "#8E8E93",
+  Emotional: "#BF5AF2",
+  Wholesome: "#30D158",
+  // Legacy backwards-compat
+  "Funny / Playful": "#FFD60A",
+  "Confident / Flex": "#FF453A",
+  "Chill / Aesthetic": "#64D2FF",
+  "Hype / Party": "#FF9F0A",
+  "Edgy / Raw": "#8E8E93",
+  "Emotional / Sentimental": "#BF5AF2",
+  "Wholesome / Feel-Good": "#30D158",
+};
+
+export const INTENT_COLORS: Record<string, string> = {
+  organic: "#30D158",
+  artist_official: "#0A84FF",
+  paid: "#FFD60A",
+  fan_account: "#BF5AF2",
 };
 
 const FALLBACK_COLORS = ["#AC8E68", "#7EC8E3", "#C9B1FF", "#FFB4A2", "#B5E48C"];

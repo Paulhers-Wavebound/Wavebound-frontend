@@ -18,7 +18,7 @@ export function useActivityTracker() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      await (supabase.from as any)('user_activity').insert({
+      await supabase.from('user_activity').insert({
         user_id: user.id,
         action,
         metadata: metadata ?? {},

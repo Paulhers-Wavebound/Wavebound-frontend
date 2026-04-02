@@ -23,7 +23,7 @@ export function useProfileBackfill() {
       if (!parsed || !parsed.accountType) return;
 
       // Check if user already has a profile row
-      const { data: existing } = await (supabase.from as any)('user_profiles')
+      const { data: existing } = await supabase.from('user_profiles')
         .select('user_id')
         .eq('user_id', user.id)
         .maybeSingle();
@@ -34,7 +34,7 @@ export function useProfileBackfill() {
       }
 
       // Upsert from localStorage
-      await (supabase.from as any)('user_profiles').upsert({
+      await supabase.from('user_profiles').upsert({
         user_id: user.id,
         account_type: parsed.accountType,
         creator_role: parsed.role || null,

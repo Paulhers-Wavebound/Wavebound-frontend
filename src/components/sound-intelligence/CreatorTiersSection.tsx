@@ -2,6 +2,7 @@ import { CreatorTier, getFormatColor } from "@/types/soundIntelligence";
 import { formatNumber } from "@/utils/soundIntelligenceApi";
 import { BarChart, Bar, ResponsiveContainer } from "recharts";
 import { ChevronDown } from "lucide-react";
+import InfoPopover from "./InfoPopover";
 
 interface Props {
   tiers: CreatorTier[];
@@ -22,14 +23,34 @@ export default function CreatorTiersSection({
     <div>
       <div
         style={{
-          fontFamily: '"DM Sans", sans-serif',
-          fontSize: 15,
-          fontWeight: 600,
-          color: "var(--ink)",
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
           marginBottom: 12,
         }}
       >
-        Creator Tiers
+        <div
+          style={{
+            width: 3,
+            height: 14,
+            borderRadius: 1,
+            background:
+              "linear-gradient(180deg, rgba(232,67,10,0.6) 0%, rgba(232,67,10,0.15) 100%)",
+          }}
+        />
+        <span
+          style={{
+            fontFamily: '"DM Sans", sans-serif',
+            fontSize: 11,
+            fontWeight: 500,
+            textTransform: "uppercase",
+            letterSpacing: "0.10em",
+            color: "var(--ink-tertiary, rgba(255,255,255,0.45))",
+          }}
+        >
+          Creator Tiers
+        </span>
+        <InfoPopover text="Breaks down creators by follower count. See which size of creator (nano, micro, macro, mega) is using your sound the most and getting the best results. Click a tier to see details." />
       </div>
       <div
         style={{
@@ -198,8 +219,10 @@ export default function CreatorTiersSection({
                           <div key={s.label}>
                             <div
                               style={{
+                                fontFamily: '"DM Sans", sans-serif',
                                 fontSize: 14,
                                 fontWeight: 700,
+                                letterSpacing: "-0.03em",
                                 color: "var(--ink)",
                               }}
                             >
@@ -207,7 +230,9 @@ export default function CreatorTiersSection({
                             </div>
                             <div
                               style={{
+                                fontFamily: '"DM Sans", sans-serif',
                                 fontSize: 10,
+                                letterSpacing: "0.10em",
                                 color: "var(--ink-tertiary)",
                               }}
                             >
@@ -255,8 +280,10 @@ export default function CreatorTiersSection({
                         <div>
                           <div
                             style={{
+                              fontFamily: '"DM Sans", sans-serif',
                               fontSize: 14,
                               fontWeight: 700,
+                              letterSpacing: "-0.03em",
                               color: "var(--ink)",
                             }}
                           >
@@ -264,7 +291,9 @@ export default function CreatorTiersSection({
                           </div>
                           <div
                             style={{
+                              fontFamily: '"DM Sans", sans-serif',
                               fontSize: 10,
+                              letterSpacing: "0.10em",
                               color: "var(--ink-tertiary)",
                             }}
                           >
@@ -274,8 +303,10 @@ export default function CreatorTiersSection({
                         <div>
                           <div
                             style={{
+                              fontFamily: '"DM Sans", sans-serif',
                               fontSize: 14,
                               fontWeight: 700,
+                              letterSpacing: "-0.03em",
                               color: "var(--ink)",
                             }}
                           >
@@ -283,7 +314,9 @@ export default function CreatorTiersSection({
                           </div>
                           <div
                             style={{
+                              fontFamily: '"DM Sans", sans-serif',
                               fontSize: 10,
+                              letterSpacing: "0.10em",
                               color: "var(--ink-tertiary)",
                             }}
                           >

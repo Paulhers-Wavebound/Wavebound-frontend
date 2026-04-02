@@ -231,8 +231,10 @@ export default function AdminPlanReview() {
               <div className="flex-1 overflow-hidden">
                 {getHtml(selectedArtist) ? (
                   <iframe
-                    srcDoc={`
-                      <!DOCTYPE html>
+                    srcDoc={
+                      getHtml(selectedArtist)!.trim().startsWith('<!DOCTYPE') || getHtml(selectedArtist)!.trim().startsWith('<html')
+                        ? getHtml(selectedArtist)!
+                        : `<!DOCTYPE html>
                       <html><head>
                         <style>
                           body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; padding: 24px; background: #0a0a0a; color: #e5e5e5; line-height: 1.6; }
@@ -242,11 +244,11 @@ export default function AdminPlanReview() {
                           th, td { border: 1px solid #333; padding: 8px; text-align: left; }
                           th { background: #1a1a1a; }
                         </style>
-                      </head><body>${getHtml(selectedArtist)}</body></html>
-                    `}
+                      </head><body>${getHtml(selectedArtist)}</body></html>`
+                    }
                     className="w-full h-full border-0"
                     title="Plan preview"
-                    sandbox="allow-same-origin"
+                    sandbox="allow-same-origin allow-scripts"
                   />
                 ) : (
                   <div className="flex items-center justify-center h-full text-muted-foreground text-sm">

@@ -71,7 +71,7 @@ const Auth = () => {
     const cleaned = code.trim();
     if (!cleaned) return { valid: false, error: 'Label code is required' };
 
-    const { data, error } = await (supabase.from as any)('labels')
+    const { data, error } = await supabase.from('labels')
       .select('id, name, slug')
       .eq('invite_code', cleaned)
       .eq('is_active', true)
@@ -139,7 +139,7 @@ const Auth = () => {
         // Insert user_profiles with label_id
         if (data.user && validation.labelId) {
           try {
-            await (supabase.from as any)('user_profiles').insert({
+            await supabase.from('user_profiles').insert({
               user_id: data.user.id,
               label_id: validation.labelId,
             });

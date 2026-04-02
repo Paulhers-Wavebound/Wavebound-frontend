@@ -14,6 +14,8 @@ import {
   ChevronsUpDown,
   Check,
   Sparkles,
+  Radar,
+  Lock,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useUserProfile } from "@/contexts/UserProfileContext";
@@ -21,6 +23,7 @@ import { useAdminRole } from "@/hooks/useAdminRole";
 import waveboundLogo from "@/assets/wavebound-logo.png";
 import { format } from "date-fns";
 import { useState, useEffect, useRef } from "react";
+import { PREVIEW_FEATURES } from "@/config/previewFeatures";
 
 interface LabelSidebarProps {
   onClose?: () => void;
@@ -29,36 +32,66 @@ interface LabelSidebarProps {
   onToggleTheme?: () => void;
 }
 
-const getMainNav = (isAdmin: boolean) => [
-  {
-    id: "dashboard",
-    label: "Dashboard",
-    icon: LayoutDashboard,
-    path: "/label",
-  },
-  {
-    id: "sound-intelligence",
-    label: "Sound Intelligence",
-    icon: Music,
-    path: "/label/sound-intelligence",
-  },
-  ...(isAdmin
-    ? [
-        {
-          id: "amplification",
-          label: "Paid Amplification",
-          icon: Megaphone,
-          path: "/label/amplification",
-        },
-      ]
-    : []),
-  {
-    id: "fan-briefs",
-    label: "Fan Briefs",
-    icon: Sparkles,
-    path: "/label/fan-briefs",
-  },
-];
+const FEATURE_TO_NAV: Record<string, string> = {
+  "sound-intelligence": "sound-intelligence",
+  "paid-amplification": "amplification",
+  "expansion-radar": "expansion-radar",
+  "fan-briefs": "fan-briefs",
+};
+
+const getMainNav = (isAdmin: boolean, labelId: string | null) => {
+  const previewList = labelId ? (PREVIEW_FEATURES[labelId] ?? []) : [];
+  const previewNavIds = new Set(
+    previewList.map((f) => FEATURE_TO_NAV[f]).filter(Boolean),
+  );
+  const showAmplification =
+    isAdmin || previewList.includes("paid-amplification");
+
+  const tag = (id: string) =>
+    previewNavIds.has(id) ? { isPreview: true as const } : {};
+
+  return [
+    {
+      id: "dashboard",
+      label: "Dashboard",
+      icon: LayoutDashboard,
+      path: "/label",
+    },
+    {
+      id: "sound-intelligence",
+      label: "Sound Intelligence",
+      icon: Music,
+      path: "/label/sound-intelligence",
+      ...tag("sound-intelligence"),
+    },
+    ...(showAmplification
+      ? [
+          {
+            id: "amplification",
+            label: "Paid Amplification",
+            icon: Megaphone,
+            path: "/label/amplification",
+            ...tag("amplification"),
+          },
+        ]
+      : []),
+    {
+      id: "expansion-radar",
+      label: "Expansion Radar",
+      icon: Radar,
+      path: "/label/expansion-radar",
+      isNew: true,
+      ...tag("expansion-radar"),
+    },
+    {
+      id: "fan-briefs",
+      label: "Fan Briefs",
+      icon: Sparkles,
+      path: "/label/fan-briefs",
+      ...tag("fan-briefs"),
+    },
+  ];
+};
 
 const bottomNav = [
   { id: "help", label: "Help", icon: HelpCircle, path: "/label/help" },
@@ -88,7 +121,7 @@ export default function LabelSidebar({
   const { labelName, labelLogoUrl, labelId, labelOverride, setLabelOverride } =
     useUserProfile();
   const { isAdmin } = useAdminRole();
-  const mainNav = getMainNav(isAdmin);
+  const mainNav = getMainNav(isAdmin, labelId);
 
   // Admin label switcher
   const [allLabels, setAllLabels] = useState<LabelOption[]>([]);
@@ -653,6 +686,7 @@ export default function LabelSidebar({
         {mainNav.map((item) => {
           const active = isActive(item);
           const comingSoon = !item.path;
+          const isPreview = "isPreview" in item && item.isPreview;
           return (
             <button
               key={item.id}
@@ -668,7 +702,11 @@ export default function LabelSidebar({
                 border: "none",
                 cursor: "pointer",
                 background: active ? "var(--accent-light)" : "transparent",
-                color: active ? "var(--ink)" : "var(--ink-secondary)",
+                color: active
+                  ? "var(--ink)"
+                  : isPreview
+                    ? "var(--ink-tertiary)"
+                    : "var(--ink-secondary)",
                 fontFamily: '"DM Sans", sans-serif',
                 fontSize: 14,
                 fontWeight: active ? 600 : 500,
@@ -676,7 +714,7 @@ export default function LabelSidebar({
                 position: "relative",
                 textAlign: "left",
                 width: "100%",
-                opacity: comingSoon ? 0.6 : 1,
+                opacity: comingSoon ? 0.6 : isPreview ? 0.55 : 1,
               }}
             >
               {active && (
@@ -696,12 +734,27 @@ export default function LabelSidebar({
                 size={22}
                 strokeWidth={1.8}
                 style={{
-                  color: active ? "var(--accent)" : "var(--ink-tertiary)",
+                  color: active
+                    ? "var(--accent)"
+                    : isPreview
+                      ? "var(--ink-faint)"
+                      : "var(--ink-tertiary)",
                   transition: "color 150ms",
                 }}
               />
               <span>{item.label}</span>
-              {comingSoon && (
+              {isPreview && (
+                <Lock
+                  size={13}
+                  strokeWidth={2}
+                  style={{
+                    color: "var(--ink-faint)",
+                    marginLeft: "auto",
+                    flexShrink: 0,
+                  }}
+                />
+              )}
+              {comingSoon && !isPreview && (
                 <span
                   style={{
                     fontSize: 10,
@@ -710,6 +763,22 @@ export default function LabelSidebar({
                   }}
                 >
                   Soon
+                </span>
+              )}
+              {"isNew" in item && item.isNew && !comingSoon && !isPreview && (
+                <span
+                  style={{
+                    fontSize: 9,
+                    fontWeight: 700,
+                    letterSpacing: "0.06em",
+                    color: "#e8430a",
+                    background: "rgba(232,67,10,0.12)",
+                    padding: "2px 6px",
+                    borderRadius: 4,
+                    marginLeft: "auto",
+                  }}
+                >
+                  NEW
                 </span>
               )}
             </button>

@@ -27,7 +27,7 @@ const LabelOnboardingModal = ({ open, onClose }: LabelOnboardingModalProps) => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      await (supabase.from as any)('user_profiles')
+      await supabase.from('user_profiles')
         .update({ artist_handle: cleaned })
         .eq('user_id', user.id);
 

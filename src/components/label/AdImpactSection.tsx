@@ -23,18 +23,22 @@ function ConfidenceGauge({
   const strokeW = size >= 70 ? 6 : 4;
   const radius = (size - strokeW * 2) / 2;
   const circumference = 2 * Math.PI * radius;
-  const arcPct = 0.75; // 270 degree arc
+  const arcPct = 0.75;
   const arcLength = circumference * arcPct;
   const filled = (value / 100) * arcLength;
   const color = value >= 70 ? "#22C55E" : value >= 30 ? "#F59E0B" : "#EF4444";
-
-  // Rotate so the gap is at the bottom
-  const startAngle = 135; // degrees
+  const startAngle = 135;
 
   return (
     <div
-      className="relative flex flex-col items-center"
-      style={{ width: size, height: size + 16 }}
+      style={{
+        position: "relative",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        width: size,
+        height: size + 16,
+      }}
     >
       <svg
         width={size}
@@ -64,8 +68,9 @@ function ConfidenceGauge({
         />
       </svg>
       <span
-        className="absolute font-bold"
         style={{
+          position: "absolute",
+          fontWeight: 700,
           color,
           fontSize: size * 0.26,
           lineHeight: 1,
@@ -77,9 +82,12 @@ function ConfidenceGauge({
         {value}%
       </span>
       <span
-        className="text-[9px] font-medium tracking-wide"
         style={{
-          color: "#8E8E93",
+          fontFamily: '"JetBrains Mono", monospace',
+          fontSize: 9,
+          fontWeight: 500,
+          letterSpacing: "0.04em",
+          color: "var(--ink-faint, rgba(255,255,255,0.35))",
           marginTop: -6,
           textAlign: "center",
           lineHeight: 1.2,
@@ -148,27 +156,52 @@ function FactorRow({
   text: string;
   tag: string;
 }) {
-  const isNegative = tag.startsWith("−") || tag.startsWith("-");
+  const isNegative = tag.startsWith("\u2212") || tag.startsWith("-");
   const isNoImpact = tag.toLowerCase() === "no impact";
   return (
-    <div className="flex items-center gap-3 py-2">
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 12,
+        padding: "8px 0",
+      }}
+    >
       <span
-        className="w-2 h-2 rounded-full flex-shrink-0"
-        style={{ background: color }}
+        style={{
+          width: 8,
+          height: 8,
+          borderRadius: "50%",
+          flexShrink: 0,
+          background: color,
+        }}
       />
       <span
-        className="text-[13px] flex-1"
-        style={{ color: "rgba(255,255,255,0.7)" }}
+        style={{
+          fontFamily: '"DM Sans", sans-serif',
+          fontSize: 13,
+          flex: 1,
+          color: "var(--ink-secondary, rgba(255,255,255,0.7))",
+        }}
       >
         {text}
       </span>
       <span
-        className="text-[11px] font-semibold px-2.5 py-1 rounded-md flex-shrink-0"
         style={{
+          fontFamily: '"DM Sans", sans-serif',
+          fontSize: 11,
+          fontWeight: 600,
+          padding: "4px 10px",
+          borderRadius: 6,
+          flexShrink: 0,
           background: isNegative
             ? "rgba(239,68,68,0.10)"
-            : "rgba(34,197,94,0.10)",
-          color: isNegative ? "#EF4444" : isNoImpact ? "#22C55E" : "#8E8E93",
+            : "rgba(48,209,88,0.10)",
+          color: isNegative
+            ? "#EF4444"
+            : isNoImpact
+              ? "var(--green, #30D158)"
+              : "var(--ink-faint, rgba(255,255,255,0.35))",
         }}
       >
         {tag}
@@ -183,24 +216,53 @@ function ChartTooltipContent({ active, payload, label }: any) {
   if (!active || !payload?.length) return null;
   return (
     <div
-      className="rounded-lg px-3 py-2.5 text-xs"
       style={{
-        background: "rgba(0,0,0,0.92)",
+        background: "var(--chart-tooltip-bg, rgba(0,0,0,0.92))",
         backdropFilter: "blur(12px)",
-        border: "1px solid rgba(255,255,255,0.08)",
+        border: "1px solid var(--chart-tooltip-border, rgba(255,255,255,0.08))",
+        borderRadius: 10,
+        padding: "10px 14px",
+        fontFamily: '"DM Sans", sans-serif',
+        fontSize: 12,
       }}
     >
-      <p className="font-semibold mb-1.5" style={{ color: "#fff" }}>
+      <p
+        style={{
+          fontWeight: 600,
+          marginBottom: 6,
+          margin: "0 0 6px",
+          color: "var(--ink, rgba(255,255,255,0.87))",
+        }}
+      >
         {label}
       </p>
       {payload.map((p: any) => (
-        <div key={p.dataKey} className="flex items-center gap-2 py-0.5">
+        <div
+          key={p.dataKey}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            padding: "2px 0",
+          }}
+        >
           <span
-            className="w-2 h-0.5 rounded-full"
-            style={{ background: p.color }}
+            style={{
+              width: 8,
+              height: 2,
+              borderRadius: 1,
+              background: p.color,
+            }}
           />
-          <span style={{ color: "rgba(255,255,255,0.6)" }}>{p.name}:</span>
-          <span className="font-medium" style={{ color: "#fff" }}>
+          <span style={{ color: "var(--ink-tertiary, rgba(255,255,255,0.5))" }}>
+            {p.name}:
+          </span>
+          <span
+            style={{
+              fontWeight: 600,
+              color: "var(--ink, rgba(255,255,255,0.87))",
+            }}
+          >
             {p.value >= 1000 ? (p.value / 1000).toFixed(1) + "K" : p.value}
           </span>
         </div>
@@ -232,31 +294,63 @@ function SmallCampaignCard({
 
   return (
     <div
-      className="rounded-2xl p-5 flex flex-col gap-4"
       style={{
-        background: "#1C1C1E",
-        border: "1px solid rgba(255,255,255,0.06)",
+        background: "var(--surface, #1C1C1E)",
+        border: "1px solid var(--border-subtle, rgba(255,255,255,0.06))",
+        borderRadius: 16,
+        padding: 20,
+        display: "flex",
+        flexDirection: "column",
+        gap: 16,
       }}
     >
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           {avatarUrl && !imgError ? (
             <img
               src={avatarUrl}
               alt={handle}
-              className="w-8 h-8 rounded-full object-cover"
+              style={{
+                width: 32,
+                height: 32,
+                borderRadius: "50%",
+                objectFit: "cover",
+              }}
               onError={() => setImgError(true)}
             />
           ) : (
             <div
-              className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold"
-              style={{ background: "#3A3A3C", color: "#fff" }}
+              style={{
+                width: 32,
+                height: 32,
+                borderRadius: "50%",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: 12,
+                fontWeight: 700,
+                background: "var(--overlay-active, rgba(255,255,255,0.06))",
+                color: "var(--ink, rgba(255,255,255,0.87))",
+              }}
             >
               {handle[0]?.toUpperCase()}
             </div>
           )}
-          <span className="text-sm font-semibold" style={{ color: "#fff" }}>
+          <span
+            style={{
+              fontFamily: '"DM Sans", sans-serif',
+              fontSize: 14,
+              fontWeight: 600,
+              color: "var(--ink, rgba(255,255,255,0.87))",
+            }}
+          >
             @{handle?.replace(/^@+/, "")}
           </span>
         </div>
@@ -280,16 +374,23 @@ function SmallCampaignCard({
 
       {/* Summary */}
       <p
-        className="text-[13px] leading-relaxed"
-        style={{ color: "rgba(255,255,255,0.55)" }}
+        style={{
+          fontFamily: '"DM Sans", sans-serif',
+          fontSize: 13,
+          lineHeight: 1.6,
+          color: "var(--ink-secondary, rgba(255,255,255,0.55))",
+          margin: 0,
+        }}
       >
         {summary}
       </p>
 
       {/* Factors */}
       <div
-        className="border-t pt-3"
-        style={{ borderColor: "rgba(255,255,255,0.06)" }}
+        style={{
+          borderTop: "1px solid var(--border-subtle, rgba(255,255,255,0.06))",
+          paddingTop: 12,
+        }}
       >
         {factors.map((f, i) => (
           <FactorRow key={i} {...f} />
@@ -311,51 +412,88 @@ export default function AdImpactSection({
   const [featuredImgError, setFeaturedImgError] = useState(false);
 
   return (
-    <section className="space-y-5">
-      <div>
-        <h2 className="text-lg font-bold" style={{ color: "#fff" }}>
-          Ad Impact Attribution
-        </h2>
-        <p className="text-xs mt-1" style={{ color: "#8E8E93" }}>
-          Beta — Launching Q2 2026
-        </p>
-      </div>
+    <section style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <span
+        style={{
+          fontFamily: '"JetBrains Mono", monospace',
+          fontSize: 11,
+          color: "var(--ink-faint, rgba(255,255,255,0.3))",
+          letterSpacing: "0.04em",
+        }}
+      >
+        Beta \u2014 Launching Q2 2026
+      </span>
 
       {/* Featured campaign card */}
       <div
-        className="rounded-2xl overflow-hidden"
         style={{
-          background: "#1C1C1E",
-          border: "1px solid rgba(255,255,255,0.06)",
+          background: "var(--surface, #1C1C1E)",
+          border: "1px solid var(--border-subtle, rgba(255,255,255,0.06))",
+          borderRadius: 16,
+          overflow: "hidden",
         }}
       >
         {/* Header */}
-        <div className="px-6 pt-6 pb-4 flex items-start justify-between">
-          <div className="flex items-center gap-3">
+        <div
+          style={{
+            padding: "24px 24px 16px",
+            display: "flex",
+            alignItems: "flex-start",
+            justifyContent: "space-between",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             {tobiasAvatar && !featuredImgError ? (
               <img
                 src={tobiasAvatar}
                 alt="tobiassten"
-                className="w-11 h-11 rounded-full object-cover"
+                style={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: "50%",
+                  objectFit: "cover",
+                }}
                 onError={() => setFeaturedImgError(true)}
               />
             ) : (
               <div
-                className="w-11 h-11 rounded-full flex items-center justify-center font-bold text-sm"
-                style={{ background: "#3A3A3C", color: "#fff" }}
+                style={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: "50%",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontWeight: 700,
+                  fontSize: 14,
+                  background: "var(--overlay-active, rgba(255,255,255,0.06))",
+                  color: "var(--ink, rgba(255,255,255,0.87))",
+                }}
               >
                 T
               </div>
             )}
             <div>
-              <span className="text-sm font-semibold" style={{ color: "#fff" }}>
+              <span
+                style={{
+                  fontFamily: '"DM Sans", sans-serif',
+                  fontSize: 14,
+                  fontWeight: 600,
+                  color: "var(--ink, rgba(255,255,255,0.87))",
+                }}
+              >
                 @tobiassten
               </span>
               <p
-                className="text-xs mt-0.5 max-w-xs"
-                style={{ color: "rgba(255,255,255,0.4)" }}
+                style={{
+                  fontFamily: '"DM Sans", sans-serif',
+                  fontSize: 12,
+                  color: "var(--ink-faint, rgba(255,255,255,0.4))",
+                  margin: "2px 0 0",
+                  maxWidth: 300,
+                }}
               >
-                "Eg e så takknemlig for at dåke forsatt høyre..."
+                "Eg e s\u00e5 takknemlig for at d\u00e5ke forsatt h\u00f8yre..."
               </p>
             </div>
           </div>
@@ -363,7 +501,7 @@ export default function AdImpactSection({
         </div>
 
         {/* Chart */}
-        <div className="px-2" style={{ height: 240 }}>
+        <div style={{ padding: "0 8px", height: 240 }}>
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart
               data={FEATURED_DATA}
@@ -376,14 +514,22 @@ export default function AdImpactSection({
               />
               <XAxis
                 dataKey="date"
-                tick={{ fill: "#8E8E93", fontSize: 11 }}
+                tick={{
+                  fontFamily: '"JetBrains Mono", monospace',
+                  fill: "rgba(255,255,255,0.35)",
+                  fontSize: 10,
+                }}
                 axisLine={false}
                 tickLine={false}
               />
               <YAxis
                 yAxisId="left"
                 orientation="left"
-                tick={{ fill: "#8E8E93", fontSize: 11 }}
+                tick={{
+                  fontFamily: '"JetBrains Mono", monospace',
+                  fill: "rgba(255,255,255,0.35)",
+                  fontSize: 10,
+                }}
                 axisLine={false}
                 tickLine={false}
                 tickFormatter={(v: number) => (v / 1000).toFixed(0) + "K"}
@@ -391,7 +537,11 @@ export default function AdImpactSection({
               <YAxis
                 yAxisId="right"
                 orientation="right"
-                tick={{ fill: "#8E8E93", fontSize: 11 }}
+                tick={{
+                  fontFamily: '"JetBrains Mono", monospace',
+                  fill: "rgba(255,255,255,0.35)",
+                  fontSize: 10,
+                }}
                 axisLine={false}
                 tickLine={false}
                 tickFormatter={(v: number) => (v / 1000).toFixed(0) + "K"}
@@ -400,13 +550,13 @@ export default function AdImpactSection({
               <ReferenceLine
                 x="Feb 18"
                 yAxisId="left"
-                stroke="#F59E0B"
+                stroke="#FF9F0A"
                 strokeDasharray="4 4"
                 strokeWidth={1}
                 label={{
-                  value: "Ad Started — Feb 18",
+                  value: "Ad Started \u2014 Feb 18",
                   position: "insideTopLeft",
-                  fill: "#F59E0B",
+                  fill: "#FF9F0A",
                   fontSize: 10,
                   dy: -16,
                 }}
@@ -425,7 +575,7 @@ export default function AdImpactSection({
                 type="monotone"
                 dataKey="views"
                 name="TikTok Views"
-                stroke="#3B82F6"
+                stroke="#0A84FF"
                 strokeWidth={2}
                 dot={false}
               />
@@ -435,21 +585,38 @@ export default function AdImpactSection({
 
         {/* Legend */}
         <div
-          className="flex items-center gap-6 px-6 pt-2 pb-4 text-[11px]"
-          style={{ color: "#8E8E93" }}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 20,
+            padding: "8px 24px 16px",
+            fontFamily: '"JetBrains Mono", monospace',
+            fontSize: 11,
+            color: "var(--ink-faint, rgba(255,255,255,0.35))",
+          }}
         >
-          <span className="flex items-center gap-2">
+          <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <span
-              className="w-3 h-[2px] rounded-full inline-block"
-              style={{ background: "#22C55E" }}
-            />{" "}
+              style={{
+                width: 12,
+                height: 2,
+                borderRadius: 1,
+                display: "inline-block",
+                background: "#22C55E",
+              }}
+            />
             Spotify Monthly Listeners
           </span>
-          <span className="flex items-center gap-2">
+          <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <span
-              className="w-3 h-[2px] rounded-full inline-block"
-              style={{ background: "#3B82F6" }}
-            />{" "}
+              style={{
+                width: 12,
+                height: 2,
+                borderRadius: 1,
+                display: "inline-block",
+                background: "#0A84FF",
+              }}
+            />
             TikTok Views (boosted post)
           </span>
         </div>
@@ -458,28 +625,35 @@ export default function AdImpactSection({
         <div
           style={{
             height: 1,
-            background: "rgba(255,255,255,0.06)",
+            background: "var(--border-subtle, rgba(255,255,255,0.06))",
             margin: "0 24px",
           }}
         />
 
         {/* Confounding factors */}
-        <div className="px-6 py-4">
+        <div style={{ padding: "16px 24px" }}>
           <p
-            className="text-[11px] font-semibold uppercase tracking-wider mb-2"
-            style={{ color: "#8E8E93" }}
+            style={{
+              fontFamily: '"JetBrains Mono", monospace',
+              fontSize: 10,
+              fontWeight: 600,
+              textTransform: "uppercase",
+              letterSpacing: "0.08em",
+              color: "var(--ink-faint, rgba(255,255,255,0.35))",
+              margin: "0 0 8px",
+            }}
           >
             Why not 100%?
           </p>
           <FactorRow
-            color="#F59E0B"
+            color="#FF9F0A"
             text="Artist posted new video on Feb 20"
-            tag="−20% confidence"
+            tag="\u221220% confidence"
           />
           <FactorRow
-            color="#F59E0B"
+            color="#FF9F0A"
             text="UGC spike: ~340 fan videos detected Feb 17-19"
-            tag="−25% confidence"
+            tag="\u221225% confidence"
           />
           <FactorRow
             color="#22C55E"
@@ -494,17 +668,32 @@ export default function AdImpactSection({
         </div>
 
         {/* Summary */}
-        <div className="px-6 pb-6">
+        <div style={{ padding: "0 24px 24px" }}>
           <p
-            className="text-[13px] leading-relaxed"
-            style={{ color: "rgba(255,255,255,0.55)" }}
+            style={{
+              fontFamily: '"DM Sans", sans-serif',
+              fontSize: 13,
+              lineHeight: 1.6,
+              color: "var(--ink-secondary, rgba(255,255,255,0.55))",
+              margin: 0,
+            }}
           >
             Spotify listeners increased{" "}
-            <span className="font-bold" style={{ color: "#fff" }}>
+            <span
+              style={{
+                fontWeight: 700,
+                color: "var(--ink, rgba(255,255,255,0.87))",
+              }}
+            >
               +7.1K (+63%)
             </span>{" "}
             during campaign window. Estimated{" "}
-            <span className="font-bold" style={{ color: "#fff" }}>
+            <span
+              style={{
+                fontWeight: 700,
+                color: "var(--ink, rgba(255,255,255,0.87))",
+              }}
+            >
               35%
             </span>{" "}
             attributable to paid boost.
@@ -513,13 +702,19 @@ export default function AdImpactSection({
       </div>
 
       {/* Two smaller cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr",
+          gap: 12,
+        }}
+      >
         <SmallCampaignCard
           handle="lillecaesar"
           confidence={82}
           sparklineData={SPARKLINE_HIGH}
           avatarUrl={lillecaesarAvatar}
-          summary="Listeners +2.4K (+18%). High confidence — no competing signals detected."
+          summary="Listeners +2.4K (+18%). High confidence \u2014 no competing signals detected."
           factors={[
             {
               color: "#22C55E",
@@ -543,17 +738,17 @@ export default function AdImpactSection({
           confidence={12}
           sparklineData={SPARKLINE_LOW}
           avatarUrl={tobiasAvatar}
-          summary="Listeners +15.2K (+89%). Low confidence — viral UGC wave likely primary driver."
+          summary="Listeners +15.2K (+89%). Low confidence \u2014 viral UGC wave likely primary driver."
           factors={[
             {
               color: "#EF4444",
               text: "Viral fan video (2.1M views)",
-              tag: "−60% confidence",
+              tag: "\u221260% confidence",
             },
             {
-              color: "#F59E0B",
+              color: "#FF9F0A",
               text: "Song added to Discover Weekly",
-              tag: "−20% confidence",
+              tag: "\u221220% confidence",
             },
           ]}
         />

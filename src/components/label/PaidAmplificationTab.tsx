@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo, useCallback } from "react";
+import { motion } from "framer-motion";
 import TikTokThumbnail from "@/components/TikTokThumbnail";
 import { supabase } from "@/integrations/supabase/client";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -15,20 +16,10 @@ import {
   List,
   ArrowUp,
   ArrowDown,
-  MessageSquare,
-  Bookmark,
+  Zap,
+  Target,
+  BarChart3,
 } from "lucide-react";
-
-const ACCENT_PALETTE = [
-  "#10B981",
-  "#3B82F6",
-  "#F59E0B",
-  "#A855F7",
-  "#F43F5E",
-  "#06B6D4",
-  "#F97316",
-  "#14B8A6",
-];
 
 /* ────────── types ────────── */
 
@@ -91,33 +82,148 @@ function erBadge(
 ): { label: string; bg: string; fg: string; action: string } | null {
   if (er >= 8)
     return {
-      label: "Boost Ready",
-      bg: "#22C55E",
-      fg: "#000",
+      label: "BOOST READY",
+      bg: "rgba(48, 209, 88, 0.15)",
+      fg: "var(--green, #30D158)",
       action: "Run as Spark Ad now",
     };
   if (er >= 5)
     return {
-      label: "High Potential",
-      bg: "#F59E0B",
-      fg: "#000",
+      label: "HIGH POTENTIAL",
+      bg: "rgba(255, 159, 10, 0.12)",
+      fg: "#FF9F0A",
       action: "Monitor 48hrs, then boost",
     };
   return null;
 }
 
 function erColor(er: number): string {
-  if (er >= 8) return "#22C55E";
-  if (er >= 5) return "#F59E0B";
-  return "#fff";
+  if (er >= 8) return "var(--green, #30D158)";
+  if (er >= 5) return "#FF9F0A";
+  return "var(--ink, rgba(255,255,255,0.87))";
 }
 
-function artistAccentColor(handle: string): string {
-  let hash = 0;
-  for (let i = 0; i < handle.length; i++) {
-    hash = ((hash << 5) - hash + handle.charCodeAt(i)) | 0;
-  }
-  return ACCENT_PALETTE[Math.abs(hash) % ACCENT_PALETTE.length];
+/* ────────── shared sub-components ────────── */
+
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+      <div
+        style={{
+          width: 3,
+          height: 14,
+          borderRadius: 1,
+          background:
+            "linear-gradient(180deg, rgba(232,67,10,0.6) 0%, rgba(232,67,10,0.15) 100%)",
+        }}
+      />
+      <span
+        style={{
+          fontFamily: '"JetBrains Mono", monospace',
+          fontSize: 11,
+          fontWeight: 500,
+          color: "var(--ink-tertiary, rgba(255,255,255,0.45))",
+          textTransform: "uppercase",
+          letterSpacing: "0.10em",
+        }}
+      >
+        {children}
+      </span>
+    </div>
+  );
+}
+
+function StatCard({
+  label,
+  value,
+  sub,
+  accent,
+  delay,
+}: {
+  label: string;
+  value: string;
+  sub?: string;
+  accent?: boolean;
+  delay: number;
+}) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5, delay, ease: [0.25, 0.46, 0.45, 0.94] }}
+      style={{
+        background: accent
+          ? "linear-gradient(180deg, rgba(232,67,10,0.10) 0%, rgba(232,67,10,0.04) 100%)"
+          : "var(--surface, #1C1C1E)",
+        border: accent
+          ? "1px solid rgba(232,67,10,0.25)"
+          : "1px solid var(--border-subtle, rgba(255,255,255,0.06))",
+        borderRadius: 16,
+        padding: "22px 24px",
+        display: "flex",
+        flexDirection: "column",
+        gap: 10,
+        position: "relative",
+        overflow: "hidden",
+      }}
+    >
+      <div
+        style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          right: 0,
+          height: 2,
+          background: accent
+            ? "linear-gradient(90deg, #e8430a 0%, rgba(232,67,10,0.2) 100%)"
+            : "linear-gradient(90deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.02) 100%)",
+        }}
+      />
+      <span
+        style={{
+          fontFamily: '"JetBrains Mono", monospace',
+          fontSize: 10,
+          fontWeight: 500,
+          color: accent
+            ? "rgba(232,67,10,0.7)"
+            : "var(--ink-tertiary, rgba(255,255,255,0.45))",
+          textTransform: "uppercase",
+          letterSpacing: "0.12em",
+        }}
+      >
+        {label}
+      </span>
+      <span
+        style={{
+          fontFamily: '"JetBrains Mono", monospace',
+          fontSize: 36,
+          fontWeight: 700,
+          color: accent
+            ? "var(--accent, #e8430a)"
+            : "var(--ink, rgba(255,255,255,0.87))",
+          letterSpacing: "-0.03em",
+          lineHeight: 1,
+        }}
+      >
+        {value}
+      </span>
+      {sub && (
+        <span
+          style={{
+            fontFamily: '"JetBrains Mono", monospace',
+            fontSize: 12,
+            fontWeight: 500,
+            color: "var(--green, #30D158)",
+            display: "flex",
+            alignItems: "center",
+            gap: 4,
+          }}
+        >
+          {sub}
+        </span>
+      )}
+    </motion.div>
+  );
 }
 
 function AvatarCircle({
@@ -134,8 +240,13 @@ function AvatarCircle({
       <img
         src={url}
         alt={name}
-        className="rounded-full object-cover flex-shrink-0"
-        style={{ width: size, height: size }}
+        style={{
+          width: size,
+          height: size,
+          borderRadius: "50%",
+          objectFit: "cover",
+          flexShrink: 0,
+        }}
         onError={(e) => {
           (e.target as HTMLImageElement).style.display = "none";
         }}
@@ -144,12 +255,17 @@ function AvatarCircle({
   }
   return (
     <div
-      className="rounded-full flex items-center justify-center flex-shrink-0 font-bold"
       style={{
         width: size,
         height: size,
-        background: "#3A3A3C",
-        color: "#fff",
+        borderRadius: "50%",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        flexShrink: 0,
+        fontWeight: 700,
+        background: "var(--overlay-active, rgba(255,255,255,0.06))",
+        color: "var(--ink, rgba(255,255,255,0.87))",
         fontSize: size * 0.4,
       }}
     >
@@ -279,19 +395,16 @@ export default function PaidAmplificationTab({
     }
   }
 
-  // Grid view: only ER ≥ 5, top 12
   const top12 = useMemo(
     () => allVideos.filter((v) => v.er >= 5).slice(0, 12),
     [allVideos],
   );
 
-  // For artist pulse, still use ER ≥ 5 subset
   const videos5 = useMemo(
     () => allVideos.filter((v) => v.er >= 5),
     [allVideos],
   );
 
-  // Table view: all ER ≥ 3, sorted
   const tableVideos = useMemo(() => {
     const sorted = [...allVideos];
     sorted.sort((a, b) => {
@@ -396,607 +509,1319 @@ export default function PaidAmplificationTab({
       });
   }, [rosterMetrics, videos5, avatarMap]);
 
+  // Summary stats
+  const boostReady = useMemo(
+    () => allVideos.filter((v) => v.er >= 8).length,
+    [allVideos],
+  );
+  const highPotential = useMemo(
+    () => allVideos.filter((v) => v.er >= 5 && v.er < 8).length,
+    [allVideos],
+  );
+  const avgER = useMemo(() => {
+    if (allVideos.length === 0) return 0;
+    return allVideos.reduce((s, v) => s + v.er, 0) / allVideos.length;
+  }, [allVideos]);
+  const topER = useMemo(
+    () => (allVideos.length > 0 ? allVideos[0].er : 0),
+    [allVideos],
+  );
+
   if (loading) {
     return (
-      <div className="space-y-10">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div style={{ display: "flex", flexDirection: "column", gap: 56 }}>
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.3 }}
+        >
+          <Skeleton
+            style={{
+              height: 44,
+              width: 320,
+              background: "var(--surface, #1C1C1E)",
+              borderRadius: 8,
+              marginBottom: 12,
+            }}
+          />
+          <Skeleton
+            style={{
+              height: 18,
+              width: 480,
+              background: "var(--surface, #1C1C1E)",
+              borderRadius: 6,
+            }}
+          />
+        </motion.div>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(4, 1fr)",
+            gap: 12,
+          }}
+        >
           {Array.from({ length: 4 }).map((_, i) => (
-            <Skeleton
+            <motion.div
               key={i}
-              className="h-40 rounded-2xl"
-              style={{ background: "#1C1C1E" }}
-            />
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, delay: 0.1 + i * 0.06 }}
+            >
+              <Skeleton
+                style={{
+                  height: 120,
+                  borderRadius: 16,
+                  background: "var(--surface, #1C1C1E)",
+                }}
+              />
+            </motion.div>
           ))}
         </div>
-        <div className="flex gap-4">
-          {Array.from({ length: 5 }).map((_, i) => (
-            <Skeleton
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(2, 1fr)",
+            gap: 12,
+          }}
+        >
+          {Array.from({ length: 4 }).map((_, i) => (
+            <motion.div
               key={i}
-              className="h-36 w-36 rounded-2xl flex-shrink-0"
-              style={{ background: "#1C1C1E" }}
-            />
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, delay: 0.35 + i * 0.06 }}
+            >
+              <Skeleton
+                style={{
+                  height: 160,
+                  borderRadius: 16,
+                  background: "var(--surface, #1C1C1E)",
+                }}
+              />
+            </motion.div>
           ))}
         </div>
       </div>
     );
   }
 
-  const SortHeader = ({
-    label,
-    colKey,
-    align = "left",
-  }: {
-    label: string;
-    colKey: SortKey;
-    align?: "left" | "right";
-  }) => (
-    <th
-      onClick={() => toggleSort(colKey)}
-      className="cursor-pointer select-none whitespace-nowrap px-3 py-3 text-[11px] uppercase tracking-wider font-semibold"
-      style={{
-        color: sortKey === colKey ? "#fff" : "#8E8E93",
-        textAlign: align,
-        background: "#1C1C1E",
-      }}
-    >
-      <span className="inline-flex items-center gap-1">
-        {label}
-        {sortKey === colKey ? (
-          sortDir === "asc" ? (
-            <ArrowUp size={10} />
-          ) : (
-            <ArrowDown size={10} />
-          )
-        ) : null}
-      </span>
-    </th>
-  );
-
   return (
-    <div className="space-y-10">
-      {/* ─── Section 1: Ready to Boost ─── */}
-      <section className="space-y-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-lg font-bold" style={{ color: "#fff" }}>
-              Ready to Boost
-            </h2>
-            <p className="text-xs mt-0.5" style={{ color: "#8E8E93" }}>
-              Last 12 months
-            </p>
-          </div>
-          <div className="flex items-center gap-1">
-            <button
-              onClick={() => setViewMode("grid")}
-              className="p-1.5 rounded-md transition-colors"
-              style={{
-                color: viewMode === "grid" ? "#fff" : "#8E8E93",
-                background: viewMode === "grid" ? "#3A3A3C" : "transparent",
-              }}
-              title="Grid view"
-            >
-              <LayoutGrid size={16} />
-            </button>
-            <button
-              onClick={() => setViewMode("table")}
-              className="p-1.5 rounded-md transition-colors"
-              style={{
-                color: viewMode === "table" ? "#fff" : "#8E8E93",
-                background: viewMode === "table" ? "#3A3A3C" : "transparent",
-              }}
-              title="Table view"
-            >
-              <List size={16} />
-            </button>
+    <div style={{ display: "flex", flexDirection: "column", gap: 56 }}>
+      {/* ── 1. Page Header ── */}
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4 }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 14,
+            marginBottom: 8,
+          }}
+        >
+          <h1
+            style={{
+              fontFamily: '"DM Sans", sans-serif',
+              fontSize: 38,
+              fontWeight: 800,
+              color: "var(--ink, rgba(255,255,255,0.92))",
+              letterSpacing: "-0.03em",
+              margin: 0,
+            }}
+          >
+            Paid Amplification
+          </h1>
+        </div>
+        <p
+          style={{
+            fontFamily: '"DM Sans", sans-serif',
+            fontSize: 14,
+            color: "var(--ink-tertiary, rgba(255,255,255,0.45))",
+            margin: 0,
+            maxWidth: 640,
+            lineHeight: 1.5,
+          }}
+        >
+          Identify high-engagement content ready to boost — sorted by engagement
+          rate across your entire roster.
+        </p>
+      </motion.div>
+
+      {/* ── 2. Stats Row ── */}
+      <motion.div
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, delay: 0.1 }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+          }}
+        >
+          <SectionLabel>Overview</SectionLabel>
+          <span
+            style={{
+              fontFamily: '"JetBrains Mono", monospace',
+              fontSize: 10,
+              fontWeight: 500,
+              color: "var(--ink-faint, rgba(255,255,255,0.25))",
+              letterSpacing: "0.04em",
+              padding: "3px 8px",
+              borderRadius: 4,
+              background: "var(--overlay-hover, rgba(255,255,255,0.03))",
+            }}
+          >
+            LAST 12 MONTHS
+          </span>
+        </div>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(4, 1fr)",
+            gap: 12,
+            marginTop: 14,
+          }}
+        >
+          <StatCard
+            label="Boost Ready"
+            value={String(boostReady)}
+            sub={`ER \u2265 8%`}
+            accent
+            delay={0.15}
+          />
+          <StatCard
+            label="High Potential"
+            value={String(highPotential)}
+            sub={`ER \u2265 5%`}
+            delay={0.2}
+          />
+          <StatCard
+            label="Avg Engagement"
+            value={`${avgER.toFixed(1)}%`}
+            delay={0.25}
+          />
+          <StatCard label="Top ER" value={`${topER.toFixed(1)}%`} delay={0.3} />
+        </div>
+      </motion.div>
+
+      {/* ── 3. Ready to Boost ── */}
+      <motion.div
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, delay: 0.25 }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            marginBottom: 14,
+          }}
+        >
+          <SectionLabel>Ready to Boost</SectionLabel>
+          <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
+            {(
+              [
+                { key: "grid" as const, icon: LayoutGrid, label: "Grid" },
+                { key: "table" as const, icon: List, label: "Table" },
+              ] as const
+            ).map((tab) => (
+              <button
+                key={tab.key}
+                onClick={() => setViewMode(tab.key)}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  width: 32,
+                  height: 32,
+                  borderRadius: 8,
+                  border: "none",
+                  cursor: "pointer",
+                  background:
+                    viewMode === tab.key
+                      ? "var(--overlay-active, rgba(255,255,255,0.06))"
+                      : "transparent",
+                  color:
+                    viewMode === tab.key
+                      ? "var(--ink, rgba(255,255,255,0.87))"
+                      : "var(--ink-faint, rgba(255,255,255,0.3))",
+                  transition: "all 150ms",
+                }}
+                title={`${tab.label} view`}
+              >
+                <tab.icon size={15} />
+              </button>
+            ))}
           </div>
         </div>
 
         {viewMode === "grid" ? (
-          /* ─── Grid View ─── */
-          top12.length === 0 ? (
-            <p className="text-sm py-8 text-center" style={{ color: "#888" }}>
-              No recent high-engagement content — check back after new posts.
-            </p>
+          <GridView videos={top12} avatarMap={avatarMap} />
+        ) : (
+          <TableView
+            videos={tableVideos}
+            avatarMap={avatarMap}
+            sortKey={sortKey}
+            sortDir={sortDir}
+            toggleSort={toggleSort}
+          />
+        )}
+      </motion.div>
+
+      {/* ── 4. Artist Ad Readiness ── */}
+      <motion.div
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, delay: 0.35 }}
+      >
+        <SectionLabel>Artist Ad Readiness</SectionLabel>
+        <div style={{ marginTop: 14 }}>
+          {artistPulse.length === 0 ? (
+            <div
+              style={{
+                background: "var(--surface, #1C1C1E)",
+                borderRadius: 16,
+                border:
+                  "1px solid var(--border-subtle, rgba(255,255,255,0.06))",
+                padding: "32px 20px",
+                textAlign: "center",
+              }}
+            >
+              <p
+                style={{
+                  fontFamily: '"DM Sans", sans-serif',
+                  fontSize: 13,
+                  color: "var(--ink-faint, rgba(255,255,255,0.35))",
+                  margin: 0,
+                }}
+              >
+                No artists with qualifying videos yet.
+              </p>
+            </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {top12.map((v) => {
-                const badge = erBadge(v.er);
-                if (!badge) return null;
-                const tiktokUrl = v.video_url || v.video_embedded_url;
-                const accent = artistAccentColor(v.artist_handle);
-                const avatar = avatarMap.get(v.artist_handle) || null;
+            <ScrollCarouselWrapper>
+              {artistPulse.map((a) => {
+                const isReady = a.readiness === "ready";
                 return (
                   <div
-                    key={v.id}
-                    className="rounded-2xl overflow-visible flex border border-white/[0.06] hover:border-white/10 transition-all duration-200 ease-in-out hover:scale-[1.02] hover:shadow-[0_4px_20px_rgba(255,255,255,0.06)]"
+                    key={a.handle}
                     style={{
-                      background: "#1C1C1E",
-                      borderLeft: `3px solid ${accent}`,
+                      flexShrink: 0,
+                      width: 164,
+                      background: "var(--surface, #1C1C1E)",
+                      border:
+                        "1px solid var(--border-subtle, rgba(255,255,255,0.06))",
+                      borderRadius: 16,
+                      padding: "20px 16px",
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      gap: 12,
+                      scrollSnapAlign: "start",
+                      transition: "border-color 200ms, transform 200ms",
+                      cursor: "default",
+                      position: "relative",
+                      overflow: "hidden",
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.borderColor =
+                        "rgba(255,255,255,0.12)";
+                      e.currentTarget.style.transform = "translateY(-2px)";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.borderColor =
+                        "var(--border-subtle, rgba(255,255,255,0.06))";
+                      e.currentTarget.style.transform = "translateY(0)";
                     }}
                   >
-                    {/* Thumbnail */}
-                    <a
-                      href={tiktokUrl || "#"}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex-shrink-0 w-[120px] overflow-hidden"
-                      style={{ aspectRatio: "9/16", maxHeight: 200 }}
+                    <div
+                      style={{
+                        position: "absolute",
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        height: 2,
+                        background: isReady
+                          ? "linear-gradient(90deg, rgba(48,209,88,0.4) 0%, rgba(48,209,88,0.05) 100%)"
+                          : "linear-gradient(90deg, rgba(255,159,10,0.4) 0%, rgba(255,159,10,0.05) 100%)",
+                      }}
+                    />
+                    <AvatarCircle url={a.avatarUrl} name={a.name} size={48} />
+                    <span
+                      style={{
+                        fontFamily: '"DM Sans", sans-serif',
+                        fontSize: 12,
+                        fontWeight: 600,
+                        color: "var(--ink, rgba(255,255,255,0.87))",
+                        textOverflow: "ellipsis",
+                        overflow: "hidden",
+                        whiteSpace: "nowrap",
+                        width: "100%",
+                        textAlign: "center",
+                      }}
                     >
-                      <TikTokThumbnail
-                        videoId={v.id}
-                        tiktokUrl={tiktokUrl || ""}
-                        className="w-full h-full"
-                      />
-                    </a>
-
-                    {/* Content */}
-                    <div className="flex-1 p-4 flex flex-col gap-2 min-w-0 relative">
-                      {/* Badge top-right */}
-                      <div className="absolute top-3 right-3 flex flex-col items-end gap-0.5">
-                        <span
-                          className="text-[11px] font-bold px-2 py-0.5 rounded-full"
-                          style={{ background: badge.bg, color: badge.fg }}
-                        >
-                          {badge.label}
-                        </span>
-                        <span
-                          className="text-[10px]"
-                          style={{ color: "#8E8E93" }}
-                        >
-                          {badge.action}
-                        </span>
-                      </div>
-
-                      {/* Artist row */}
-                      <div className="flex items-center gap-2 pr-28">
-                        <AvatarCircle
-                          url={avatar}
-                          name={v.artist_name}
-                          size={32}
-                        />
-                        <span
-                          className="text-xs font-medium truncate"
-                          style={{ color: "#fff" }}
-                        >
-                          @{v.artist_handle?.replace(/^@+/, "")}
-                        </span>
-                      </div>
-
-                      {/* Caption */}
-                      <p
-                        className="text-xs leading-snug line-clamp-1 pr-28"
-                        style={{ color: "#ccc" }}
-                      >
-                        {v.caption || "No caption"}
-                      </p>
-
-                      {/* Date */}
-                      <span className="text-[10px]" style={{ color: "#555" }}>
-                        {relativeDate(v.date_posted)}
-                      </span>
-
-                      {/* Stats row */}
+                      @{a.handle?.replace(/^@+/, "")}
+                    </span>
+                    <span
+                      style={{
+                        fontFamily: '"DM Sans", sans-serif',
+                        fontSize: 10,
+                        fontWeight: 700,
+                        letterSpacing: "0.08em",
+                        padding: "4px 10px",
+                        borderRadius: 6,
+                        background: isReady
+                          ? "rgba(48,209,88,0.12)"
+                          : "rgba(255,159,10,0.12)",
+                        color: isReady ? "var(--green, #30D158)" : "#FF9F0A",
+                      }}
+                    >
+                      {isReady ? "READY" : "BUILDING"}
+                    </span>
+                    <div style={{ textAlign: "center" }}>
                       <div
-                        className="flex items-center gap-4 text-[11px] mt-auto"
-                        style={{ color: "#8E8E93" }}
+                        style={{
+                          fontFamily: '"JetBrains Mono", monospace',
+                          fontSize: 10,
+                          color: "var(--ink-faint, rgba(255,255,255,0.35))",
+                          textTransform: "uppercase",
+                          letterSpacing: "0.04em",
+                          marginBottom: 4,
+                        }}
                       >
-                        <span className="flex items-center gap-1">
-                          <Eye size={11} /> {fmt(v.video_views)}
-                        </span>
-                        <span
-                          className="flex items-center gap-1 font-bold"
-                          style={{ color: badge.bg }}
-                        >
-                          <TrendingUp size={11} /> {v.er.toFixed(1)}%
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <Heart size={11} /> {fmt(v.video_likes)}
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <Share2 size={11} /> {fmt(v.video_shares)}
-                        </span>
-                        {tiktokUrl && (
-                          <a
-                            href={tiktokUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex items-center gap-1 ml-auto hover:underline"
-                            style={{ color: "#8E8E93" }}
-                          >
-                            <ExternalLink size={10} />
-                          </a>
-                        )}
+                        Best ER
+                      </div>
+                      <div
+                        style={{
+                          fontFamily: '"JetBrains Mono", monospace',
+                          fontSize: 18,
+                          fontWeight: 700,
+                          color: "var(--ink, rgba(255,255,255,0.87))",
+                        }}
+                      >
+                        {a.bestER.toFixed(1)}%
                       </div>
                     </div>
                   </div>
                 );
               })}
-            </div>
-          )
-        ) : /* ─── Table View ─── */
-        tableVideos.length === 0 ? (
-          <p className="text-sm py-8 text-center" style={{ color: "#888" }}>
-            No recent high-engagement content — check back after new posts.
-          </p>
-        ) : (
-          <div
-            className="rounded-2xl overflow-hidden"
-            style={{ border: "1px solid rgba(255,255,255,0.06)" }}
-          >
-            <div className="overflow-auto max-h-[600px]">
-              <table
-                className="w-full text-left border-collapse"
-                style={{ background: "#1C1C1E" }}
-              >
-                <thead
-                  className="sticky top-0 z-10"
-                  style={{ background: "#1C1C1E" }}
-                >
-                  <tr style={{ borderBottom: "1px solid #3A3A3C" }}>
-                    <th
-                      className="px-3 py-3 text-[11px] uppercase tracking-wider font-semibold"
-                      style={{ color: "#8E8E93", background: "#1C1C1E" }}
-                    >
-                      Thumb
-                    </th>
-                    <SortHeader label="Artist" colKey="artist_handle" />
-                    <th
-                      className="px-3 py-3 text-[11px] uppercase tracking-wider font-semibold"
-                      style={{ color: "#8E8E93", background: "#1C1C1E" }}
-                    >
-                      Caption
-                    </th>
-                    <SortHeader
-                      label="Views"
-                      colKey="video_views"
-                      align="right"
-                    />
-                    <SortHeader
-                      label="Likes"
-                      colKey="video_likes"
-                      align="right"
-                    />
-                    <SortHeader
-                      label="Shares"
-                      colKey="video_shares"
-                      align="right"
-                    />
-                    <SortHeader
-                      label="Saves"
-                      colKey="video_saves"
-                      align="right"
-                    />
-                    <SortHeader
-                      label="Comments"
-                      colKey="video_comments"
-                      align="right"
-                    />
-                    <SortHeader label="ER%" colKey="er" align="right" />
-                    <th
-                      className="px-3 py-3 text-[11px] uppercase tracking-wider font-semibold"
-                      style={{ color: "#8E8E93", background: "#1C1C1E" }}
-                    >
-                      Status
-                    </th>
-                    <SortHeader
-                      label="Posted"
-                      colKey="date_posted"
-                      align="right"
-                    />
-                    <th
-                      className="px-3 py-3 text-[11px] uppercase tracking-wider font-semibold"
-                      style={{ color: "#8E8E93", background: "#1C1C1E" }}
-                    >
-                      Action
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {tableVideos.map((v, idx) => {
-                    const badge = erBadge(v.er);
-                    const tiktokUrl = v.video_url || v.video_embedded_url;
-                    const avatar = avatarMap.get(v.artist_handle) || null;
-                    const rowBg = idx % 2 === 0 ? "#1C1C1E" : "#2C2C2E";
+            </ScrollCarouselWrapper>
+          )}
+        </div>
+      </motion.div>
 
-                    return (
-                      <tr
-                        key={v.id}
-                        className="transition-colors"
-                        style={{
-                          background: rowBg,
-                          borderBottom: "0.5px solid rgba(255,255,255,0.06)",
-                        }}
-                        onMouseEnter={(e) =>
-                          (e.currentTarget.style.background = "#3A3A3C")
-                        }
-                        onMouseLeave={(e) =>
-                          (e.currentTarget.style.background = rowBg)
-                        }
-                      >
-                        {/* Thumbnail */}
-                        <td className="px-3 py-2">
-                          <div className="w-12 h-12 rounded-lg overflow-hidden flex-shrink-0">
-                            <TikTokThumbnail
-                              videoId={v.id}
-                              tiktokUrl={tiktokUrl || ""}
-                              className="w-12 h-12"
-                            />
-                          </div>
-                        </td>
+      {/* ── 5. Ad Impact Attribution ── */}
+      <motion.div
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, delay: 0.45 }}
+      >
+        <SectionLabel>Ad Impact Attribution</SectionLabel>
+        <div style={{ marginTop: 14 }}>
+          <AdImpactSection avatarMap={avatarMap} />
+        </div>
+      </motion.div>
 
-                        {/* Artist */}
-                        <td className="px-3 py-2">
-                          <div className="flex items-center gap-2">
-                            <AvatarCircle
-                              url={avatar}
-                              name={v.artist_name}
-                              size={24}
-                            />
-                            <span
-                              className="text-xs font-medium truncate max-w-[100px]"
-                              style={{ color: "#fff" }}
-                            >
-                              @{v.artist_handle?.replace(/^@+/, "")}
-                            </span>
-                          </div>
-                        </td>
-
-                        {/* Caption */}
-                        <td className="px-3 py-2">
-                          <span
-                            className="text-xs truncate block max-w-[160px]"
-                            style={{ color: "#ccc" }}
-                          >
-                            {(v.caption || "No caption").slice(0, 40)}
-                            {(v.caption?.length || 0) > 40 ? "…" : ""}
-                          </span>
-                        </td>
-
-                        {/* Views */}
-                        <td className="px-3 py-2 text-right">
-                          <span
-                            className="text-xs tabular-nums"
-                            style={{ color: "#fff" }}
-                          >
-                            {fmt(v.video_views)}
-                          </span>
-                        </td>
-
-                        {/* Likes */}
-                        <td className="px-3 py-2 text-right">
-                          <span
-                            className="text-xs tabular-nums"
-                            style={{ color: "#8E8E93" }}
-                          >
-                            {fmt(v.video_likes)}
-                          </span>
-                        </td>
-
-                        {/* Shares */}
-                        <td className="px-3 py-2 text-right">
-                          <span
-                            className="text-xs tabular-nums"
-                            style={{ color: "#8E8E93" }}
-                          >
-                            {fmt(v.video_shares)}
-                          </span>
-                        </td>
-
-                        {/* Saves */}
-                        <td className="px-3 py-2 text-right">
-                          <span
-                            className="text-xs tabular-nums"
-                            style={{ color: "#8E8E93" }}
-                          >
-                            {fmt(v.video_saves)}
-                          </span>
-                        </td>
-
-                        {/* Comments */}
-                        <td className="px-3 py-2 text-right">
-                          <span
-                            className="text-xs tabular-nums"
-                            style={{ color: "#8E8E93" }}
-                          >
-                            {fmt(v.video_comments)}
-                          </span>
-                        </td>
-
-                        {/* ER% */}
-                        <td className="px-3 py-2 text-right">
-                          <span
-                            className="text-xs font-bold tabular-nums"
-                            style={{ color: erColor(v.er) }}
-                          >
-                            {v.er.toFixed(1)}%
-                          </span>
-                        </td>
-
-                        {/* Status */}
-                        <td className="px-3 py-2">
-                          {badge ? (
-                            <span
-                              className="text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap"
-                              style={{ background: badge.bg, color: badge.fg }}
-                            >
-                              {badge.label}
-                            </span>
-                          ) : null}
-                        </td>
-
-                        {/* Posted */}
-                        <td className="px-3 py-2 text-right">
-                          <span
-                            className="text-[11px] whitespace-nowrap"
-                            style={{ color: "#8E8E93" }}
-                          >
-                            {relativeDate(v.date_posted)}
-                          </span>
-                        </td>
-
-                        {/* Action */}
-                        <td className="px-3 py-2 text-center">
-                          {tiktokUrl && (
-                            <a
-                              href={tiktokUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center justify-center hover:opacity-80"
-                              style={{ color: "#8E8E93" }}
-                              title="View on TikTok"
-                            >
-                              <ExternalLink size={14} />
-                            </a>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-      </section>
-
-      {/* ─── Section 2: Artist Ad Readiness ─── */}
-      <section className="space-y-4">
-        <h2 className="text-lg font-bold" style={{ color: "#fff" }}>
-          Artist Ad Readiness
-        </h2>
-
-        {artistPulse.length === 0 ? (
-          <p className="text-sm py-4" style={{ color: "#888" }}>
-            No artists with qualifying videos yet.
-          </p>
-        ) : (
-          <ScrollCarouselWrapper>
-            {artistPulse.map((a) => {
-              const isReady = a.readiness === "ready";
-              return (
+      {/* ── 6. Quick Reference ── */}
+      <motion.div
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, delay: 0.55 }}
+      >
+        <SectionLabel>Quick Reference</SectionLabel>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(3, 1fr)",
+            gap: 12,
+            marginTop: 14,
+          }}
+        >
+          {[
+            {
+              icon: Zap,
+              label: "Format",
+              value: "15\u201330s Spark Ads",
+              desc: "Native-looking promoted posts",
+            },
+            {
+              icon: Target,
+              label: "Test Budget",
+              value: "$200\u2013500",
+              desc: "Per video test spend",
+            },
+            {
+              icon: BarChart3,
+              label: "Scale Budget",
+              value: "$1\u20133K",
+              desc: "Per video at scale",
+            },
+          ].map((item) => (
+            <div
+              key={item.label}
+              style={{
+                background: "var(--surface, #1C1C1E)",
+                border:
+                  "1px solid var(--border-subtle, rgba(255,255,255,0.06))",
+                borderRadius: 16,
+                padding: "20px 24px",
+                display: "flex",
+                flexDirection: "column",
+                gap: 12,
+              }}
+            >
+              <item.icon
+                size={16}
+                color="var(--ink-tertiary, rgba(255,255,255,0.45))"
+                strokeWidth={1.5}
+              />
+              <div>
                 <div
-                  key={a.handle}
-                  className="flex-shrink-0 w-40 rounded-2xl p-4 flex flex-col items-center gap-3 snap-start transition-all duration-200 hover:scale-[1.03]"
                   style={{
-                    background: "#1C1C1E",
-                    border: "1px solid rgba(255,255,255,0.06)",
+                    fontFamily: '"JetBrains Mono", monospace',
+                    fontSize: 10,
+                    fontWeight: 500,
+                    color: "var(--ink-tertiary, rgba(255,255,255,0.45))",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.12em",
+                    marginBottom: 6,
                   }}
                 >
-                  <AvatarCircle url={a.avatarUrl} name={a.name} size={48} />
-                  <span
-                    className="text-xs font-semibold truncate w-full text-center"
-                    style={{ color: "#fff" }}
-                  >
-                    @{a.handle?.replace(/^@+/, "")}
-                  </span>
-                  <span
-                    className="text-[10px] font-semibold px-2.5 py-1 rounded-md"
-                    style={{
-                      background: isReady
-                        ? "rgba(34,197,94,0.12)"
-                        : "rgba(245,158,11,0.12)",
-                      color: isReady ? "#22C55E" : "#F59E0B",
-                    }}
-                  >
-                    {isReady ? "Ready" : "Getting there"}
-                  </span>
-                  <span className="text-[11px]" style={{ color: "#8E8E93" }}>
-                    Best ER:{" "}
-                    <span className="font-bold" style={{ color: "#fff" }}>
-                      {a.bestER.toFixed(1)}%
-                    </span>
-                  </span>
-                </div>
-              );
-            })}
-          </ScrollCarouselWrapper>
-        )}
-      </section>
-
-      {/* ─── Ad Impact Attribution ─── */}
-      <AdImpactSection avatarMap={avatarMap} />
-
-      {/* ─── Section 3: Quick Reference ─── */}
-      <section>
-        <div
-          className="rounded-2xl p-6"
-          style={{
-            background: "#1C1C1E",
-            border: "1px solid rgba(255,255,255,0.06)",
-          }}
-        >
-          <h3 className="text-sm font-bold mb-5" style={{ color: "#fff" }}>
-            Quick Reference
-          </h3>
-          <div className="grid grid-cols-3 gap-6">
-            {[
-              { label: "Format", value: "15–30s Spark Ads" },
-              { label: "Test Budget", value: "$200–500 per video" },
-              { label: "Scale Budget", value: "$1–3K per video" },
-            ].map((item) => (
-              <div key={item.label}>
-                <span
-                  className="text-[10px] uppercase tracking-wider font-semibold"
-                  style={{ color: "#8E8E93" }}
-                >
                   {item.label}
-                </span>
-                <p
-                  className="text-sm font-semibold mt-1.5"
-                  style={{ color: "rgba(255,255,255,0.87)" }}
+                </div>
+                <div
+                  style={{
+                    fontFamily: '"DM Sans", sans-serif',
+                    fontSize: 18,
+                    fontWeight: 700,
+                    color: "var(--ink, rgba(255,255,255,0.87))",
+                    letterSpacing: "-0.01em",
+                  }}
                 >
                   {item.value}
-                </p>
+                </div>
               </div>
-            ))}
-          </div>
+              <div
+                style={{
+                  fontFamily: '"DM Sans", sans-serif',
+                  fontSize: 12,
+                  color: "var(--ink-faint, rgba(255,255,255,0.35))",
+                  lineHeight: 1.4,
+                }}
+              >
+                {item.desc}
+              </div>
+            </div>
+          ))}
         </div>
-      </section>
+      </motion.div>
 
-      {/* ─── Section 4: AI Ad Brief Generator (teaser) ─── */}
-      <section>
+      {/* ── 7. AI Ad Brief CTA ── */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, delay: 0.7 }}
+        style={{
+          background:
+            "linear-gradient(135deg, rgba(139,92,246,0.08) 0%, rgba(139,92,246,0.02) 100%)",
+          border: "1px solid rgba(139,92,246,0.2)",
+          borderRadius: 20,
+          padding: "32px 36px",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 24,
+        }}
+      >
         <div
-          className="rounded-2xl p-6 md:p-8 flex flex-col md:flex-row items-start md:items-center justify-between gap-4"
           style={{
-            background: "#1C1C1E",
-            border: "1px solid rgba(255,255,255,0.06)",
+            display: "flex",
+            alignItems: "flex-start",
+            gap: 16,
+            flex: 1,
           }}
         >
-          <div className="flex items-start gap-3 flex-1">
-            <div
-              className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
-              style={{ background: "rgba(139,92,246,0.12)" }}
-            >
-              <Lock size={16} style={{ color: "#A78BFA" }} />
-            </div>
-            <div className="space-y-1.5">
-              <h3 className="text-sm font-bold" style={{ color: "#fff" }}>
-                AI Ad Brief Generator
-              </h3>
-              <p
-                className="text-[13px] leading-relaxed"
-                style={{ color: "rgba(255,255,255,0.5)" }}
-              >
-                Automatically generate ad briefs, targeting recommendations, and
-                creative scripts tailored to each artist's highest-performing
-                content.
-              </p>
-              <p
-                className="text-[11px]"
-                style={{ color: "rgba(255,255,255,0.25)" }}
-              >
-                Available in Pro tier — currently in beta with select labels
-              </p>
-            </div>
-          </div>
-          <span
-            className="text-[11px] font-semibold px-3 py-1.5 rounded-md flex-shrink-0"
-            style={{ background: "rgba(139,92,246,0.12)", color: "#A78BFA" }}
+          <div
+            style={{
+              width: 40,
+              height: 40,
+              borderRadius: 12,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              flexShrink: 0,
+              background: "rgba(139,92,246,0.12)",
+            }}
           >
-            Coming Soon
-          </span>
+            <Lock size={18} color="#A78BFA" />
+          </div>
+          <div>
+            <h3
+              style={{
+                fontFamily: '"DM Sans", sans-serif',
+                fontSize: 18,
+                fontWeight: 700,
+                color: "var(--ink, rgba(255,255,255,0.87))",
+                margin: "0 0 6px",
+              }}
+            >
+              AI Ad Brief Generator
+            </h3>
+            <p
+              style={{
+                fontFamily: '"DM Sans", sans-serif',
+                fontSize: 13,
+                color: "var(--ink-tertiary, rgba(255,255,255,0.5))",
+                margin: "0 0 4px",
+                lineHeight: 1.5,
+                maxWidth: 480,
+              }}
+            >
+              Automatically generate ad briefs, targeting recommendations, and
+              creative scripts tailored to each artist's highest-performing
+              content.
+            </p>
+            <p
+              style={{
+                fontFamily: '"DM Sans", sans-serif',
+                fontSize: 11,
+                color: "var(--ink-faint, rgba(255,255,255,0.25))",
+                margin: 0,
+              }}
+            >
+              Available in Pro tier — currently in beta with select labels
+            </p>
+          </div>
         </div>
-      </section>
+        <span
+          style={{
+            fontFamily: '"DM Sans", sans-serif',
+            fontSize: 11,
+            fontWeight: 700,
+            letterSpacing: "0.08em",
+            padding: "6px 14px",
+            borderRadius: 8,
+            background: "rgba(139,92,246,0.12)",
+            color: "#A78BFA",
+            flexShrink: 0,
+          }}
+        >
+          COMING SOON
+        </span>
+      </motion.div>
+    </div>
+  );
+}
+
+/* ────────── Grid View ────────── */
+
+function GridView({
+  videos,
+  avatarMap,
+}: {
+  videos: VideoWithER[];
+  avatarMap: Map<string, string | null>;
+}) {
+  if (videos.length === 0) {
+    return (
+      <div
+        style={{
+          background: "var(--surface, #1C1C1E)",
+          borderRadius: 16,
+          border: "1px solid var(--border-subtle, rgba(255,255,255,0.06))",
+          padding: "40px 20px",
+          textAlign: "center",
+        }}
+      >
+        <p
+          style={{
+            fontFamily: '"DM Sans", sans-serif',
+            fontSize: 13,
+            color: "var(--ink-faint, rgba(255,255,255,0.35))",
+            margin: 0,
+          }}
+        >
+          No recent high-engagement content — check back after new posts.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(2, 1fr)",
+        gap: 12,
+      }}
+    >
+      {videos.map((v, i) => {
+        const badge = erBadge(v.er);
+        if (!badge) return null;
+        const tiktokUrl = v.video_url || v.video_embedded_url;
+        const avatar = avatarMap.get(v.artist_handle) || null;
+
+        return (
+          <motion.div
+            key={v.id}
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, delay: 0.05 * i }}
+            style={{
+              background: "var(--surface, #1C1C1E)",
+              border: "1px solid var(--border-subtle, rgba(255,255,255,0.06))",
+              borderRadius: 16,
+              display: "flex",
+              overflow: "hidden",
+              transition: "border-color 200ms, transform 200ms",
+              cursor: "default",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.borderColor = "rgba(255,255,255,0.12)";
+              e.currentTarget.style.transform = "translateY(-1px)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.borderColor =
+                "var(--border-subtle, rgba(255,255,255,0.06))";
+              e.currentTarget.style.transform = "translateY(0)";
+            }}
+          >
+            {/* Thumbnail */}
+            <a
+              href={tiktokUrl || "#"}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                flexShrink: 0,
+                width: 110,
+                overflow: "hidden",
+                display: "block",
+              }}
+            >
+              <TikTokThumbnail
+                videoId={v.id}
+                tiktokUrl={tiktokUrl || ""}
+                className="w-full h-full"
+              />
+            </a>
+
+            {/* Content */}
+            <div
+              style={{
+                flex: 1,
+                padding: "16px 18px",
+                display: "flex",
+                flexDirection: "column",
+                gap: 8,
+                minWidth: 0,
+                position: "relative",
+              }}
+            >
+              {/* Badge */}
+              <div
+                style={{
+                  position: "absolute",
+                  top: 14,
+                  right: 14,
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "flex-end",
+                  gap: 2,
+                }}
+              >
+                <span
+                  style={{
+                    fontFamily: '"DM Sans", sans-serif',
+                    fontSize: 10,
+                    fontWeight: 700,
+                    letterSpacing: "0.08em",
+                    padding: "3px 8px",
+                    borderRadius: 6,
+                    background: badge.bg,
+                    color: badge.fg,
+                  }}
+                >
+                  {badge.label}
+                </span>
+                <span
+                  style={{
+                    fontFamily: '"DM Sans", sans-serif',
+                    fontSize: 10,
+                    color: "var(--ink-faint, rgba(255,255,255,0.3))",
+                  }}
+                >
+                  {badge.action}
+                </span>
+              </div>
+
+              {/* Artist */}
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  paddingRight: 120,
+                }}
+              >
+                <AvatarCircle url={avatar} name={v.artist_name} size={28} />
+                <span
+                  style={{
+                    fontFamily: '"DM Sans", sans-serif',
+                    fontSize: 12,
+                    fontWeight: 600,
+                    color: "var(--ink, rgba(255,255,255,0.87))",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  @{v.artist_handle?.replace(/^@+/, "")}
+                </span>
+              </div>
+
+              {/* Caption */}
+              <p
+                style={{
+                  fontFamily: '"DM Sans", sans-serif',
+                  fontSize: 12,
+                  color: "var(--ink-secondary, rgba(255,255,255,0.55))",
+                  margin: 0,
+                  lineHeight: 1.4,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                  paddingRight: 120,
+                }}
+              >
+                {v.caption || "No caption"}
+              </p>
+
+              {/* Date */}
+              <span
+                style={{
+                  fontFamily: '"JetBrains Mono", monospace',
+                  fontSize: 10,
+                  color: "var(--ink-faint, rgba(255,255,255,0.25))",
+                }}
+              >
+                {relativeDate(v.date_posted)}
+              </span>
+
+              {/* Stats row */}
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 14,
+                  marginTop: "auto",
+                  fontFamily: '"JetBrains Mono", monospace',
+                  fontSize: 11,
+                  color: "var(--ink-faint, rgba(255,255,255,0.4))",
+                }}
+              >
+                <span
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 4,
+                  }}
+                >
+                  <Eye size={11} /> {fmt(v.video_views)}
+                </span>
+                <span
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 4,
+                    fontWeight: 700,
+                    color: erColor(v.er),
+                  }}
+                >
+                  <TrendingUp size={11} /> {v.er.toFixed(1)}%
+                </span>
+                <span
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 4,
+                  }}
+                >
+                  <Heart size={11} /> {fmt(v.video_likes)}
+                </span>
+                <span
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 4,
+                  }}
+                >
+                  <Share2 size={11} /> {fmt(v.video_shares)}
+                </span>
+                {tiktokUrl && (
+                  <a
+                    href={tiktokUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      marginLeft: "auto",
+                      color: "var(--ink-faint, rgba(255,255,255,0.3))",
+                      transition: "color 150ms",
+                    }}
+                    onMouseEnter={(e) =>
+                      (e.currentTarget.style.color =
+                        "var(--ink-secondary, rgba(255,255,255,0.55))")
+                    }
+                    onMouseLeave={(e) =>
+                      (e.currentTarget.style.color =
+                        "var(--ink-faint, rgba(255,255,255,0.3))")
+                    }
+                  >
+                    <ExternalLink size={12} />
+                  </a>
+                )}
+              </div>
+            </div>
+          </motion.div>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ────────── Table View ────────── */
+
+function TableView({
+  videos,
+  avatarMap,
+  sortKey,
+  sortDir,
+  toggleSort,
+}: {
+  videos: VideoWithER[];
+  avatarMap: Map<string, string | null>;
+  sortKey: SortKey;
+  sortDir: SortDir;
+  toggleSort: (key: SortKey) => void;
+}) {
+  if (videos.length === 0) {
+    return (
+      <div
+        style={{
+          background: "var(--surface, #1C1C1E)",
+          borderRadius: 16,
+          border: "1px solid var(--border-subtle, rgba(255,255,255,0.06))",
+          padding: "40px 20px",
+          textAlign: "center",
+        }}
+      >
+        <p
+          style={{
+            fontFamily: '"DM Sans", sans-serif',
+            fontSize: 13,
+            color: "var(--ink-faint, rgba(255,255,255,0.35))",
+            margin: 0,
+          }}
+        >
+          No recent high-engagement content — check back after new posts.
+        </p>
+      </div>
+    );
+  }
+
+  const thStyle = (
+    colKey: SortKey | null,
+    align: "left" | "right" = "left",
+  ): React.CSSProperties => ({
+    fontFamily: '"JetBrains Mono", monospace',
+    fontSize: 10,
+    fontWeight: 600,
+    textTransform: "uppercase",
+    letterSpacing: "0.08em",
+    color:
+      colKey && sortKey === colKey
+        ? "var(--ink, rgba(255,255,255,0.87))"
+        : "var(--ink-faint, rgba(255,255,255,0.35))",
+    textAlign: align,
+    padding: "12px 14px",
+    background: "var(--surface, #1C1C1E)",
+    cursor: colKey ? "pointer" : "default",
+    userSelect: "none",
+    whiteSpace: "nowrap",
+    borderBottom: "1px solid var(--border-subtle, rgba(255,255,255,0.06))",
+  });
+
+  const SortIndicator = ({ colKey }: { colKey: SortKey }) =>
+    sortKey === colKey ? (
+      sortDir === "asc" ? (
+        <ArrowUp size={9} style={{ marginLeft: 3 }} />
+      ) : (
+        <ArrowDown size={9} style={{ marginLeft: 3 }} />
+      )
+    ) : null;
+
+  return (
+    <div
+      style={{
+        background: "var(--surface, #1C1C1E)",
+        borderRadius: 16,
+        border: "1px solid var(--border-subtle, rgba(255,255,255,0.06))",
+        overflow: "hidden",
+      }}
+    >
+      <div style={{ overflowX: "auto", maxHeight: 600 }}>
+        <table
+          style={{
+            width: "100%",
+            borderCollapse: "collapse",
+            fontFamily: '"DM Sans", sans-serif',
+          }}
+        >
+          <thead>
+            <tr>
+              <th style={thStyle(null)}>Thumb</th>
+              <th
+                style={thStyle("artist_handle")}
+                onClick={() => toggleSort("artist_handle")}
+              >
+                <span style={{ display: "inline-flex", alignItems: "center" }}>
+                  Artist
+                  <SortIndicator colKey="artist_handle" />
+                </span>
+              </th>
+              <th style={thStyle(null)}>Caption</th>
+              <th
+                style={thStyle("video_views", "right")}
+                onClick={() => toggleSort("video_views")}
+              >
+                <span
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "flex-end",
+                  }}
+                >
+                  Views
+                  <SortIndicator colKey="video_views" />
+                </span>
+              </th>
+              <th
+                style={thStyle("video_likes", "right")}
+                onClick={() => toggleSort("video_likes")}
+              >
+                <span
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "flex-end",
+                  }}
+                >
+                  Likes
+                  <SortIndicator colKey="video_likes" />
+                </span>
+              </th>
+              <th
+                style={thStyle("video_shares", "right")}
+                onClick={() => toggleSort("video_shares")}
+              >
+                <span
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "flex-end",
+                  }}
+                >
+                  Shares
+                  <SortIndicator colKey="video_shares" />
+                </span>
+              </th>
+              <th
+                style={thStyle("video_saves", "right")}
+                onClick={() => toggleSort("video_saves")}
+              >
+                <span
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "flex-end",
+                  }}
+                >
+                  Saves
+                  <SortIndicator colKey="video_saves" />
+                </span>
+              </th>
+              <th
+                style={thStyle("video_comments", "right")}
+                onClick={() => toggleSort("video_comments")}
+              >
+                <span
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "flex-end",
+                  }}
+                >
+                  Comments
+                  <SortIndicator colKey="video_comments" />
+                </span>
+              </th>
+              <th
+                style={thStyle("er", "right")}
+                onClick={() => toggleSort("er")}
+              >
+                <span
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "flex-end",
+                  }}
+                >
+                  ER%
+                  <SortIndicator colKey="er" />
+                </span>
+              </th>
+              <th style={thStyle(null)}>Status</th>
+              <th
+                style={thStyle("date_posted", "right")}
+                onClick={() => toggleSort("date_posted")}
+              >
+                <span
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "flex-end",
+                  }}
+                >
+                  Posted
+                  <SortIndicator colKey="date_posted" />
+                </span>
+              </th>
+              <th style={{ ...thStyle(null, "right"), width: 44 }}></th>
+            </tr>
+          </thead>
+          <tbody>
+            {videos.map((v) => {
+              const badge = erBadge(v.er);
+              const tiktokUrl = v.video_url || v.video_embedded_url;
+              const avatar = avatarMap.get(v.artist_handle) || null;
+
+              const cellStyle: React.CSSProperties = {
+                padding: "10px 14px",
+                borderBottom:
+                  "1px solid var(--border-subtle, rgba(255,255,255,0.04))",
+                verticalAlign: "middle",
+              };
+
+              return (
+                <tr
+                  key={v.id}
+                  style={{ transition: "background 150ms" }}
+                  onMouseEnter={(e) =>
+                    (e.currentTarget.style.background =
+                      "var(--overlay-hover, rgba(255,255,255,0.03))")
+                  }
+                  onMouseLeave={(e) =>
+                    (e.currentTarget.style.background = "transparent")
+                  }
+                >
+                  <td style={cellStyle}>
+                    <div
+                      style={{
+                        width: 44,
+                        height: 44,
+                        borderRadius: 8,
+                        overflow: "hidden",
+                        flexShrink: 0,
+                      }}
+                    >
+                      <TikTokThumbnail
+                        videoId={v.id}
+                        tiktokUrl={tiktokUrl || ""}
+                        className="w-11 h-11"
+                      />
+                    </div>
+                  </td>
+                  <td style={cellStyle}>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                      }}
+                    >
+                      <AvatarCircle
+                        url={avatar}
+                        name={v.artist_name}
+                        size={24}
+                      />
+                      <span
+                        style={{
+                          fontSize: 12,
+                          fontWeight: 500,
+                          color: "var(--ink, rgba(255,255,255,0.87))",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                          maxWidth: 100,
+                        }}
+                      >
+                        @{v.artist_handle?.replace(/^@+/, "")}
+                      </span>
+                    </div>
+                  </td>
+                  <td style={cellStyle}>
+                    <span
+                      style={{
+                        fontSize: 12,
+                        color: "var(--ink-secondary, rgba(255,255,255,0.55))",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                        display: "block",
+                        maxWidth: 160,
+                      }}
+                    >
+                      {(v.caption || "No caption").slice(0, 40)}
+                      {(v.caption?.length || 0) > 40 ? "\u2026" : ""}
+                    </span>
+                  </td>
+                  <td style={{ ...cellStyle, textAlign: "right" }}>
+                    <span
+                      style={{
+                        fontFamily: '"JetBrains Mono", monospace',
+                        fontSize: 12,
+                        color: "var(--ink, rgba(255,255,255,0.87))",
+                      }}
+                    >
+                      {fmt(v.video_views)}
+                    </span>
+                  </td>
+                  <td style={{ ...cellStyle, textAlign: "right" }}>
+                    <span
+                      style={{
+                        fontFamily: '"JetBrains Mono", monospace',
+                        fontSize: 12,
+                        color: "var(--ink-tertiary, rgba(255,255,255,0.45))",
+                      }}
+                    >
+                      {fmt(v.video_likes)}
+                    </span>
+                  </td>
+                  <td style={{ ...cellStyle, textAlign: "right" }}>
+                    <span
+                      style={{
+                        fontFamily: '"JetBrains Mono", monospace',
+                        fontSize: 12,
+                        color: "var(--ink-tertiary, rgba(255,255,255,0.45))",
+                      }}
+                    >
+                      {fmt(v.video_shares)}
+                    </span>
+                  </td>
+                  <td style={{ ...cellStyle, textAlign: "right" }}>
+                    <span
+                      style={{
+                        fontFamily: '"JetBrains Mono", monospace',
+                        fontSize: 12,
+                        color: "var(--ink-tertiary, rgba(255,255,255,0.45))",
+                      }}
+                    >
+                      {fmt(v.video_saves)}
+                    </span>
+                  </td>
+                  <td style={{ ...cellStyle, textAlign: "right" }}>
+                    <span
+                      style={{
+                        fontFamily: '"JetBrains Mono", monospace',
+                        fontSize: 12,
+                        color: "var(--ink-tertiary, rgba(255,255,255,0.45))",
+                      }}
+                    >
+                      {fmt(v.video_comments)}
+                    </span>
+                  </td>
+                  <td style={{ ...cellStyle, textAlign: "right" }}>
+                    <span
+                      style={{
+                        fontFamily: '"JetBrains Mono", monospace',
+                        fontSize: 12,
+                        fontWeight: 700,
+                        color: erColor(v.er),
+                      }}
+                    >
+                      {v.er.toFixed(1)}%
+                    </span>
+                  </td>
+                  <td style={cellStyle}>
+                    {badge && (
+                      <span
+                        style={{
+                          fontFamily: '"DM Sans", sans-serif',
+                          fontSize: 10,
+                          fontWeight: 700,
+                          letterSpacing: "0.08em",
+                          padding: "3px 8px",
+                          borderRadius: 6,
+                          background: badge.bg,
+                          color: badge.fg,
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {badge.label}
+                      </span>
+                    )}
+                  </td>
+                  <td style={{ ...cellStyle, textAlign: "right" }}>
+                    <span
+                      style={{
+                        fontFamily: '"JetBrains Mono", monospace',
+                        fontSize: 11,
+                        color: "var(--ink-faint, rgba(255,255,255,0.3))",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {relativeDate(v.date_posted)}
+                    </span>
+                  </td>
+                  <td style={{ ...cellStyle, textAlign: "right" }}>
+                    {tiktokUrl && (
+                      <a
+                        href={tiktokUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          color: "var(--ink-faint, rgba(255,255,255,0.3))",
+                          transition: "color 150ms",
+                        }}
+                        onMouseEnter={(e) =>
+                          (e.currentTarget.style.color =
+                            "var(--ink-secondary, rgba(255,255,255,0.55))")
+                        }
+                        onMouseLeave={(e) =>
+                          (e.currentTarget.style.color =
+                            "var(--ink-faint, rgba(255,255,255,0.3))")
+                        }
+                        title="View on TikTok"
+                      >
+                        <ExternalLink size={13} />
+                      </a>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

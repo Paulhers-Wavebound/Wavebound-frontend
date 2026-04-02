@@ -1,11 +1,17 @@
-import { useState } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Button } from '@/components/ui/button';
-import { supabase } from '@/integrations/supabase/client';
-import { useUserProfile } from '@/contexts/UserProfileContext';
-import { toast } from '@/hooks/use-toast';
+import { useState } from "react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
+import { supabase } from "@/integrations/supabase/client";
+import { useUserProfile } from "@/contexts/UserProfileContext";
+import { toast } from "@/hooks/use-toast";
 
 interface AddArtistModalProps {
   open: boolean;
@@ -14,45 +20,81 @@ interface AddArtistModalProps {
   existingHandles?: string[];
 }
 
-export default function AddArtistModal({ open, onClose, onAdded, existingHandles = [] }: AddArtistModalProps) {
+export default function AddArtistModal({
+  open,
+  onClose,
+  onAdded,
+  existingHandles = [],
+}: AddArtistModalProps) {
   const { labelId } = useUserProfile();
-  const [tiktokHandle, setTiktokHandle] = useState('');
-  const [instagramHandle, setInstagramHandle] = useState('');
-  const [artistName, setArtistName] = useState('');
+  const [tiktokHandle, setTiktokHandle] = useState("");
+  const [instagramHandle, setInstagramHandle] = useState("");
+  const [artistName, setArtistName] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!labelId) {
-      toast({ title: 'Label not loaded yet', description: 'Please wait a moment and try again.', variant: 'destructive' });
+      toast({
+        title: "Label not loaded yet",
+        description: "Please wait a moment and try again.",
+        variant: "destructive",
+      });
       return;
     }
     if (!tiktokHandle.trim()) return;
 
-    const handle = tiktokHandle.trim().replace(/^@/, '').toLowerCase();
+    const handle = tiktokHandle.trim().replace(/^@/, "").toLowerCase();
 
     if (existingHandles.includes(handle)) {
-      toast({ title: 'Artist already on roster', description: `@${handle} has already been added.`, variant: 'destructive' });
+      toast({
+        title: "Artist already on roster",
+        description: `@${handle} has already been added.`,
+        variant: "destructive",
+      });
       return;
     }
 
     setSubmitting(true);
     try {
-      const igHandle = instagramHandle.trim().replace(/^@/, '').toLowerCase();
-      const { data: { user } } = await supabase.auth.getUser();
+      const igHandle = instagramHandle.trim().replace(/^@/, "").toLowerCase();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
 
       // Pre-insert stub rows with correct label_id
-      await (supabase.from as any)('artist_intelligence')
-        .insert({ artist_handle: handle, label_id: labelId, status: 'processing' });
-      await (supabase.from as any)('roster_dashboard_metrics')
+      await supabase
+        .from("artist_intelligence")
+        .insert({
+          artist_handle: handle,
+          label_id: labelId,
+          status: "processing",
+        });
+      await supabase
+        .from("roster_dashboard_metrics")
         .insert({ artist_handle: handle, label_id: labelId });
 
-      const { error } = await supabase.functions.invoke('start-onboarding', {
+      // Ensure adding user has a link for RLS visibility
+      if (user?.id) {
+        await supabase
+          .from("user_artist_links")
+          .upsert(
+            {
+              user_id: user.id,
+              artist_handle: handle,
+              label_id: labelId,
+              role: "admin",
+            },
+            { onConflict: "user_id,artist_handle" },
+          );
+      }
+
+      const { error } = await supabase.functions.invoke("start-onboarding", {
         body: {
           tiktok_handle: handle,
           artist_name: artistName.trim() || undefined,
           instagram_handle: igHandle || handle,
-          platform: 'tiktok',
+          platform: "tiktok",
           initiated_by: user?.id || null,
           label_id: labelId,
         },
@@ -62,19 +104,19 @@ export default function AddArtistModal({ open, onClose, onAdded, existingHandles
 
       const name = artistName.trim() || handle;
       toast({
-        title: 'Pipeline started',
-        description: 'Artist will be ready in ~2 hours.',
+        title: "Pipeline started",
+        description: "Artist will be ready in ~2 hours.",
       });
       onAdded?.(handle, name);
-      setTiktokHandle('');
-      setInstagramHandle('');
-      setArtistName('');
+      setTiktokHandle("");
+      setInstagramHandle("");
+      setArtistName("");
       onClose();
     } catch (err: any) {
       toast({
-        title: 'Error',
-        description: err?.message || 'Failed to start onboarding.',
-        variant: 'destructive',
+        title: "Error",
+        description: err?.message || "Failed to start onboarding.",
+        variant: "destructive",
       });
     } finally {
       setSubmitting(false);
@@ -82,11 +124,18 @@ export default function AddArtistModal({ open, onClose, onAdded, existingHandles
   };
 
   return (
-    <Dialog open={open} onOpenChange={v => { if (!v) onClose(); }}>
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        if (!v) onClose();
+      }}
+    >
       <DialogContent className="sm:max-w-md font-['DM_Sans']">
         <DialogHeader>
           <DialogTitle>Add Artist</DialogTitle>
-          <DialogDescription>Enter details to start the onboarding pipeline.</DialogDescription>
+          <DialogDescription>
+            Enter details to start the onboarding pipeline.
+          </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4 mt-2">
@@ -96,7 +145,7 @@ export default function AddArtistModal({ open, onClose, onAdded, existingHandles
               id="tiktok"
               placeholder="@handle"
               value={tiktokHandle}
-              onChange={e => setTiktokHandle(e.target.value)}
+              onChange={(e) => setTiktokHandle(e.target.value)}
               required
             />
           </div>
@@ -107,7 +156,7 @@ export default function AddArtistModal({ open, onClose, onAdded, existingHandles
               id="instagram"
               placeholder="@handle (optional)"
               value={instagramHandle}
-              onChange={e => setInstagramHandle(e.target.value)}
+              onChange={(e) => setInstagramHandle(e.target.value)}
             />
           </div>
 
@@ -117,16 +166,24 @@ export default function AddArtistModal({ open, onClose, onAdded, existingHandles
               id="name"
               placeholder="Display name (optional)"
               value={artistName}
-              onChange={e => setArtistName(e.target.value)}
+              onChange={(e) => setArtistName(e.target.value)}
             />
           </div>
 
           <div className="flex justify-end gap-2 pt-2">
-            <Button type="button" variant="outline" onClick={onClose} disabled={submitting}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onClose}
+              disabled={submitting}
+            >
               Cancel
             </Button>
-            <Button type="submit" disabled={submitting || !tiktokHandle.trim() || !labelId}>
-              {submitting ? 'Starting…' : 'Add Artist'}
+            <Button
+              type="submit"
+              disabled={submitting || !tiktokHandle.trim() || !labelId}
+            >
+              {submitting ? "Starting…" : "Add Artist"}
             </Button>
           </div>
         </form>

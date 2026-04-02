@@ -1,7 +1,14 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, useCallback, ReactNode } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 
-interface UserProfile {
+interface LabelOverride {
+  labelId: string;
+  labelName: string;
+  labelSlug: string | null;
+  labelLogoUrl: string | null;
+}
+
+interface BaseProfile {
   isArtist: boolean;
   labelId: string | null;
   labelName: string | null;
@@ -11,7 +18,12 @@ interface UserProfile {
   loading: boolean;
 }
 
-const defaultProfile: UserProfile = {
+interface UserProfileContextValue extends BaseProfile {
+  labelOverride: LabelOverride | null;
+  setLabelOverride: (override: LabelOverride | null) => void;
+}
+
+const defaultContext: UserProfileContextValue = {
   isArtist: false,
   labelId: null,
   labelName: null,
@@ -19,24 +31,46 @@ const defaultProfile: UserProfile = {
   labelLogoUrl: null,
   artistHandle: null,
   loading: true,
+  labelOverride: null,
+  setLabelOverride: () => {},
 };
 
-const UserProfileContext = createContext<UserProfile>(defaultProfile);
+const UserProfileContext = createContext<UserProfileContextValue>(defaultContext);
 
 export function UserProfileProvider({ children }: { children: ReactNode }) {
-  const [profile, setProfile] = useState<UserProfile>(defaultProfile);
+  const [baseProfile, setBaseProfile] = useState<BaseProfile>({
+    isArtist: false,
+    labelId: null,
+    labelName: null,
+    labelSlug: null,
+    labelLogoUrl: null,
+    artistHandle: null,
+    loading: true,
+  });
+  const [labelOverride, setLabelOverrideState] = useState<LabelOverride | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
+
+  // When admin switches label, also update user_profiles.label_id so RLS works
+  const setLabelOverride = useCallback(async (override: LabelOverride | null) => {
+    setLabelOverrideState(override);
+    if (!userId) return;
+    await supabase.from('user_profiles')
+      .update({ label_id: override?.labelId ?? null })
+      .eq('user_id', userId);
+  }, [userId]);
 
   useEffect(() => {
     let cancelled = false;
 
-    const fetchProfile = async (userId: string) => {
-      const { data, error } = await (supabase.from as any)('user_profiles')
+    const fetchProfile = async (uid: string) => {
+      setUserId(uid);
+      const { data, error } = await supabase.from('user_profiles')
         .select('label_id, artist_handle')
-        .eq('user_id', userId)
+        .eq('user_id', uid)
         .maybeSingle();
 
       if (cancelled || error) {
-        if (!cancelled) setProfile({ ...defaultProfile, loading: false });
+        if (!cancelled) setBaseProfile(prev => ({ ...prev, loading: false }));
         return;
       }
 
@@ -46,7 +80,7 @@ export function UserProfileProvider({ children }: { children: ReactNode }) {
       let labelLogoUrl: string | null = null;
 
       if (labelId) {
-        const { data: labelData } = await (supabase.from as any)('labels')
+        const { data: labelData } = await supabase.from('labels')
           .select('name, slug, logo_url')
           .eq('id', labelId)
           .maybeSingle();
@@ -60,7 +94,7 @@ export function UserProfileProvider({ children }: { children: ReactNode }) {
 
       if (cancelled) return;
 
-      setProfile({
+      setBaseProfile({
         isArtist: true,
         labelId,
         labelName,
@@ -73,18 +107,20 @@ export function UserProfileProvider({ children }: { children: ReactNode }) {
 
     const handleSession = (session: any) => {
       if (!session?.user) {
-        setProfile({ ...defaultProfile, loading: false });
+        setUserId(null);
+        setBaseProfile({
+          isArtist: false, labelId: null, labelName: null, labelSlug: null,
+          labelLogoUrl: null, artistHandle: null, loading: false,
+        });
         return;
       }
       fetchProfile(session.user.id);
     };
 
-    // 1. Register listener FIRST (Supabase requirement)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (_event, session) => { handleSession(session); }
     );
 
-    // 2. Then seed with current session
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (!cancelled) handleSession(session);
     });
@@ -95,8 +131,25 @@ export function UserProfileProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  // When override is active, swap label fields
+  const value: UserProfileContextValue = labelOverride
+    ? {
+        ...baseProfile,
+        labelId: labelOverride.labelId,
+        labelName: labelOverride.labelName,
+        labelSlug: labelOverride.labelSlug,
+        labelLogoUrl: labelOverride.labelLogoUrl,
+        labelOverride,
+        setLabelOverride,
+      }
+    : {
+        ...baseProfile,
+        labelOverride: null,
+        setLabelOverride,
+      };
+
   return (
-    <UserProfileContext.Provider value={profile}>
+    <UserProfileContext.Provider value={value}>
       {children}
     </UserProfileContext.Provider>
   );

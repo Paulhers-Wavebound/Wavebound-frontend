@@ -1,6 +1,7 @@
 import { GeoBreakdown, getFormatColor } from "@/types/soundIntelligence";
 import { BarChart, Bar, ResponsiveContainer } from "recharts";
 import { ChevronDown } from "lucide-react";
+import InfoPopover from "./InfoPopover";
 
 interface Props {
   geography: GeoBreakdown[];
@@ -19,14 +20,34 @@ export default function GeoSpreadSection({
     <div>
       <div
         style={{
-          fontFamily: '"DM Sans", sans-serif',
-          fontSize: 15,
-          fontWeight: 600,
-          color: "var(--ink)",
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
           marginBottom: 12,
         }}
       >
-        Geographic Spread
+        <div
+          style={{
+            width: 3,
+            height: 14,
+            borderRadius: 1,
+            background:
+              "linear-gradient(180deg, rgba(232,67,10,0.6) 0%, rgba(232,67,10,0.15) 100%)",
+          }}
+        />
+        <span
+          style={{
+            fontFamily: '"DM Sans", sans-serif',
+            fontSize: 11,
+            fontWeight: 500,
+            textTransform: "uppercase",
+            letterSpacing: "0.10em",
+            color: "var(--ink-tertiary, rgba(255,255,255,0.45))",
+          }}
+        >
+          Geographic Spread
+        </span>
+        <InfoPopover text="Which countries are using your sound the most. Helps you understand if it's a global hit or popular in specific regions. Click a country for more details." />
       </div>
       <div
         style={{
@@ -160,8 +181,10 @@ export default function GeoSpreadSection({
                           <div key={s.label}>
                             <div
                               style={{
+                                fontFamily: '"DM Sans", sans-serif',
                                 fontSize: 14,
                                 fontWeight: 700,
+                                letterSpacing: "-0.03em",
                                 color: "var(--ink)",
                               }}
                             >
@@ -169,7 +192,9 @@ export default function GeoSpreadSection({
                             </div>
                             <div
                               style={{
+                                fontFamily: '"DM Sans", sans-serif',
                                 fontSize: 10,
+                                letterSpacing: "0.10em",
                                 color: "var(--ink-tertiary)",
                               }}
                             >

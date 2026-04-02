@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+scripts/fan-briefs/node_modules/
+.vercel
+supabase/.temp/
