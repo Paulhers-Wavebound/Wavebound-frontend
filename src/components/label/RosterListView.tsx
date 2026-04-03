@@ -274,10 +274,7 @@ export default function RosterListView({
                           <DropdownMenuTrigger asChild>
                             <button
                               onClick={(e) => e.stopPropagation()}
-                              disabled={
-                                !(artist as any).has_artist_brief &&
-                                !(artist as any).has_intelligence_report
-                              }
+                              disabled={!(artist as any).has_artist_brief}
                               className="flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-medium text-foreground transition-colors hover:opacity-80 disabled:opacity-30"
                               style={{ background: "#2C2C2E", borderRadius: 8 }}
                             >
@@ -289,21 +286,6 @@ export default function RosterListView({
                             </button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end" className="w-44">
-                            <DropdownMenuItem
-                              disabled={
-                                !(artist as any).has_intelligence_report
-                              }
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onOpenDeliverable(
-                                  artist.artist_handle,
-                                  "report",
-                                );
-                              }}
-                            >
-                              <User size={14} className="mr-2" />
-                              Intelligence Brief
-                            </DropdownMenuItem>
                             <DropdownMenuItem
                               disabled={!(artist as any).has_artist_brief}
                               onClick={(e) => {

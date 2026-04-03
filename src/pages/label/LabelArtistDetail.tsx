@@ -119,12 +119,9 @@ export default function LabelArtistDetailPage() {
   };
 
   const currentHtml =
-    activeTab === "report"
-      ? artist?.intelligence_report_html
-      : activeTab === "plan"
-        ? artist?.content_plan_html
-        : artist?.content_plan_30d_html ||
-          (artist as any)?.thirty_day_plan_html;
+    activeTab === "plan"
+      ? artist?.content_plan_html
+      : artist?.content_plan_30d_html || (artist as any)?.thirty_day_plan_html;
 
   if (loading) {
     return (
@@ -394,7 +391,6 @@ export default function LabelArtistDetailPage() {
           }}
         >
           {[
-            { key: "report" as const, label: "Intelligence Report" },
             { key: "plan" as const, label: "Content Plan" },
             { key: "plan30" as const, label: "30-Day Plan" },
           ].map((tab) => (
@@ -447,11 +443,7 @@ export default function LabelArtistDetailPage() {
                   minHeight: 400,
                 }}
                 sandbox="allow-scripts"
-                title={
-                  activeTab === "report"
-                    ? "Intelligence Report"
-                    : "Content Plan"
-                }
+                title={activeTab === "plan" ? "Content Plan" : "30-Day Plan"}
               />
             </div>
           ) : (

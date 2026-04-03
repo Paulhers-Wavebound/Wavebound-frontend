@@ -1057,12 +1057,6 @@ export default function LabelArtistProfile() {
               icon: Calendar,
             },
             {
-              label: "Intelligence Report",
-              available: artist.has_intelligence_report,
-              column: "intelligence_report_html",
-              icon: FileText,
-            },
-            {
               label: "30-Day Plan",
               available: artist.has_30day_plan,
               column: "content_plan_30d_html",

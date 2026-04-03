@@ -316,9 +316,7 @@ export default function RosterCard({
               <DropdownMenuTrigger asChild>
                 <button
                   onClick={(e) => e.stopPropagation()}
-                  disabled={
-                    !artist.has_artist_brief && !artist.has_intelligence_report
-                  }
+                  disabled={!artist.has_artist_brief}
                   className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors disabled:opacity-30"
                   style={{
                     background: "#2C2C2E",
@@ -330,16 +328,6 @@ export default function RosterCard({
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" className="w-44">
-                <DropdownMenuItem
-                  disabled={!artist.has_intelligence_report}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onOpenDeliverable(artist.artist_handle, "report");
-                  }}
-                >
-                  <User size={14} className="mr-2" />
-                  Intelligence Brief
-                </DropdownMenuItem>
                 <DropdownMenuItem
                   disabled={!artist.has_artist_brief}
                   onClick={(e) => {
