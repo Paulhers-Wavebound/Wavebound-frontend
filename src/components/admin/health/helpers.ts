@@ -33,6 +33,7 @@ export function formatNumber(n: number | null | undefined): string {
 }
 
 export function formatPct(n: number): string {
+  if (n == null) return "—";
   return n.toFixed(1) + "%";
 }
 
@@ -80,6 +81,7 @@ export function getPaceColor(pacePercent: number): string {
 
 /** Formats a number in compact notation: 300K, 2.5M, etc. */
 export function formatCompact(n: number): string {
+  if (n == null) return "—";
   if (n >= 1_000_000) {
     const v = n / 1_000_000;
     return v % 1 === 0 ? `${v}M` : `${v.toFixed(1)}M`;

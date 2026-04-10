@@ -49,7 +49,7 @@ import {
   CommandSeparator,
 } from "@/components/ui/command";
 import { PageTitleProvider, usePageTitle } from "@/contexts/PageTitleContext";
-import { useAdminRole } from "@/hooks/use-admin-role";
+import { useAdminRole } from "@/hooks/useAdminRole";
 import { useUserProfile } from "@/contexts/UserProfileContext";
 import { PREVIEW_FEATURES } from "@/config/previewFeatures";
 

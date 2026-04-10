@@ -84,6 +84,7 @@ export interface SongUGC {
   cross_platform_gap: string | null;
   videos_last_7d: number | null;
   videos_last_30d: number | null;
+  tiktok_music_id: string | null;
 }
 
 export interface ContentAnomaly {

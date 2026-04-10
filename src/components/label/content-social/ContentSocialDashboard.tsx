@@ -3,11 +3,13 @@ import { supabase } from "@/integrations/supabase/client";
 import { useUserProfile } from "@/contexts/UserProfileContext";
 import { useContentDashboardData } from "@/hooks/useContentDashboardData";
 import { useIntelligenceBriefs } from "@/hooks/useIntelligenceBriefs";
+import { usePresidentBrief } from "@/hooks/usePresidentBrief";
 import {
   buildPriorityItems,
   generateContentBriefing,
   generateContentInsight,
 } from "@/data/contentDashboardHelpers";
+import PresidentBriefCard from "@/components/label/PresidentBriefCard";
 import ContentBriefingCard from "./ContentBriefingCard";
 import ContentPriorityCards from "./ContentPriorityCards";
 import ContentRosterTable from "./ContentRosterTable";
@@ -36,6 +38,7 @@ export default function ContentSocialDashboard() {
   const { artists, anomalies, songUGC, loading, error } =
     useContentDashboardData();
   const aiBriefs = useIntelligenceBriefs();
+  const presidentBrief = usePresidentBrief("content");
 
   const briefing = useMemo(() => {
     const base = generateContentBriefing(
@@ -124,13 +127,21 @@ export default function ContentSocialDashboard() {
         <span className="text-sm text-white/40">{artists.length} Artists</span>
       </div>
 
-      {/* Executive Briefing */}
-      <ContentBriefingCard
-        briefing={briefing}
-        userName={userName}
-        aiGeneratedAt={aiBriefs.latestGeneratedAt}
-        aiBriefSections={aiBriefs.sections}
-      />
+      {/* Executive Briefing — President Brief when available, fallback to legacy */}
+      {presidentBrief.text ? (
+        <PresidentBriefCard
+          text={presidentBrief.text}
+          generatedAt={presidentBrief.generatedAt}
+          userName={userName}
+        />
+      ) : (
+        <ContentBriefingCard
+          briefing={briefing}
+          userName={userName}
+          aiGeneratedAt={aiBriefs.latestGeneratedAt}
+          aiBriefSections={aiBriefs.sections}
+        />
+      )}
 
       {/* Priority Cards */}
       <ContentPriorityCards items={priorityItems} />

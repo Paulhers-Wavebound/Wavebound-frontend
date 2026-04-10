@@ -1,7 +1,11 @@
+import { useCallback, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
+import { ExternalLink } from "lucide-react";
 import type { SongUGC } from "@/data/contentDashboardHelpers";
 import { fmtViews } from "@/data/contentDashboardHelpers";
 import InfoPopover from "@/components/sound-intelligence/InfoPopover";
+import { supabase } from "@/integrations/supabase/client";
 
 const STATUS_STYLE: Record<
   string,
@@ -43,6 +47,44 @@ export default function SoundPerformanceSection({
 }: {
   songs: SongUGC[];
 }) {
+  const navigate = useNavigate();
+  const [navigatingIdx, setNavigatingIdx] = useState<number | null>(null);
+
+  const handleRowClick = useCallback(
+    async (song: SongUGC, idx: number) => {
+      if (!song.tiktok_music_id) {
+        // No music ID — go to sound intelligence overview
+        navigate("/label/sound-intelligence");
+        return;
+      }
+
+      setNavigatingIdx(idx);
+      try {
+        // Look up a completed sound_intelligence_jobs entry by sound_id
+        const { data } = await supabase
+          .from("sound_intelligence_jobs")
+          .select("id")
+          .eq("sound_id", song.tiktok_music_id)
+          .eq("status", "completed")
+          .order("completed_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (data?.id) {
+          navigate(`/label/sound-intelligence/${data.id}`);
+        } else {
+          // No analysis exists yet — go to overview
+          navigate("/label/sound-intelligence");
+        }
+      } catch {
+        navigate("/label/sound-intelligence");
+      } finally {
+        setNavigatingIdx(null);
+      }
+    },
+    [navigate],
+  );
+
   if (songs.length === 0) return null;
 
   return (
@@ -96,18 +138,29 @@ export default function SoundPerformanceSection({
               const gap = song.cross_platform_gap
                 ? GAP_LABELS[song.cross_platform_gap]
                 : null;
+              const isNavigating = navigatingIdx === i;
 
               return (
                 <tr
                   key={`${song.song_name}-${i}`}
-                  className="transition-colors hover:bg-white/[0.025]"
+                  className="transition-colors hover:bg-white/[0.04] cursor-pointer group"
                   style={{ borderBottom: "1px solid rgba(255,255,255,0.03)" }}
+                  onClick={() => handleRowClick(song, i)}
                 >
                   {/* Song name */}
                   <td className="pl-4 pr-2 py-2.5">
-                    <p className="text-[13px] font-medium text-white/87 leading-tight truncate max-w-[240px]">
-                      {song.song_name}
-                    </p>
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-[13px] font-medium text-white/87 leading-tight truncate max-w-[240px] group-hover:text-[#e8430a] transition-colors">
+                        {song.song_name}
+                      </p>
+                      <ExternalLink
+                        size={11}
+                        className="shrink-0 opacity-0 group-hover:opacity-40 transition-opacity"
+                      />
+                      {isNavigating && (
+                        <span className="shrink-0 w-3 h-3 rounded-full border-2 border-white/30 border-t-[#e8430a] animate-spin" />
+                      )}
+                    </div>
                     {gap && (
                       <p
                         className="text-[10px] leading-tight mt-0.5"

@@ -1,6 +1,6 @@
-import { useState, useMemo } from "react";
+import React, { useState, useMemo, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { ChevronUp, ChevronDown } from "lucide-react";
+import { ChevronUp, ChevronDown, ChevronRight } from "lucide-react";
 import InfoPopover from "@/components/sound-intelligence/InfoPopover";
 import type {
   ContentArtist,
@@ -15,6 +15,46 @@ import {
   fmtViews,
   fmtPct,
 } from "@/data/contentDashboardHelpers";
+
+/* ─── Artist avatar with initials fallback ────────────────── */
+
+function ArtistAvatar({
+  name,
+  url,
+  size = 28,
+}: {
+  name: string;
+  url: string | null;
+  size?: number;
+}) {
+  const [failed, setFailed] = useState(false);
+  const initials = name
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((w) => w[0]?.toUpperCase() ?? "")
+    .join("");
+
+  if (!url || failed) {
+    return (
+      <span
+        className="rounded-full shrink-0 flex items-center justify-center bg-white/[0.06] text-white/40 font-semibold"
+        style={{ width: size, height: size, fontSize: size * 0.38 }}
+      >
+        {initials}
+      </span>
+    );
+  }
+
+  return (
+    <img
+      src={url}
+      alt=""
+      className="rounded-full object-cover shrink-0"
+      style={{ width: size, height: size }}
+      onError={() => setFailed(true)}
+    />
+  );
+}
 
 /* ─── Content Health pill ──────────────────────────────────── */
 
@@ -90,7 +130,6 @@ function ContentHealthPill({
 
 function PerformanceCell({ artist }: { artist: ContentArtist }) {
   const views = artist.avg_views_30d;
-  // Prefer dbt plays_trend_pct (full posting history), fall back to roster delta
   const trend = artist.plays_trend_pct ?? artist.delta_avg_views_pct;
   const engagement = artist.avg_engagement_30d ?? artist.avg_engagement_rate;
 
@@ -101,25 +140,32 @@ function PerformanceCell({ artist }: { artist: ContentArtist }) {
         ? "#FF453A"
         : undefined;
 
+  const trendLabel =
+    trend != null && trend !== 0
+      ? ` (${trend > 0 ? "+" : ""}${trend.toFixed(0)}% last 7d)`
+      : trend != null
+        ? " (flat)"
+        : "";
+
   return (
     <div className="flex flex-col gap-0.5">
-      <div className="flex items-center gap-1.5">
-        <span className="text-[13px] font-medium text-white/87 tabular-nums">
-          {fmtViews(views)}
+      <p className="text-[13px] tabular-nums leading-tight">
+        <span className="font-semibold text-white/87">
+          {fmtViews(views)} views
         </span>
-        {trend != null && trend !== 0 && (
+        {trendLabel && (
           <span
-            className="text-[10px] font-semibold tabular-nums"
+            className="font-normal text-white/50"
             style={{ color: trendColor }}
           >
-            {fmtPct(trend)}
+            {trendLabel}
           </span>
         )}
-      </div>
+      </p>
       {engagement != null && (
-        <span className="text-[10px] text-white/30 tabular-nums">
-          {engagement.toFixed(2)}% eng
-        </span>
+        <p className="text-[11px] text-white/40 tabular-nums leading-tight">
+          {Math.round(engagement)}% eng
+        </p>
       )}
     </div>
   );
@@ -129,8 +175,6 @@ function PerformanceCell({ artist }: { artist: ContentArtist }) {
 
 function ActivityCell({ artist }: { artist: ContentArtist }) {
   const days = artist.days_since_last_post;
-  const freq = artist.posting_freq_7d;
-
   const daysColor =
     days != null && days <= 3
       ? "#30D158"
@@ -141,25 +185,139 @@ function ActivityCell({ artist }: { artist: ContentArtist }) {
           : undefined;
 
   return (
-    <div className="flex items-center gap-2 text-[12px]">
-      {days != null ? (
-        <span className="font-medium tabular-nums" style={{ color: daysColor }}>
-          {days === 0 ? "Today" : days === 1 ? "1d ago" : `${days}d ago`}
-        </span>
-      ) : (
-        <span className="text-white/30">—</span>
-      )}
-      {freq != null && freq > 0 && (
-        <>
-          <span className="text-white/15">·</span>
-          <span className="text-white/40 tabular-nums">
-            {freq >= 7
-              ? `${Math.round(freq / 7)}x/day`
-              : `${freq.toFixed(1)}x/wk`}
-          </span>
-        </>
-      )}
+    <span
+      className="text-[12px] font-medium tabular-nums"
+      style={{ color: daysColor }}
+    >
+      {days != null
+        ? days === 0
+          ? "Today"
+          : days === 1
+            ? "1d ago"
+            : `${days}d ago`
+        : "—"}
+    </span>
+  );
+}
+
+/* ─── Expanded detail row ─────────────────────────────────── */
+
+function freqToLabel(freq: number): string {
+  if (freq >= 14) return "Posting multiple times a day";
+  if (freq >= 7) return "Posting daily";
+  if (freq >= 5) return "Posting almost daily";
+  if (freq >= 3) return "Posting every other day";
+  if (freq >= 2) return "Posting every 3rd day";
+  if (freq >= 1) return "Posting about once a week";
+  if (freq >= 0.5) return "Posting every couple of weeks";
+  return "Rarely posting";
+}
+
+function derivePriorityAction(artist: ContentArtist): string {
+  const days = artist.days_since_last_post;
+  if (days != null && days >= 7) {
+    return `Get ${artist.artist_name} posting again — ${days} days silent`;
+  }
+  const trend = artist.plays_trend_pct ?? artist.delta_avg_views_pct;
+  if (trend != null && trend < -20 && artist.best_format) {
+    return `Review content strategy — views down ${Math.abs(trend).toFixed(0)}%, lean into ${artist.best_format}`;
+  }
+  if (artist.best_format && trend != null && trend > 10) {
+    return `Double down on ${artist.best_format} — momentum is building`;
+  }
+  if (artist.best_format) {
+    return `Keep pushing ${artist.best_format} content this week`;
+  }
+  return "Run a content DNA scan to unlock format insights";
+}
+
+function DetailItem({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="py-1">
+      <span className="text-[10px] font-medium uppercase tracking-wider text-white/25">
+        {label}
+      </span>
+      <p className="text-[11px] text-white/65 leading-tight">{value}</p>
     </div>
+  );
+}
+
+function ExpandedRow({
+  artist,
+  colSpan,
+}: {
+  artist: ContentArtist;
+  colSpan: number;
+}) {
+  const freq = Math.max(
+    artist.posting_freq_7d ?? 0,
+    artist.posting_freq_30d ?? 0,
+  );
+  const trend = artist.plays_trend_pct ?? artist.delta_avg_views_pct;
+  const engagement = artist.avg_engagement_30d ?? artist.avg_engagement_rate;
+
+  const velocityDetail =
+    artist.avg_views_30d != null
+      ? `${fmtViews(artist.avg_views_30d)} avg views${trend != null && trend !== 0 ? ` (${trend > 0 ? "+" : ""}${trend.toFixed(0)}% last 7d)` : trend != null ? " (flat)" : ""}`
+      : null;
+
+  const hookDetail =
+    artist.avg_hook_score != null
+      ? `Hook score: ${(artist.avg_hook_score * 100).toFixed(0)}%`
+      : null;
+
+  return (
+    <>
+      <tr style={{ background: "#141416" }}>
+        {/* Under Artist — empty */}
+        <td className="pl-4 pr-2 pt-0 pb-2" />
+
+        {/* Under Content Health — Cadence */}
+        <td className="px-2 pt-0 pb-2 align-top">
+          {freq > 0 && <DetailItem label="Cadence" value={freqToLabel(freq)} />}
+        </td>
+
+        {/* Under Content Velocity — Velocity + Engagement */}
+        <td className="px-2 pt-0 pb-2 align-top hidden lg:table-cell">
+          <div className="space-y-1">
+            {velocityDetail && (
+              <DetailItem label="Velocity" value={velocityDetail} />
+            )}
+            {engagement != null && (
+              <DetailItem
+                label="Engagement"
+                value={`${engagement.toFixed(2)}%`}
+              />
+            )}
+          </div>
+        </td>
+
+        {/* Under Format Alpha — Retention */}
+        <td className="px-2 pt-0 pb-2 align-top hidden md:table-cell">
+          {hookDetail && <DetailItem label="Retention" value={hookDetail} />}
+        </td>
+
+        {/* Under Activity — empty */}
+        <td className="pl-2 pt-0 pb-2" />
+
+        {/* Chevron spacer */}
+        <td className="pr-2 pt-0 pb-2" />
+      </tr>
+
+      {/* Priority Action — full width */}
+      <tr
+        style={{
+          background: "#141416",
+          borderBottom: "1px solid rgba(255,255,255,0.03)",
+        }}
+      >
+        <td colSpan={colSpan} className="px-4 pb-3 pt-0">
+          <p className="text-[11px] italic text-[#e8430a]">
+            {derivePriorityAction(artist)}
+          </p>
+        </td>
+      </tr>
+    </>
   );
 }
 
@@ -237,6 +395,13 @@ export default function ContentRosterTable({
     return sortContentArtists(list, sortKey, sortAsc);
   }, [artists, activeFilter, sortKey, sortAsc]);
 
+  const [expandedHandle, setExpandedHandle] = useState<string | null>(null);
+
+  const toggleExpand = useCallback((handle: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setExpandedHandle((prev) => (prev === handle ? null : handle));
+  }, []);
+
   const handleSort = (key: ContentSortKey) => {
     if (sortKey === key) {
       setSortAsc(!sortAsc);
@@ -294,7 +459,7 @@ export default function ContentRosterTable({
               </th>
               <th className="px-2 py-2.5 text-left hidden lg:table-cell">
                 <SortHeader
-                  label="Performance"
+                  label="Content Velocity"
                   sortKey="performance"
                   active={sortKey === "performance"}
                   asc={sortAsc}
@@ -310,7 +475,7 @@ export default function ContentRosterTable({
                   onSort={handleSort}
                 />
               </th>
-              <th className="pl-2 pr-4 py-2.5 text-left">
+              <th className="pl-2 py-2.5 text-left">
                 <SortHeader
                   label="Activity"
                   sortKey="activity"
@@ -319,50 +484,79 @@ export default function ContentRosterTable({
                   onSort={handleSort}
                 />
               </th>
+              <th className="w-8 pr-2" />
             </tr>
           </thead>
           <tbody>
-            {filtered.map((artist) => (
-              <tr
-                key={artist.artist_handle}
-                onClick={() =>
-                  navigate(`/label/artists/${artist.artist_handle}`)
-                }
-                className="group cursor-pointer transition-colors hover:bg-white/[0.025]"
-                style={{ borderBottom: "1px solid rgba(255,255,255,0.03)" }}
-              >
-                {/* Artist */}
-                <td className="pl-4 pr-2 py-2">
-                  <p className="text-[13px] font-medium text-white/87 leading-tight">
-                    {artist.artist_name}
-                  </p>
-                </td>
+            {filtered.map((artist) => {
+              const isExpanded = expandedHandle === artist.artist_handle;
+              return (
+                <React.Fragment key={artist.artist_handle}>
+                  <tr
+                    onClick={() =>
+                      navigate(`/label/artists/${artist.artist_handle}`)
+                    }
+                    className="group cursor-pointer transition-colors hover:bg-white/[0.025]"
+                    style={{
+                      borderBottom: isExpanded
+                        ? "none"
+                        : "1px solid rgba(255,255,255,0.03)",
+                    }}
+                  >
+                    {/* Artist */}
+                    <td className="pl-4 pr-2 py-2">
+                      <div className="flex items-center gap-2.5">
+                        <ArtistAvatar
+                          name={artist.artist_name}
+                          url={artist.avatar_url}
+                        />
+                        <p className="text-[13px] font-medium text-white/87 leading-tight">
+                          {artist.artist_name}
+                        </p>
+                      </div>
+                    </td>
 
-                {/* Content Health */}
-                <td className="px-2 py-2">
-                  <ContentHealthPill
-                    cadence={artist.posting_cadence}
-                    daysSince={artist.days_since_last_post}
-                    trend={artist.performance_trend}
-                  />
-                </td>
+                    {/* Content Health */}
+                    <td className="px-2 py-2">
+                      <ContentHealthPill
+                        cadence={artist.posting_cadence}
+                        daysSince={artist.days_since_last_post}
+                        trend={artist.performance_trend}
+                      />
+                    </td>
 
-                {/* Performance */}
-                <td className="px-2 py-2 hidden lg:table-cell">
-                  <PerformanceCell artist={artist} />
-                </td>
+                    {/* Performance */}
+                    <td className="px-2 py-2 hidden lg:table-cell">
+                      <PerformanceCell artist={artist} />
+                    </td>
 
-                {/* Format Alpha */}
-                <td className="px-2 py-2 hidden md:table-cell">
-                  <FormatAlphaCell artist={artist} />
-                </td>
+                    {/* Format Alpha */}
+                    <td className="px-2 py-2 hidden md:table-cell">
+                      <FormatAlphaCell artist={artist} />
+                    </td>
 
-                {/* Activity */}
-                <td className="pl-2 pr-4 py-2">
-                  <ActivityCell artist={artist} />
-                </td>
-              </tr>
-            ))}
+                    {/* Activity */}
+                    <td className="pl-2 py-2">
+                      <ActivityCell artist={artist} />
+                    </td>
+
+                    {/* Expand chevron */}
+                    <td className="pr-2 py-2 text-center">
+                      <button
+                        onClick={(e) => toggleExpand(artist.artist_handle, e)}
+                        className="p-1 rounded-md text-white/25 hover:text-white/60 hover:bg-white/[0.04] transition-colors"
+                      >
+                        <ChevronRight
+                          size={14}
+                          className={`transition-transform duration-150 ${isExpanded ? "rotate-90" : ""}`}
+                        />
+                      </button>
+                    </td>
+                  </tr>
+                  {isExpanded && <ExpandedRow artist={artist} colSpan={6} />}
+                </React.Fragment>
+              );
+            })}
           </tbody>
         </table>
 

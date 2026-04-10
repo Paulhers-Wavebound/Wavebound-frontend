@@ -26,7 +26,7 @@ export default function ApiQuotaGauges({ quotas }: { quotas: ApiQuotaData }) {
 
   // YouTube: sum today's usage from history (latest entry)
   const ytUsedToday =
-    yt.history.length > 0 ? yt.history[0].quota_units_used : 0;
+    yt?.history?.length > 0 ? yt.history[0].quota_units_used : 0;
   const ytRemaining = ytThresh.total - ytUsedToday;
   const ytColor = getQuotaColor(
     ytRemaining,

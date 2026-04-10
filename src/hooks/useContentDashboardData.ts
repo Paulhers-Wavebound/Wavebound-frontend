@@ -27,6 +27,7 @@ export function useContentDashboardData(): ContentDashboardData {
   const [videoSummaryRaw, setVideoSummaryRaw] = useState<any[]>([]);
   const [sentimentRaw, setSentimentRaw] = useState<any[]>([]);
   const [catalogRaw, setCatalogRaw] = useState<any[]>([]);
+  const [siSoundsRaw, setSiSoundsRaw] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -42,6 +43,7 @@ export function useContentDashboardData(): ContentDashboardData {
       setVideoSummaryRaw([]);
       setSentimentRaw([]);
       setCatalogRaw([]);
+      setSiSoundsRaw([]);
       setLoading(false);
       return;
     }
@@ -124,7 +126,7 @@ export function useContentDashboardData(): ContentDashboardData {
             supabase
               .from("catalog_tiktok_performance" as any)
               .select(
-                "song_name, artist_name, tiktok_video_count, total_tiktok_plays, unique_creators, fan_videos, fan_to_artist_ratio, tiktok_status, cross_platform_gap, videos_last_7d, videos_last_30d",
+                "song_name, artist_name, tiktok_video_count, total_tiktok_plays, unique_creators, fan_videos, fan_to_artist_ratio, tiktok_status, cross_platform_gap, videos_last_7d, videos_last_30d, tiktok_music_id",
               )
               .in("artist_entity_id", entityIds)
               .gt("tiktok_video_count", 0)
@@ -287,6 +289,7 @@ export function useContentDashboardData(): ContentDashboardData {
         cross_platform_gap: c.cross_platform_gap,
         videos_last_7d: c.videos_last_7d,
         videos_last_30d: c.videos_last_30d,
+        tiktok_music_id: c.tiktok_music_id || null,
       })),
     [catalogRaw],
   );
