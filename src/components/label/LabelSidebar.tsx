@@ -15,14 +15,23 @@ import {
   Check,
   Sparkles,
   Radar,
+  Brain,
+  HeartPulse,
+  Globe,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useUserProfile } from "@/contexts/UserProfileContext";
 import { useAdminRole } from "@/hooks/useAdminRole";
+import { useDashboardRole } from "@/contexts/DashboardRoleContext";
 import waveboundLogo from "@/assets/wavebound-logo.png";
 import { format } from "date-fns";
 import { useState, useEffect, useRef } from "react";
 import { PREVIEW_FEATURES } from "@/config/previewFeatures";
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from "@/components/ui/tooltip";
 
 interface LabelSidebarProps {
   onClose?: () => void;
@@ -36,6 +45,7 @@ const FEATURE_TO_NAV: Record<string, string> = {
   "paid-amplification": "amplification",
   "expansion-radar": "expansion-radar",
   "fan-briefs": "fan-briefs",
+  intelligence: "intelligence",
 };
 
 const getMainNav = (isAdmin: boolean, labelId: string | null) => {
@@ -45,6 +55,7 @@ const getMainNav = (isAdmin: boolean, labelId: string | null) => {
   );
   const showAmplification =
     isAdmin || previewList.includes("paid-amplification");
+  const showIntelligence = isAdmin || !previewList.includes("intelligence");
 
   const tag = (id: string) =>
     previewNavIds.has(id) ? { isPreview: true as const } : {};
@@ -56,6 +67,17 @@ const getMainNav = (isAdmin: boolean, labelId: string | null) => {
       icon: LayoutDashboard,
       path: "/label",
     },
+    ...(showIntelligence
+      ? [
+          {
+            id: "intelligence",
+            label: "Intelligence",
+            icon: Brain,
+            path: "/label/assistant",
+            isNew: true as const,
+          },
+        ]
+      : []),
     {
       id: "sound-intelligence",
       label: "Sound Intelligence",
@@ -80,6 +102,7 @@ const getMainNav = (isAdmin: boolean, labelId: string | null) => {
       icon: Radar,
       path: "/label/expansion-radar",
       isNew: true,
+      badgeLabel: "V2",
       ...tag("expansion-radar"),
     },
     {
@@ -89,6 +112,17 @@ const getMainNav = (isAdmin: boolean, labelId: string | null) => {
       path: "/label/fan-briefs",
       ...tag("fan-briefs"),
     },
+    ...(isAdmin
+      ? [
+          {
+            id: "the-pulse",
+            label: "The Pulse",
+            icon: Globe,
+            path: "/label/admin/pulse",
+            isNew: true as const,
+          },
+        ]
+      : []),
   ];
 };
 
@@ -122,6 +156,7 @@ export default function LabelSidebar({
   const { labelName, labelLogoUrl, labelId, labelOverride, setLabelOverride } =
     useUserProfile();
   const { isAdmin } = useAdminRole();
+  const { roleLabel } = useDashboardRole();
   const mainNav = getMainNav(isAdmin, labelId);
 
   // Admin label switcher
@@ -191,6 +226,9 @@ export default function LabelSidebar({
         location.pathname.startsWith("/label/artist")
       );
     }
+    if (item.id === "sound-intelligence") {
+      return location.pathname.startsWith("/label/sound-intelligence");
+    }
     return location.pathname === item.path;
   };
 
@@ -214,8 +252,220 @@ export default function LabelSidebar({
         <img
           src={waveboundLogo}
           alt="Wavebound"
-          style={{ width: 28, height: 28, marginBottom: 28 }}
+          style={{ width: 28, height: 28, marginBottom: 24 }}
         />
+
+        {/* Admin label switcher — collapsed popover */}
+        {isAdmin && allLabels.length > 0 && (
+          <div
+            ref={switcherRef}
+            style={{ position: "relative", marginBottom: 8 }}
+          >
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => setSwitcherOpen(!switcherOpen)}
+                  style={{
+                    width: 40,
+                    height: 40,
+                    borderRadius: 10,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    border: labelOverride
+                      ? "1px solid rgba(232,67,10,0.3)"
+                      : "1px solid transparent",
+                    cursor: "pointer",
+                    background: labelOverride
+                      ? "rgba(232,67,10,0.08)"
+                      : "transparent",
+                    color: labelOverride ? "#e8430a" : "var(--ink-tertiary)",
+                    transition: "all 150ms",
+                  }}
+                >
+                  <Shield size={16} strokeWidth={1.8} />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="right" sideOffset={8}>
+                {labelOverride
+                  ? `Viewing: ${labelOverride.labelName}`
+                  : "Switch label"}
+              </TooltipContent>
+            </Tooltip>
+
+            {switcherOpen && (
+              <div
+                style={{
+                  position: "absolute",
+                  left: "100%",
+                  top: 0,
+                  marginLeft: 8,
+                  background: "#2C2C2E",
+                  border: "1px solid rgba(255,255,255,0.08)",
+                  borderRadius: 12,
+                  padding: 4,
+                  zIndex: 50,
+                  width: 220,
+                  maxHeight: 280,
+                  overflowY: "auto",
+                  boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
+                }}
+              >
+                {labelOverride && (
+                  <button
+                    onClick={() => {
+                      setLabelOverride(null);
+                      setSwitcherOpen(false);
+                    }}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      width: "100%",
+                      padding: "8px 10px",
+                      borderRadius: 8,
+                      border: "none",
+                      cursor: "pointer",
+                      background: "none",
+                      textAlign: "left",
+                      transition: "background 150ms",
+                      marginBottom: 2,
+                    }}
+                    onMouseEnter={(e) => {
+                      (e.currentTarget as HTMLButtonElement).style.background =
+                        "rgba(255,255,255,0.04)";
+                    }}
+                    onMouseLeave={(e) => {
+                      (e.currentTarget as HTMLButtonElement).style.background =
+                        "none";
+                    }}
+                  >
+                    <X size={14} color="#FF453A" style={{ flexShrink: 0 }} />
+                    <span
+                      style={{
+                        fontFamily: '"DM Sans", sans-serif',
+                        fontSize: 12,
+                        fontWeight: 600,
+                        color: "#FF453A",
+                      }}
+                    >
+                      Back to my account
+                    </span>
+                  </button>
+                )}
+                {allLabels.map((label) => {
+                  const active = labelOverride
+                    ? labelOverride.labelId === label.id
+                    : labelId === label.id;
+                  const isOwnLabel = !labelOverride && labelId === label.id;
+                  return (
+                    <button
+                      key={label.id}
+                      onClick={() => {
+                        if (isOwnLabel) {
+                          setLabelOverride(null);
+                        } else {
+                          setLabelOverride({
+                            labelId: label.id,
+                            labelName: label.name,
+                            labelSlug: label.slug,
+                            labelLogoUrl: label.logo_url,
+                          });
+                        }
+                        setSwitcherOpen(false);
+                      }}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        width: "100%",
+                        padding: "8px 10px",
+                        borderRadius: 8,
+                        border: "none",
+                        cursor: "pointer",
+                        background: active ? "rgba(255,255,255,0.04)" : "none",
+                        textAlign: "left",
+                        transition: "background 150ms",
+                      }}
+                      onMouseEnter={(e) => {
+                        (
+                          e.currentTarget as HTMLButtonElement
+                        ).style.background = "rgba(255,255,255,0.06)";
+                      }}
+                      onMouseLeave={(e) => {
+                        (
+                          e.currentTarget as HTMLButtonElement
+                        ).style.background = active
+                          ? "rgba(255,255,255,0.04)"
+                          : "none";
+                      }}
+                    >
+                      {label.logo_url ? (
+                        <img
+                          src={label.logo_url}
+                          alt={`${label.name} logo`}
+                          style={{
+                            width: 20,
+                            height: 20,
+                            borderRadius: 5,
+                            objectFit: "contain",
+                            flexShrink: 0,
+                            background: "rgba(255,255,255,0.06)",
+                          }}
+                        />
+                      ) : (
+                        <div
+                          style={{
+                            width: 20,
+                            height: 20,
+                            borderRadius: 5,
+                            background: "rgba(255,255,255,0.06)",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            flexShrink: 0,
+                          }}
+                        >
+                          <span
+                            style={{
+                              fontSize: 9,
+                              fontWeight: 600,
+                              color: "var(--ink-tertiary)",
+                            }}
+                          >
+                            {label.name.slice(0, 2).toUpperCase()}
+                          </span>
+                        </div>
+                      )}
+                      <span
+                        style={{
+                          fontFamily: '"DM Sans", sans-serif',
+                          fontSize: 12,
+                          fontWeight: active ? 600 : 400,
+                          color: active ? "var(--ink)" : "var(--ink-secondary)",
+                          flex: 1,
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {label.name}
+                      </span>
+                      {active && (
+                        <Check
+                          size={14}
+                          color="#e8430a"
+                          style={{ flexShrink: 0 }}
+                        />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
         <nav
           style={{
             display: "flex",
@@ -227,40 +477,48 @@ export default function LabelSidebar({
           {mainNav.map((item) => {
             const active = isActive(item);
             return (
-              <button
-                key={item.id}
-                onClick={() => handleNav(item)}
-                title={item.label + (!item.path ? " (Coming soon)" : "")}
-                style={{
-                  width: 40,
-                  height: 40,
-                  borderRadius: 10,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  border: "none",
-                  cursor: "pointer",
-                  background: active ? "var(--accent-light)" : "transparent",
-                  color: active ? "var(--accent)" : "var(--ink-tertiary)",
-                  transition: "all 150ms ease",
-                  position: "relative",
-                }}
-              >
-                {active && (
-                  <div
+              <Tooltip key={item.id}>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={() => handleNav(item)}
                     style={{
-                      position: "absolute",
-                      left: 0,
-                      top: 8,
-                      bottom: 8,
-                      width: 3,
-                      borderRadius: 2,
-                      background: "var(--accent)",
+                      width: 40,
+                      height: 40,
+                      borderRadius: 10,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      border: "none",
+                      cursor: "pointer",
+                      background: active
+                        ? "var(--accent-light)"
+                        : "transparent",
+                      color: active ? "var(--accent)" : "var(--ink-tertiary)",
+                      transition: "all 150ms ease",
+                      position: "relative",
                     }}
-                  />
-                )}
-                <item.icon size={22} strokeWidth={1.8} />
-              </button>
+                  >
+                    {active && (
+                      <div
+                        style={{
+                          position: "absolute",
+                          left: 0,
+                          top: 8,
+                          bottom: 8,
+                          width: 3,
+                          borderRadius: 2,
+                          background: "var(--accent)",
+                        }}
+                      />
+                    )}
+                    <item.icon size={22} strokeWidth={1.8} />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="right" sideOffset={8}>
+                  {item.label}
+                  {!item.path && " (Coming soon)"}
+                </TooltipContent>
+              </Tooltip>
             );
           })}
         </nav>
@@ -275,63 +533,75 @@ export default function LabelSidebar({
         >
           {/* Admin link */}
           {isAdmin && (
-            <button
-              onClick={() => navigate("/admin")}
-              title="Admin"
-              style={{
-                width: 40,
-                height: 40,
-                borderRadius: 10,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                border: "none",
-                cursor: "pointer",
-                background: location.pathname.startsWith("/admin")
-                  ? "rgba(232,67,10,0.12)"
-                  : "transparent",
-                color: location.pathname.startsWith("/admin")
-                  ? "#e8430a"
-                  : "var(--ink-tertiary)",
-                transition: "all 150ms",
-              }}
-            >
-              <Shield size={18} strokeWidth={1.8} />
-            </button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => navigate("/admin")}
+                  style={{
+                    width: 40,
+                    height: 40,
+                    borderRadius: 10,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    border: "none",
+                    cursor: "pointer",
+                    background: location.pathname.startsWith("/admin")
+                      ? "rgba(232,67,10,0.12)"
+                      : "transparent",
+                    color: location.pathname.startsWith("/admin")
+                      ? "#e8430a"
+                      : "var(--ink-tertiary)",
+                    transition: "all 150ms",
+                  }}
+                >
+                  <Shield size={18} strokeWidth={1.8} />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="right" sideOffset={8}>
+                Admin
+              </TooltipContent>
+            </Tooltip>
+          )}
+          {/* System health — collapsed */}
+          {isAdmin && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => navigate("/label/admin/health")}
+                  style={{
+                    width: 40,
+                    height: 40,
+                    borderRadius: 10,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    border: "none",
+                    cursor: "pointer",
+                    background:
+                      location.pathname === "/label/admin/health"
+                        ? "rgba(232,67,10,0.12)"
+                        : "transparent",
+                    color:
+                      location.pathname === "/label/admin/health"
+                        ? "#e8430a"
+                        : "var(--ink-tertiary)",
+                    transition: "all 150ms",
+                  }}
+                >
+                  <HeartPulse size={18} strokeWidth={1.8} />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="right" sideOffset={8}>
+                System health
+              </TooltipContent>
+            </Tooltip>
           )}
           {/* Theme toggle */}
-          <button
-            onClick={onToggleTheme}
-            title={dark ? "Switch to light mode" : "Switch to dark mode"}
-            style={{
-              width: 40,
-              height: 40,
-              borderRadius: 10,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              border: "none",
-              cursor: "pointer",
-              background: "transparent",
-              color: "var(--ink-tertiary)",
-              transition: "all 150ms",
-            }}
-          >
-            {dark ? (
-              <Sun size={18} strokeWidth={1.8} />
-            ) : (
-              <Moon size={18} strokeWidth={1.8} />
-            )}
-          </button>
-          {bottomNav.map((item) => {
-            const active = item.path ? location.pathname === item.path : false;
-            return (
+          <Tooltip>
+            <TooltipTrigger asChild>
               <button
-                key={item.id}
-                title={item.label + (!item.path ? " (Coming soon)" : "")}
-                onClick={() => {
-                  if (item.path) navigate(item.path);
-                }}
+                onClick={onToggleTheme}
                 style={{
                   width: 40,
                   height: 40,
@@ -340,14 +610,56 @@ export default function LabelSidebar({
                   alignItems: "center",
                   justifyContent: "center",
                   border: "none",
-                  cursor: item.path ? "pointer" : "default",
-                  background: active ? "var(--accent-light)" : "transparent",
-                  color: active ? "var(--accent)" : "var(--ink-tertiary)",
+                  cursor: "pointer",
+                  background: "transparent",
+                  color: "var(--ink-tertiary)",
                   transition: "all 150ms",
                 }}
               >
-                <item.icon size={20} strokeWidth={1.8} />
+                {dark ? (
+                  <Sun size={18} strokeWidth={1.8} />
+                ) : (
+                  <Moon size={18} strokeWidth={1.8} />
+                )}
               </button>
+            </TooltipTrigger>
+            <TooltipContent side="right" sideOffset={8}>
+              {dark ? "Light mode" : "Dark mode"}
+            </TooltipContent>
+          </Tooltip>
+          {bottomNav.map((item) => {
+            const active = item.path ? location.pathname === item.path : false;
+            return (
+              <Tooltip key={item.id}>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={() => {
+                      if (item.path) navigate(item.path);
+                    }}
+                    style={{
+                      width: 40,
+                      height: 40,
+                      borderRadius: 10,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      border: "none",
+                      cursor: item.path ? "pointer" : "default",
+                      background: active
+                        ? "var(--accent-light)"
+                        : "transparent",
+                      color: active ? "var(--accent)" : "var(--ink-tertiary)",
+                      transition: "all 150ms",
+                    }}
+                  >
+                    <item.icon size={20} strokeWidth={1.8} />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="right" sideOffset={8}>
+                  {item.label}
+                  {!item.path && " (Coming soon)"}
+                </TooltipContent>
+              </Tooltip>
             );
           })}
         </div>
@@ -742,6 +1054,20 @@ export default function LabelSidebar({
                 }}
               />
               <span>{item.label}</span>
+              {item.id === "dashboard" && (
+                <span
+                  style={{
+                    fontSize: 10,
+                    fontWeight: 500,
+                    color: "var(--ink-tertiary)",
+                    marginLeft: "auto",
+                    flexShrink: 0,
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {roleLabel}
+                </span>
+              )}
               {isPreview && (
                 <span
                   style={{
@@ -780,7 +1106,9 @@ export default function LabelSidebar({
                     marginLeft: "auto",
                   }}
                 >
-                  NEW
+                  {"badgeLabel" in item && item.badgeLabel
+                    ? (item.badgeLabel as string)
+                    : "NEW"}
                 </span>
               )}
             </button>
@@ -835,6 +1163,54 @@ export default function LabelSidebar({
               }}
             />
             Admin
+          </button>
+        )}
+
+        {/* System health — admin only */}
+        {isAdmin && (
+          <button
+            onClick={() => {
+              navigate("/label/admin/health");
+              onClose?.();
+            }}
+            className="label-nav-item"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              height: 40,
+              padding: "0 12px",
+              borderRadius: 10,
+              border: "none",
+              cursor: "pointer",
+              background:
+                location.pathname === "/label/admin/health"
+                  ? "rgba(232,67,10,0.12)"
+                  : "transparent",
+              color:
+                location.pathname === "/label/admin/health"
+                  ? "var(--ink)"
+                  : "var(--ink-secondary)",
+              fontFamily: '"DM Sans", sans-serif',
+              fontSize: 13,
+              fontWeight:
+                location.pathname === "/label/admin/health" ? 600 : 500,
+              transition: "all 150ms",
+              textAlign: "left",
+              width: "100%",
+            }}
+          >
+            <HeartPulse
+              size={18}
+              strokeWidth={1.8}
+              style={{
+                color:
+                  location.pathname === "/label/admin/health"
+                    ? "#e8430a"
+                    : "var(--ink-tertiary)",
+              }}
+            />
+            System health
           </button>
         )}
 

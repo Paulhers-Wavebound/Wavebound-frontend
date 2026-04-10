@@ -12,15 +12,16 @@ export type PreviewFeatureId =
   | "sound-intelligence"
   | "paid-amplification"
   | "expansion-radar"
-  | "fan-briefs";
+  | "fan-briefs"
+  | "intelligence";
 
 export const PREVIEW_FEATURES: Record<string, PreviewFeatureId[]> = {
   // Warner Music UK
   "644cb655-3fa3-4f29-b716-d4f1fce3243c": [
     "sound-intelligence",
     "paid-amplification",
-    "expansion-radar",
     "fan-briefs",
+    "intelligence",
   ],
 };
 
@@ -30,4 +31,5 @@ export const PREVIEW_FEATURE_LABELS: Record<PreviewFeatureId, string> = {
   "paid-amplification": "Paid Amplification",
   "expansion-radar": "Expansion Radar",
   "fan-briefs": "Fan Briefs",
+  intelligence: "Intelligence",
 };

@@ -31,6 +31,7 @@ interface Props {
   disabledLines: Set<string>;
   onToggleLine: (name: string) => void;
   onSoloLine?: (name: string) => void;
+  onShowAll?: () => void;
 }
 
 export default function FormatTrendsChart({
@@ -39,6 +40,7 @@ export default function FormatTrendsChart({
   disabledLines,
   onToggleLine,
   onSoloLine,
+  onShowAll,
 }: Props) {
   const [timeRange, setTimeRange] = useState<TimeRange>("all");
 
@@ -367,9 +369,13 @@ export default function FormatTrendsChart({
           <button
             data-pdf-hide
             onClick={() => {
-              formats.forEach((f) => {
-                if (disabledLines.has(f.name)) onToggleLine(f.name);
-              });
+              if (onShowAll) {
+                onShowAll();
+              } else {
+                formats.forEach((f) => {
+                  if (disabledLines.has(f.name)) onToggleLine(f.name);
+                });
+              }
             }}
             style={{
               fontFamily: '"DM Sans", sans-serif',

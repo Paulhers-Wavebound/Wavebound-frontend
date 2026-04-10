@@ -14,6 +14,8 @@ export default {
     },
     extend: {
       fontFamily: {
+        'geist': ['Geist', 'system-ui', 'sans-serif'],
+        'newsreader': ['Newsreader', 'Georgia', 'serif'],
         'playfair': ['Playfair Display', 'serif'],
         'montserrat': ['Montserrat', 'sans-serif'],
         'merriweather': ['Merriweather', 'serif'],

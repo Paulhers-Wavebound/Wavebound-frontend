@@ -551,8 +551,8 @@ function MonitoringChart({
               return (
                 <div
                   style={{
-                    background: "#1C1C1E",
-                    border: "1px solid rgba(255,255,255,0.06)",
+                    background: "var(--surface, #1C1C1E)",
+                    border: "1px solid var(--border, rgba(255,255,255,0.06))",
                     borderRadius: 10,
                     padding: "10px 14px",
                     fontFamily: '"DM Sans", sans-serif',

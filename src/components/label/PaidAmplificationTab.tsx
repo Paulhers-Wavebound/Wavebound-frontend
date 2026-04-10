@@ -301,9 +301,11 @@ export default function PaidAmplificationTab({
         .from("roster_dashboard_metrics")
         .select("artist_handle, artist_name, momentum_tier");
 
-      const { data: roster } = labelId
-        ? await query.eq("label_id", labelId)
-        : await query;
+      if (!labelId) {
+        setLoading(false);
+        return;
+      }
+      const { data: roster } = await query.eq("label_id", labelId);
 
       const rosterArr: any[] = roster || [];
       setRosterMetrics(rosterArr);

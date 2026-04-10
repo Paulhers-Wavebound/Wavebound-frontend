@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import LabelLayout from "@/pages/label/LabelLayout";
 import { SoundAnalysis, SoundMonitoring } from "@/types/soundIntelligence";
 import {
   getSoundAnalysis,
@@ -15,6 +14,9 @@ import {
   FileText,
   Table2,
   Trash2,
+  Star,
+  Zap,
+  Search,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useLabelPermissions } from "@/hooks/useLabelPermissions";
@@ -23,24 +25,22 @@ import {
   exportFullAnalysisCSV,
   exportFormatBreakdownCSV,
 } from "@/utils/exportAnalysis";
-import SoundHeader from "@/components/sound-intelligence/SoundHeader";
-import SoundHealthStrip from "@/components/sound-intelligence/SoundHealthStrip";
-import HeroStatsRow from "@/components/sound-intelligence/HeroStatsRow";
-import VelocityChart from "@/components/sound-intelligence/VelocityChart";
-import WinnerCard from "@/components/sound-intelligence/WinnerCard";
-import FormatTrendsChart from "@/components/sound-intelligence/FormatTrendsChart";
-import FormatBreakdownTable from "@/components/sound-intelligence/FormatBreakdownTable";
-import HookDurationSection from "@/components/sound-intelligence/HookDurationSection";
-import TopPerformersGrid from "@/components/sound-intelligence/TopPerformersGrid";
-import CreatorTiersSection from "@/components/sound-intelligence/CreatorTiersSection";
-import GeoSpreadSection from "@/components/sound-intelligence/GeoSpreadSection";
-import LifecycleCard from "@/components/sound-intelligence/LifecycleCard";
-import PostingHoursChart from "@/components/sound-intelligence/PostingHoursChart";
-import AxisBrowser from "@/components/sound-intelligence/AxisBrowser";
+import { subscribeSound, unsubscribeSound } from "@/utils/soundIntelligenceApi";
 import ConfirmDialog from "@/components/label/ConfirmDialog";
 import SoundAlertBell from "@/components/sound-intelligence/SoundAlertBell";
 import MonitoringTrendChart from "@/components/sound-intelligence/MonitoringTrendChart";
 import { useUserProfile } from "@/contexts/UserProfileContext";
+import { useSetPageTitle } from "@/contexts/PageTitleContext";
+import RoleSelector from "@/components/label/RoleSelector";
+
+// V2 Zone Components
+import VerdictStrip from "@/components/sound-intelligence/VerdictStrip";
+import ConversionChart from "@/components/sound-intelligence/ConversionChart";
+import WinningFormatCard from "@/components/sound-intelligence/WinningFormatCard";
+import PlaylistActivityFeed from "@/components/sound-intelligence/PlaylistActivityFeed";
+import FormatBreakdownTable from "@/components/sound-intelligence/FormatBreakdownTable";
+import CreatorActionList from "@/components/sound-intelligence/CreatorActionList";
+import DeepDiveSection from "@/components/sound-intelligence/DeepDiveSection";
 
 export default function SoundIntelligenceDetail() {
   const { jobId } = useParams<{ jobId: string }>();
@@ -49,6 +49,7 @@ export default function SoundIntelligenceDetail() {
   const { labelId } = useUserProfile();
   const [analysis, setAnalysis] = useState<SoundAnalysis | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  useSetPageTitle(analysis?.track_name ?? null);
   const [loadingStatus, setLoadingStatus] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
@@ -60,15 +61,77 @@ export default function SoundIntelligenceDetail() {
   const [monitoring, setMonitoring] = useState<SoundMonitoring | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [expandedFormat, setExpandedFormat] = useState<number | null>(null);
-  const [expandedTier, setExpandedTier] = useState<number | null>(null);
-  const [expandedGeo, setExpandedGeo] = useState<number | null>(null);
-  const [disabledTrendLines, setDisabledTrendLines] = useState<Set<string>>(
-    new Set(),
-  );
-  const [nicheFilter, setNicheFilter] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const exportRef = useRef<HTMLDivElement>(null);
   const [exporting, setExporting] = useState(false);
+  const [subscribed, setSubscribed] = useState(false);
+  const [isOwnSound, setIsOwnSound] = useState(true);
+  const [subscribing, setSubscribing] = useState(false);
+  const [subChecked, setSubChecked] = useState(false);
+  const [source, setSource] = useState<"manual" | "auto_discovery" | null>(
+    null,
+  );
+  const [artistHandle, setArtistHandle] = useState<string | null>(null);
+
+  // Check subscription status + source on mount
+  useEffect(() => {
+    if (!jobId) return;
+    (async () => {
+      try {
+        // Fetch subscription
+        const { data: sub } = await supabase
+          .from("sound_subscriptions")
+          .select("id, is_own_sound")
+          .eq("job_id", jobId)
+          .maybeSingle();
+        if (sub) {
+          setSubscribed(true);
+          setIsOwnSound(sub.is_own_sound ?? true);
+        }
+      } catch {
+        // ignore — non-critical
+      } finally {
+        setSubChecked(true);
+      }
+    })();
+    // Fetch source from job record
+    (async () => {
+      try {
+        const { data: job } = await supabase
+          .from("sound_intelligence_jobs")
+          .select("source, artist_handle")
+          .eq("id", jobId)
+          .maybeSingle();
+        if (job) {
+          setSource(job.source ?? "manual");
+          setArtistHandle(job.artist_handle ?? null);
+        }
+      } catch {
+        // non-critical
+      }
+    })();
+  }, [jobId]);
+
+  const handleToggleSubscribe = async () => {
+    if (!jobId) return;
+    setSubscribing(true);
+    try {
+      if (subscribed) {
+        await unsubscribeSound(jobId);
+        setSubscribed(false);
+        toast({ title: "Unsubscribed from sound" });
+      } else {
+        await subscribeSound(jobId, { is_own_sound: isOwnSound });
+        setSubscribed(true);
+        toast({ title: "Subscribed to sound" });
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Request failed";
+      toast({ title: "Error", description: msg, variant: "destructive" });
+    } finally {
+      setSubscribing(false);
+    }
+  };
 
   const stopPolling = useCallback(() => {
     if (pollRef.current) {
@@ -155,16 +218,7 @@ export default function SoundIntelligenceDetail() {
     setExporting(true);
 
     const savedExpandedFormat = expandedFormat;
-    const savedExpandedTier = expandedTier;
-    const savedExpandedGeo = expandedGeo;
-    const savedDisabledTrendLines = disabledTrendLines;
-    const savedNicheFilter = nicheFilter;
-
     setExpandedFormat(null);
-    setExpandedTier(null);
-    setExpandedGeo(null);
-    setDisabledTrendLines(new Set());
-    setNicheFilter(null);
 
     await new Promise((r) => setTimeout(r, 150));
 
@@ -179,10 +233,6 @@ export default function SoundIntelligenceDetail() {
       });
     } finally {
       setExpandedFormat(savedExpandedFormat);
-      setExpandedTier(savedExpandedTier);
-      setExpandedGeo(savedExpandedGeo);
-      setDisabledTrendLines(savedDisabledTrendLines);
-      setNicheFilter(savedNicheFilter);
       setExporting(false);
     }
   };
@@ -208,7 +258,7 @@ export default function SoundIntelligenceDetail() {
   };
 
   return (
-    <LabelLayout>
+    <>
       <div
         style={{ maxWidth: 1200, margin: "0 auto", padding: "32px 24px 80px" }}
       >
@@ -221,32 +271,169 @@ export default function SoundIntelligenceDetail() {
             marginBottom: 24,
           }}
         >
-          <button
-            onClick={() => navigate("/label/sound-intelligence")}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
-              background: "none",
-              border: "none",
-              fontFamily: '"DM Sans", sans-serif',
-              fontSize: 14,
-              color: "var(--ink-tertiary)",
-              cursor: "pointer",
-              padding: 0,
-            }}
-            onMouseEnter={(e) => (e.currentTarget.style.color = "var(--ink)")}
-            onMouseLeave={(e) =>
-              (e.currentTarget.style.color = "var(--ink-tertiary)")
-            }
-          >
-            <ArrowLeft size={16} />
-            Back to Sound Intelligence
-          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <button
+              onClick={() => navigate("/label/sound-intelligence")}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                background: "none",
+                border: "none",
+                fontFamily: '"DM Sans", sans-serif',
+                fontSize: 14,
+                color: "var(--ink-tertiary)",
+                cursor: "pointer",
+                padding: 0,
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.color = "var(--ink)")}
+              onMouseLeave={(e) =>
+                (e.currentTarget.style.color = "var(--ink-tertiary)")
+              }
+            >
+              <ArrowLeft size={16} />
+              Back to Sound Intelligence
+            </button>
+            {source && (
+              <span
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 4,
+                  padding: "3px 10px",
+                  borderRadius: 6,
+                  background:
+                    source === "auto_discovery"
+                      ? "rgba(232,67,10,0.12)"
+                      : "rgba(255,255,255,0.06)",
+                  fontFamily: '"DM Sans", sans-serif',
+                  fontSize: 11,
+                  fontWeight: 600,
+                  color:
+                    source === "auto_discovery"
+                      ? "var(--accent)"
+                      : "var(--ink-tertiary)",
+                }}
+              >
+                {source === "auto_discovery" ? (
+                  <Zap size={10} />
+                ) : (
+                  <Search size={10} />
+                )}
+                {source === "auto_discovery" ? "Roster Sound" : "Competitor"}
+                {source === "auto_discovery" && artistHandle && (
+                  <span
+                    style={{
+                      fontWeight: 400,
+                      color: "var(--ink-tertiary)",
+                      marginLeft: 2,
+                    }}
+                  >
+                    @{artistHandle.replace(/^@+/, "")}
+                  </span>
+                )}
+              </span>
+            )}
+          </div>
 
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            {analysis && (
+            <RoleSelector />
+            {analysis && subChecked && (
               <>
+                {/* Subscribe / Own vs Competitor toggle */}
+                <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                  {subscribed && (
+                    <div
+                      style={{
+                        display: "flex",
+                        borderRadius: 8,
+                        border: "1px solid var(--border)",
+                        overflow: "hidden",
+                      }}
+                    >
+                      {(["Own", "Competitor"] as const).map((type) => {
+                        const active =
+                          type === "Own" ? isOwnSound : !isOwnSound;
+                        return (
+                          <button
+                            key={type}
+                            onClick={async () => {
+                              const newVal = type === "Own";
+                              setIsOwnSound(newVal);
+                              // Update in-place: unsub + resub
+                              try {
+                                await unsubscribeSound(jobId!);
+                                await subscribeSound(jobId!, {
+                                  is_own_sound: newVal,
+                                });
+                              } catch {
+                                // revert on failure
+                                setIsOwnSound(!newVal);
+                              }
+                            }}
+                            style={{
+                              padding: "5px 10px",
+                              border: "none",
+                              background: active
+                                ? "rgba(232,67,10,0.15)"
+                                : "transparent",
+                              color: active
+                                ? "var(--accent)"
+                                : "var(--ink-tertiary)",
+                              fontFamily: '"DM Sans", sans-serif',
+                              fontSize: 11,
+                              fontWeight: 600,
+                              cursor: "pointer",
+                              transition: "all 150ms",
+                            }}
+                          >
+                            {type}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                  <button
+                    onClick={handleToggleSubscribe}
+                    disabled={subscribing}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                      padding: "7px 14px",
+                      borderRadius: 9,
+                      border: subscribed
+                        ? "1px solid rgba(232,67,10,0.3)"
+                        : "1px solid var(--border)",
+                      background: subscribed
+                        ? "rgba(232,67,10,0.1)"
+                        : "var(--overlay-hover)",
+                      color: subscribed
+                        ? "var(--accent)"
+                        : "var(--ink-secondary)",
+                      fontFamily: '"DM Sans", sans-serif',
+                      fontSize: 12,
+                      fontWeight: 600,
+                      cursor: subscribing ? "wait" : "pointer",
+                      transition: "all 150ms",
+                      opacity: subscribing ? 0.6 : 1,
+                    }}
+                  >
+                    <Star
+                      size={14}
+                      fill={subscribed ? "var(--accent)" : "none"}
+                      stroke={
+                        subscribed ? "var(--accent)" : "var(--ink-secondary)"
+                      }
+                    />
+                    {subscribing
+                      ? "..."
+                      : subscribed
+                        ? "Subscribed"
+                        : "Subscribe"}
+                  </button>
+                </div>
+
                 <ExportButton
                   icon={FileText}
                   label={exporting ? "Exporting..." : "PDF Report"}
@@ -380,221 +567,107 @@ export default function SoundIntelligenceDetail() {
           </div>
         )}
 
-        {/* Results */}
+        {/* ═══ V2 RESULTS LAYOUT ═══ */}
         {analysis && (
           <div
             ref={exportRef}
             style={{ display: "flex", flexDirection: "column", gap: 16 }}
           >
-            {/* Header */}
+            {/* ZONE 1 — The Verdict */}
             <div style={{ animation: "fadeInUp 0.35s ease both" }}>
-              <SoundHeader analysis={analysis} monitoring={monitoring} />
+              <VerdictStrip
+                analysis={analysis}
+                monitoring={monitoring}
+                userCount={userCount}
+              />
             </div>
 
-            {/* Sound Health Strip */}
-            <div
-              style={{
-                animation: "fadeInUp 0.35s ease both",
-                animationDelay: "0.03s",
-              }}
-            >
-              <SoundHealthStrip analysis={analysis} userCount={userCount} />
-            </div>
-
-            {/* Key Metrics */}
-            <div
-              style={{
-                animation: "fadeInUp 0.35s ease both",
-                animationDelay: "0.05s",
-              }}
-            >
-              <HeroStatsRow analysis={analysis} userCount={userCount} />
-            </div>
-
-            {/* Real-Time Monitoring */}
+            {/* Real-Time Monitoring (if active) */}
             {jobId &&
               monitoring &&
               monitoring.monitoring_interval !== "paused" && (
                 <div
                   style={{
                     animation: "fadeInUp 0.35s ease both",
-                    animationDelay: "0.07s",
+                    animationDelay: "0.05s",
                   }}
                 >
                   <MonitoringTrendChart jobId={jobId} monitoring={monitoring} />
                 </div>
               )}
 
-            {/* Velocity + Winner */}
+            {/* ZONE 2 — Conversion Signal */}
             <div
               data-pdf-stack
               style={{
                 display: "flex",
                 gap: 16,
                 animation: "fadeInUp 0.35s ease both",
-                animationDelay: "0.1s",
+                animationDelay: "0.08s",
               }}
             >
-              <VelocityChart
+              <ConversionChart
                 velocity={analysis.velocity}
                 lifecycle={analysis.lifecycle}
+                spotifySnapshots={analysis.spotify_snapshots}
               />
-              <WinnerCard winner={analysis.winner} />
+              <WinningFormatCard
+                winner={analysis.winner}
+                hookAnalysis={analysis.hook_analysis}
+                duration={analysis.duration}
+                postingHours={analysis.posting_hours}
+              />
             </div>
 
-            {/* 6-Axis Browser (replaces AudienceInsightSection + NicheDistributionChart) */}
+            {/* Playlist Activity */}
             <div
               style={{
                 animation: "fadeInUp 0.35s ease both",
                 animationDelay: "0.12s",
               }}
             >
-              <AxisBrowser
-                formats={analysis.formats}
-                nicheDistribution={analysis.niche_distribution}
-                vibeDistribution={analysis.vibe_distribution}
-                intentBreakdown={analysis.intent_breakdown}
-                creatorDemographics={analysis.creator_demographics}
-                songRoleDistribution={analysis.song_role_distribution}
-                activeNiche={nicheFilter}
-                onNicheClick={setNicheFilter}
+              <PlaylistActivityFeed
+                playlists={analysis.playlist_tracking ?? []}
               />
             </div>
 
-            {/* Posting Hours */}
-            {analysis.posting_hours && (
-              <div
-                style={{
-                  animation: "fadeInUp 0.35s ease both",
-                  animationDelay: "0.14s",
-                }}
-              >
-                <PostingHoursChart postingHours={analysis.posting_hours} />
-              </div>
-            )}
-
-            {/* Format Trends */}
+            {/* ZONE 3 — Spend Decision */}
             <div
+              data-pdf-stack
               style={{
+                display: "flex",
+                gap: 16,
                 animation: "fadeInUp 0.35s ease both",
                 animationDelay: "0.16s",
+                alignItems: "flex-start",
               }}
             >
-              <FormatTrendsChart
-                formats={analysis.formats}
-                velocity={analysis.velocity}
-                disabledLines={disabledTrendLines}
-                onToggleLine={(name) =>
-                  setDisabledTrendLines((prev) => {
-                    const next = new Set(prev);
-                    next.has(name) ? next.delete(name) : next.add(name);
-                    return next;
-                  })
-                }
-                onSoloLine={(name) =>
-                  setDisabledTrendLines((prev) => {
-                    const allOthers = new Set(
-                      analysis.formats
-                        .map((f) => f.name)
-                        .filter((n) => n !== name),
-                    );
-                    if (
-                      prev.size === allOthers.size &&
-                      [...allOthers].every((n) => prev.has(n))
-                    ) {
-                      return new Set();
-                    }
-                    return allOthers;
-                  })
-                }
+              <div style={{ flex: "1 1 60%" }}>
+                <FormatBreakdownTable
+                  formats={analysis.formats}
+                  expandedFormat={expandedFormat}
+                  onToggle={(i) =>
+                    setExpandedFormat((prev) => (prev === i ? null : i))
+                  }
+                  songDuration={analysis.avg_duration_seconds}
+                  spikeFormat={monitoring?.spike_format}
+                  formatSparkScores={analysis.format_spark_scores}
+                />
+              </div>
+              <CreatorActionList
+                topVideos={analysis.top_videos}
+                trackName={analysis.track_name}
               />
             </div>
 
-            {/* Format Breakdown */}
+            {/* ZONE 4 — Deep Dive (collapsible) */}
             <div
               style={{
                 animation: "fadeInUp 0.35s ease both",
                 animationDelay: "0.2s",
               }}
             >
-              <FormatBreakdownTable
-                formats={analysis.formats}
-                expandedFormat={expandedFormat}
-                onToggle={(i) =>
-                  setExpandedFormat((prev) => (prev === i ? null : i))
-                }
-                songDuration={analysis.avg_duration_seconds}
-                spikeFormat={monitoring?.spike_format}
-              />
-            </div>
-
-            {/* Hook & Duration */}
-            <div
-              style={{
-                animation: "fadeInUp 0.35s ease both",
-                animationDelay: "0.24s",
-              }}
-            >
-              <HookDurationSection
-                hookAnalysis={analysis.hook_analysis}
-                duration={analysis.duration}
-              />
-            </div>
-
-            {/* Top Performers */}
-            <div
-              style={{
-                animation: "fadeInUp 0.35s ease both",
-                animationDelay: "0.28s",
-              }}
-            >
-              <TopPerformersGrid
-                topVideos={analysis.top_videos}
-                nicheFilter={nicheFilter}
-                onClearNicheFilter={() => setNicheFilter(null)}
-              />
-            </div>
-
-            {/* Creator Tiers */}
-            <div
-              style={{
-                animation: "fadeInUp 0.35s ease both",
-                animationDelay: "0.32s",
-              }}
-            >
-              <CreatorTiersSection
-                tiers={analysis.creator_tiers}
-                expandedTier={expandedTier}
-                onToggle={(i) =>
-                  setExpandedTier((prev) => (prev === i ? null : i))
-                }
-              />
-            </div>
-
-            {/* Geography */}
-            <div
-              style={{
-                animation: "fadeInUp 0.35s ease both",
-                animationDelay: "0.36s",
-              }}
-            >
-              <GeoSpreadSection
-                geography={analysis.geography}
-                expandedGeo={expandedGeo}
-                onToggle={(i) =>
-                  setExpandedGeo((prev) => (prev === i ? null : i))
-                }
-              />
-            </div>
-
-            {/* Lifecycle */}
-            <div
-              style={{
-                animation: "fadeInUp 0.35s ease both",
-                animationDelay: "0.4s",
-              }}
-            >
-              <LifecycleCard lifecycle={analysis.lifecycle} />
+              <DeepDiveSection analysis={analysis} monitoring={monitoring} />
             </div>
 
             {analysis.unclassified_count != null &&
@@ -731,7 +804,7 @@ export default function SoundIntelligenceDetail() {
         variant="destructive"
         onConfirm={handleDelete}
       />
-    </LabelLayout>
+    </>
   );
 }
 

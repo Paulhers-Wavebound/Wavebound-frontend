@@ -4,10 +4,28 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 
-// Code-split: heavy page with Three.js — only loaded on navigation
+// Code-split: heavy pages — only loaded on navigation
 const LabelExpansionRadar = lazy(
   () => import("./pages/label/LabelExpansionRadar"),
 );
+const LabelAssistant = lazy(() => import("./pages/label/LabelAssistant"));
+const SoundIntelligenceOverview = lazy(
+  () => import("./pages/label/SoundIntelligenceOverview"),
+);
+const SoundIntelligenceDetail = lazy(
+  () => import("./pages/label/SoundIntelligenceDetail"),
+);
+const SoundComparison = lazy(() => import("./pages/label/SoundComparison"));
+const LabelAmplification = lazy(
+  () => import("./pages/label/LabelAmplification"),
+);
+const LabelArtistProfile = lazy(
+  () => import("./pages/label/LabelArtistProfile"),
+);
+const LabelFanBriefs = lazy(() => import("./pages/label/LabelFanBriefs"));
+const ContentAssistant = lazy(() => import("./pages/ContentAssistant"));
+const TikTokAudit = lazy(() => import("./pages/TikTokAudit"));
+const ThePulse = lazy(() => import("./pages/label/ThePulse"));
 import ErrorBoundary from "@/components/ErrorBoundary";
 import { AISidebarProvider } from "@/contexts/AISidebarContext";
 import { AnalysisProvider } from "@/contexts/AnalysisContext";
@@ -15,6 +33,7 @@ import { DiscoverProvider } from "@/contexts/DiscoverContext";
 import { ContentPlanProvider } from "@/contexts/ContentPlanContext";
 import { ChatSessionsProvider } from "@/contexts/ChatSessionsContext";
 import { UserProfileProvider } from "@/contexts/UserProfileContext";
+import { DashboardRoleProvider } from "@/contexts/DashboardRoleContext";
 import { GlobalAISidebar } from "@/components/layout/GlobalAISidebar";
 import { DaySelectorDialog } from "@/components/DaySelectorDialog";
 import { AuthGate } from "@/components/AuthGate";
@@ -30,7 +49,6 @@ import NotFound from "./pages/NotFound";
 
 // Private pages
 import Auth from "./pages/Auth";
-import TikTokAudit from "./pages/TikTokAudit";
 import MyAnalyses from "./pages/MyAnalyses";
 import MyPage from "./pages/MyPage";
 import Favorites from "./pages/Favorites";
@@ -50,22 +68,53 @@ import AdminEditTab from "./components/admin/AdminEditTab";
 import AdminOnboarding from "./pages/admin/AdminOnboarding";
 import { AdminArtistsTab } from "./components/admin/AdminArtistsTab";
 import { AdminLabelsTab } from "./components/admin/AdminLabelsTab";
-import ContentAssistant from "./pages/ContentAssistant";
 import ContentPlanPage from "./pages/ContentPlanPage";
+import LabelLayout from "./pages/label/LabelLayout";
 import LabelDashboard from "./pages/label/LabelDashboard";
 
 import LabelArtistDetailNew from "./pages/label/LabelArtistDetail";
-import LabelArtistProfile from "./pages/label/LabelArtistProfile";
-import SoundIntelligenceOverview from "./pages/label/SoundIntelligenceOverview";
-import SoundIntelligenceDetail from "./pages/label/SoundIntelligenceDetail";
-import LabelAmplification from "./pages/label/LabelAmplification";
+const ArtistIntelligence = lazy(
+  () => import("./pages/label/ArtistIntelligence"),
+);
 import LabelSettings from "./pages/label/LabelSettings";
 import LabelHelp from "./pages/label/LabelHelp";
-import LabelFanBriefs from "./pages/label/LabelFanBriefs";
+// Ops control panel — lazy-loaded sub-pages
+const HealthLayout = lazy(() => import("./pages/label/health/HealthLayout"));
+const HealthOverview = lazy(
+  () => import("./pages/label/health/HealthOverview"),
+);
+const HealthServers = lazy(() => import("./pages/label/health/HealthServers"));
+const HealthScrapers = lazy(
+  () => import("./pages/label/health/HealthScrapers"),
+);
+const HealthCron = lazy(() => import("./pages/label/health/HealthCron"));
+const HealthQuotas = lazy(() => import("./pages/label/health/HealthQuotas"));
+const HealthDataPage = lazy(() => import("./pages/label/health/HealthData"));
+const HealthPipeline = lazy(
+  () => import("./pages/label/health/HealthPipeline"),
+);
+const HealthIdentity = lazy(
+  () => import("./pages/label/health/HealthIdentity"),
+);
+const HealthInventory = lazy(
+  () => import("./pages/label/health/HealthInventory"),
+);
+const HealthActivity = lazy(
+  () => import("./pages/label/health/HealthActivity"),
+);
+const HealthErrors = lazy(() => import("./pages/label/health/HealthErrors"));
+const HealthPerformance = lazy(
+  () => import("./pages/label/health/HealthPerformance"),
+);
+const HealthHandles = lazy(() => import("./pages/label/health/HealthHandles"));
+const HealthN8n = lazy(() => import("./pages/label/health/HealthN8n"));
+const HealthDatabase = lazy(
+  () => import("./pages/label/health/HealthDatabase"),
+);
 import PreviewGate from "./components/coming-soon/PreviewGate";
 import SoundIntelligencePreview from "./pages/label/previews/SoundIntelligencePreview";
 import PaidAmplificationPreview from "./pages/label/previews/PaidAmplificationPreview";
-import ExpansionRadarPreview from "./pages/label/previews/ExpansionRadarPreview";
+
 import FanBriefsPreview from "./pages/label/previews/FanBriefsPreview";
 import { OfflineDetector } from "./components/OfflineDetector";
 import CoreKeepAlive from "@/components/routing/CoreKeepAlive";
@@ -94,204 +143,312 @@ const App = () => {
               element={
                 <AuthGate>
                   <UserProfileProvider>
-                    <AnalysisProvider>
-                      <DiscoverProvider>
-                        <ContentPlanProvider>
-                          <AISidebarProvider>
-                            <ChatSessionsProvider>
-                              <OfflineDetector />
-                              <CoreKeepAlive />
-                              <Routes>
-                                <Route
-                                  path="/"
-                                  element={<Navigate to="/label" replace />}
-                                />
-                                <Route path="/discover" element={null} />
-                                <Route path="/workspace" element={null} />
-                                <Route path="/create" element={null} />
-                                <Route
-                                  path="/analyze-audio/:audioId"
-                                  element={null}
-                                />
-                                <Route
-                                  path="/analyze-video/:videoId"
-                                  element={null}
-                                />
-                                <Route
-                                  path="/analyze-favorite/:videoId"
-                                  element={null}
-                                />
-
-                                <Route
-                                  path="/tiktok-audit/:jobId"
-                                  element={<TikTokAudit />}
-                                />
-                                <Route
-                                  path="/my-analyses"
-                                  element={<MyAnalyses />}
-                                />
-
-                                <Route
-                                  path="/plan"
-                                  element={
-                                    <Navigate to="/content-plan" replace />
-                                  }
-                                />
-                                <Route path="/me" element={<MyPage />} />
-                                <Route
-                                  path="/favorites"
-                                  element={<Favorites />}
-                                />
-
-                                <Route path="/my-plans" element={<MyPlans />} />
-                                <Route
-                                  path="/my-plans/:planId"
-                                  element={<PlanWorkspace />}
-                                />
-                                <Route
-                                  path="/share/:shareId"
-                                  element={<SharedNotes />}
-                                />
-                                <Route
-                                  path="/shared-plan/:shareId"
-                                  element={<SharedPlan />}
-                                />
-
-                                <Route path="/l/:slug" element={<BioPage />} />
-                                <Route path="/about" element={<About />} />
-                                <Route path="/blog" element={<Blog />} />
-                                <Route
-                                  path="/blog/:slug"
-                                  element={<BlogPost />}
-                                />
-
-                                <Route
-                                  path="/chat"
-                                  element={<ContentAssistant />}
-                                />
-                                <Route
-                                  path="/content-plan"
-                                  element={<ContentPlanPage />}
-                                />
-                                <Route path="/admin" element={<AdminLayout />}>
+                    <DashboardRoleProvider>
+                      <AnalysisProvider>
+                        <DiscoverProvider>
+                          <ContentPlanProvider>
+                            <AISidebarProvider>
+                              <ChatSessionsProvider>
+                                <OfflineDetector />
+                                <CoreKeepAlive />
+                                <Routes>
                                   <Route
-                                    index
+                                    path="/"
+                                    element={<Navigate to="/label" replace />}
+                                  />
+                                  <Route path="/discover" element={null} />
+                                  <Route path="/workspace" element={null} />
+                                  <Route path="/create" element={null} />
+                                  <Route
+                                    path="/analyze-audio/:audioId"
+                                    element={null}
+                                  />
+                                  <Route
+                                    path="/analyze-video/:videoId"
+                                    element={null}
+                                  />
+                                  <Route
+                                    path="/analyze-favorite/:videoId"
+                                    element={null}
+                                  />
+
+                                  <Route
+                                    path="/tiktok-audit/:jobId"
                                     element={
-                                      <Navigate
-                                        to="/admin/onboarding"
-                                        replace
-                                      />
+                                      <Suspense fallback={null}>
+                                        <TikTokAudit />
+                                      </Suspense>
                                     }
                                   />
                                   <Route
-                                    path="onboarding"
-                                    element={<AdminOnboarding />}
+                                    path="/my-analyses"
+                                    element={<MyAnalyses />}
                                   />
-                                  <Route
-                                    path="plans"
-                                    element={<AdminPlanReviewTab />}
-                                  />
-                                  <Route
-                                    path="edit"
-                                    element={<AdminEditTab />}
-                                  />
-                                  <Route
-                                    path="artists"
-                                    element={<AdminArtistsTab />}
-                                  />
-                                  <Route
-                                    path="labels"
-                                    element={<AdminLabelsTab />}
-                                  />
-                                </Route>
-                                <Route
-                                  path="/label"
-                                  element={<LabelDashboard />}
-                                />
 
-                                <Route
-                                  path="/label/sound-intelligence"
-                                  element={
-                                    <PreviewGate
-                                      featureId="sound-intelligence"
-                                      preview={<SoundIntelligencePreview />}
-                                    >
-                                      <SoundIntelligenceOverview />
-                                    </PreviewGate>
-                                  }
-                                />
-                                <Route
-                                  path="/label/sound-intelligence/:jobId"
-                                  element={
-                                    <PreviewGate
-                                      featureId="sound-intelligence"
-                                      preview={<SoundIntelligencePreview />}
-                                    >
-                                      <SoundIntelligenceDetail />
-                                    </PreviewGate>
-                                  }
-                                />
-                                <Route
-                                  path="/label/amplification"
-                                  element={
-                                    <PreviewGate
-                                      featureId="paid-amplification"
-                                      preview={<PaidAmplificationPreview />}
-                                    >
-                                      <LabelAmplification />
-                                    </PreviewGate>
-                                  }
-                                />
-                                <Route
-                                  path="/label/artist/:id"
-                                  element={<LabelArtistDetailNew />}
-                                />
-                                <Route
-                                  path="/label/artists/:artistHandle"
-                                  element={<LabelArtistProfile />}
-                                />
-                                <Route
-                                  path="/label/expansion-radar"
-                                  element={
-                                    <PreviewGate
-                                      featureId="expansion-radar"
-                                      preview={<ExpansionRadarPreview />}
-                                    >
+                                  <Route
+                                    path="/plan"
+                                    element={
+                                      <Navigate to="/content-plan" replace />
+                                    }
+                                  />
+                                  <Route path="/me" element={<MyPage />} />
+                                  <Route
+                                    path="/favorites"
+                                    element={<Favorites />}
+                                  />
+
+                                  <Route
+                                    path="/my-plans"
+                                    element={<MyPlans />}
+                                  />
+                                  <Route
+                                    path="/my-plans/:planId"
+                                    element={<PlanWorkspace />}
+                                  />
+                                  <Route
+                                    path="/share/:shareId"
+                                    element={<SharedNotes />}
+                                  />
+                                  <Route
+                                    path="/shared-plan/:shareId"
+                                    element={<SharedPlan />}
+                                  />
+
+                                  <Route
+                                    path="/l/:slug"
+                                    element={<BioPage />}
+                                  />
+                                  <Route path="/about" element={<About />} />
+                                  <Route path="/blog" element={<Blog />} />
+                                  <Route
+                                    path="/blog/:slug"
+                                    element={<BlogPost />}
+                                  />
+
+                                  <Route
+                                    path="/chat"
+                                    element={
                                       <Suspense fallback={null}>
-                                        <LabelExpansionRadar />
+                                        <ContentAssistant />
                                       </Suspense>
-                                    </PreviewGate>
-                                  }
-                                />
-                                <Route
-                                  path="/label/fan-briefs"
-                                  element={
-                                    <PreviewGate
-                                      featureId="fan-briefs"
-                                      preview={<FanBriefsPreview />}
+                                    }
+                                  />
+                                  <Route
+                                    path="/content-plan"
+                                    element={<ContentPlanPage />}
+                                  />
+                                  <Route
+                                    path="/admin"
+                                    element={<AdminLayout />}
+                                  >
+                                    <Route
+                                      index
+                                      element={
+                                        <Navigate
+                                          to="/admin/onboarding"
+                                          replace
+                                        />
+                                      }
+                                    />
+                                    <Route
+                                      path="onboarding"
+                                      element={<AdminOnboarding />}
+                                    />
+                                    <Route
+                                      path="plans"
+                                      element={<AdminPlanReviewTab />}
+                                    />
+                                    <Route
+                                      path="edit"
+                                      element={<AdminEditTab />}
+                                    />
+                                    <Route
+                                      path="artists"
+                                      element={<AdminArtistsTab />}
+                                    />
+                                    <Route
+                                      path="labels"
+                                      element={<AdminLabelsTab />}
+                                    />
+                                  </Route>
+                                  <Route
+                                    path="/label/admin/pulse"
+                                    element={
+                                      <Suspense fallback={null}>
+                                        <ThePulse />
+                                      </Suspense>
+                                    }
+                                  />
+                                  <Route
+                                    path="/label"
+                                    element={<LabelLayout />}
+                                  >
+                                    <Route index element={<LabelDashboard />} />
+                                    <Route
+                                      path="assistant"
+                                      element={<LabelAssistant />}
+                                    />
+                                    <Route
+                                      path="sound-intelligence"
+                                      element={
+                                        <PreviewGate
+                                          featureId="sound-intelligence"
+                                          preview={<SoundIntelligencePreview />}
+                                        >
+                                          <SoundIntelligenceOverview />
+                                        </PreviewGate>
+                                      }
+                                    />
+                                    <Route
+                                      path="sound-intelligence/compare"
+                                      element={
+                                        <PreviewGate
+                                          featureId="sound-intelligence"
+                                          preview={<SoundIntelligencePreview />}
+                                        >
+                                          <SoundComparison />
+                                        </PreviewGate>
+                                      }
+                                    />
+                                    <Route
+                                      path="sound-intelligence/:jobId"
+                                      element={
+                                        <PreviewGate
+                                          featureId="sound-intelligence"
+                                          preview={<SoundIntelligencePreview />}
+                                        >
+                                          <SoundIntelligenceDetail />
+                                        </PreviewGate>
+                                      }
+                                    />
+                                    <Route
+                                      path="amplification"
+                                      element={
+                                        <PreviewGate
+                                          featureId="paid-amplification"
+                                          preview={<PaidAmplificationPreview />}
+                                        >
+                                          <LabelAmplification />
+                                        </PreviewGate>
+                                      }
+                                    />
+                                    <Route
+                                      path="paid-amplification"
+                                      element={
+                                        <Navigate
+                                          to="/label/amplification"
+                                          replace
+                                        />
+                                      }
+                                    />
+                                    <Route
+                                      path="artist/:id"
+                                      element={<ArtistIntelligence />}
+                                    />
+                                    <Route
+                                      path="artists/:artistHandle"
+                                      element={<LabelArtistProfile />}
+                                    />
+                                    <Route
+                                      path="expansion-radar"
+                                      element={<LabelExpansionRadar />}
+                                    />
+                                    <Route
+                                      path="fan-briefs"
+                                      element={
+                                        <PreviewGate
+                                          featureId="fan-briefs"
+                                          preview={<FanBriefsPreview />}
+                                        >
+                                          <LabelFanBriefs />
+                                        </PreviewGate>
+                                      }
+                                    />
+                                    <Route
+                                      path="settings"
+                                      element={<LabelSettings />}
+                                    />
+                                    <Route
+                                      path="help"
+                                      element={<LabelHelp />}
+                                    />
+                                    <Route
+                                      path="admin/health"
+                                      element={<HealthLayout />}
                                     >
-                                      <LabelFanBriefs />
-                                    </PreviewGate>
-                                  }
-                                />
-                                <Route
-                                  path="/label/settings"
-                                  element={<LabelSettings />}
-                                />
-                                <Route
-                                  path="/label/help"
-                                  element={<LabelHelp />}
-                                />
+                                      <Route
+                                        index
+                                        element={<HealthOverview />}
+                                      />
+                                      <Route
+                                        path="servers"
+                                        element={<HealthServers />}
+                                      />
+                                      <Route
+                                        path="scrapers"
+                                        element={<HealthScrapers />}
+                                      />
+                                      <Route
+                                        path="cron"
+                                        element={<HealthCron />}
+                                      />
+                                      <Route
+                                        path="quotas"
+                                        element={<HealthQuotas />}
+                                      />
+                                      <Route
+                                        path="data"
+                                        element={<HealthDataPage />}
+                                      />
+                                      <Route
+                                        path="identity"
+                                        element={<HealthIdentity />}
+                                      />
+                                      <Route
+                                        path="inventory"
+                                        element={<HealthInventory />}
+                                      />
+                                      <Route
+                                        path="pipeline"
+                                        element={<HealthPipeline />}
+                                      />
+                                      <Route
+                                        path="activity"
+                                        element={<HealthActivity />}
+                                      />
+                                      <Route
+                                        path="errors"
+                                        element={<HealthErrors />}
+                                      />
+                                      <Route
+                                        path="performance"
+                                        element={<HealthPerformance />}
+                                      />
+                                      <Route
+                                        path="handles"
+                                        element={<HealthHandles />}
+                                      />
+                                      <Route
+                                        path="n8n"
+                                        element={<HealthN8n />}
+                                      />
+                                      <Route
+                                        path="database"
+                                        element={<HealthDatabase />}
+                                      />
+                                    </Route>
+                                  </Route>
 
-                                <Route path="*" element={<NotFound />} />
-                              </Routes>
-                              <GlobalAISidebar />
-                              <DaySelectorDialog />
-                            </ChatSessionsProvider>
-                          </AISidebarProvider>
-                        </ContentPlanProvider>
-                      </DiscoverProvider>
-                    </AnalysisProvider>
+                                  <Route path="*" element={<NotFound />} />
+                                </Routes>
+                                <GlobalAISidebar />
+                                <DaySelectorDialog />
+                              </ChatSessionsProvider>
+                            </AISidebarProvider>
+                          </ContentPlanProvider>
+                        </DiscoverProvider>
+                      </AnalysisProvider>
+                    </DashboardRoleProvider>
                   </UserProfileProvider>
                 </AuthGate>
               }

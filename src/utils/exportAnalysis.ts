@@ -1,5 +1,3 @@
-import html2canvas from "html2canvas";
-import jsPDF from "jspdf";
 import { SoundAnalysis, FormatBreakdown } from "@/types/soundIntelligence";
 import { formatNumber, ListAnalysisEntry } from "@/utils/soundIntelligenceApi";
 
@@ -19,6 +17,11 @@ export async function exportAnalysisPDF(
   element: HTMLElement,
   analysis: SoundAnalysis,
 ): Promise<void> {
+  const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all([
+    import("html2canvas"),
+    import("jspdf"),
+  ]);
+
   // The target render width in pixels — chosen so content fills A4 width
   // without excessive shrinking. 750px ≈ 194mm content area at ~98dpi.
   const RENDER_WIDTH = 900;
@@ -260,12 +263,15 @@ const STATUS_COLORS: Record<string, [number, number, number]> = {
   declining: [255, 69, 58],
 };
 
-export function exportOverviewPDF(entries: ListAnalysisEntry[]): void {
+export async function exportOverviewPDF(
+  entries: ListAnalysisEntry[],
+): Promise<void> {
   const completed = entries.filter(
     (e) => e.status === "completed" && e.summary,
   );
   if (completed.length === 0) return;
 
+  const { default: jsPDF } = await import("jspdf");
   const pdf = new jsPDF("l", "mm", "a4"); // landscape for wide table
   const PW = 297;
   const PH = 210;

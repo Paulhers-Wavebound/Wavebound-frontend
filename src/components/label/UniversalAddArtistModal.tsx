@@ -82,21 +82,18 @@ export default function UniversalAddArtistModal({
         data: { user },
       } = await supabase.auth.getUser();
 
-      await supabase
-        .from("artist_intelligence")
-        .insert({
-          artist_handle: cleanHandle,
-          label_id: labelId,
-          status: "processing",
-        });
+      await supabase.from("artist_intelligence").insert({
+        artist_handle: cleanHandle,
+        label_id: labelId,
+        status: "processing",
+      });
 
       await supabase
         .from("roster_dashboard_metrics")
         .insert({ artist_handle: cleanHandle, label_id: labelId });
 
-      const { error: funcError } = await supabase.functions.invoke(
-        "start-onboarding",
-        {
+      const { data: onboardingData, error: funcError } =
+        await supabase.functions.invoke("start-onboarding", {
           body: {
             tiktok_handle: cleanHandle,
             artist_name: artistName.trim(),
@@ -105,10 +102,36 @@ export default function UniversalAddArtistModal({
             initiated_by: user?.id || null,
             label_id: labelId,
           },
-        },
-      );
+        });
 
       if (funcError) throw funcError;
+
+      // Fire intelligence onboarding tasks (comments, catalog, videos).
+      // Requires entity_id from start-onboarding response — once backend
+      // creates the entity inline, this triggers the scrape queue.
+      const entityId = onboardingData?.entity_id;
+      if (entityId) {
+        supabase.functions
+          .invoke("trigger-artist-onboarding", {
+            body: {
+              entity_id: entityId,
+              tasks: ["comments", "catalog", "videos"],
+            },
+          })
+          .catch(() => {
+            // Fire and forget — data arrives via pipeline within minutes
+          });
+      }
+
+      // Discover and link sounds from the artist's TikTok videos.
+      // Safe to call again — deduplicates via upsert.
+      supabase.functions
+        .invoke("discover-artist-sounds", {
+          body: { artist_handle: cleanHandle },
+        })
+        .catch(() => {
+          // Fire and forget — ~10-15s, can be re-triggered later
+        });
 
       onArtistAdded({
         artist_handle: cleanHandle,
@@ -124,8 +147,9 @@ export default function UniversalAddArtistModal({
       });
 
       toast({
-        title: `Pipeline started for @${cleanHandle}`,
-        description: "Analysis will be ready in ~2 hours",
+        title: `Setting up intelligence for ${artistName.trim()}`,
+        description:
+          "Comments, catalog, and video data will appear within minutes.",
       });
       onOpenChange(false);
     } catch {
@@ -148,12 +172,16 @@ export default function UniversalAddArtistModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         className="border-0 shadow-2xl"
-        style={{ background: "#1C1C1E", maxWidth: 480, borderRadius: 16 }}
+        style={{
+          background: "var(--surface, #1C1C1E)",
+          maxWidth: 480,
+          borderRadius: 16,
+        }}
       >
         <DialogHeader>
           <DialogTitle
             className="text-base font-semibold"
-            style={{ color: "#fff" }}
+            style={{ color: "var(--ink, #fff)" }}
           >
             Add Artist{labelName ? ` to ${labelName}` : ""}
           </DialogTitle>

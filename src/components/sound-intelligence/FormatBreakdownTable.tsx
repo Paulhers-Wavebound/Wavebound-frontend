@@ -16,6 +16,7 @@ interface Props {
   onToggle: (i: number) => void;
   songDuration?: number;
   spikeFormat?: string | null;
+  formatSparkScores?: Record<string, number>;
 }
 
 const VERDICT_COLORS: Record<string, { bg: string; text: string }> = {
@@ -51,6 +52,7 @@ type SortKey =
   | "avg_views"
   | "share_rate"
   | "actual_share_rate"
+  | "spark_score"
   | "verdict";
 type SortDir = "asc" | "desc";
 
@@ -67,6 +69,7 @@ const SORT_HEADERS_BASE: { key: SortKey; label: string }[] = [
   { key: "pct_of_total", label: "% Total" },
   { key: "avg_views", label: "Avg Views" },
   { key: "share_rate", label: "Engagement Rate" },
+  { key: "spark_score", label: "Spark" },
   { key: "verdict", label: "Verdict" },
 ];
 
@@ -76,26 +79,54 @@ export default function FormatBreakdownTable({
   onToggle,
   songDuration,
   spikeFormat,
+  formatSparkScores,
 }: Props) {
   const [sortKey, setSortKey] = useState<SortKey | null>(null);
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const hasActualShareRate = formats.some((f) => f.actual_share_rate != null);
 
-  const SORT_HEADERS = hasActualShareRate
-    ? [
-        ...SORT_HEADERS_BASE.slice(0, 5),
-        { key: "actual_share_rate" as SortKey, label: "Share Rate" },
-        ...SORT_HEADERS_BASE.slice(5),
-      ]
-    : SORT_HEADERS_BASE;
+  // Spark scores: prefer per-format from the API map, fall back to per-row field
+  const getSparkScore = (f: FormatBreakdown): number | null => {
+    if (formatSparkScores && f.name in formatSparkScores) {
+      return Math.round(formatSparkScores[f.name]);
+    }
+    return f.spark_score ?? null;
+  };
+  const hasSparkScore =
+    formats.some((f) => f.spark_score != null) ||
+    (formatSparkScores != null && Object.keys(formatSparkScores).length > 0);
 
-  const gridCols = hasActualShareRate
-    ? "1.8fr 0.7fr 0.7fr 0.8fr 0.9fr 0.9fr 0.7fr 36px"
-    : "1.8fr 0.7fr 0.7fr 0.8fr 1fr 0.7fr 36px";
+  const SORT_HEADERS = (() => {
+    let headers = [...SORT_HEADERS_BASE];
+    if (hasActualShareRate) {
+      const erIdx = headers.findIndex((h) => h.key === "share_rate");
+      headers.splice(erIdx + 1, 0, {
+        key: "actual_share_rate" as SortKey,
+        label: "Share Rate",
+      });
+    }
+    if (!hasSparkScore) {
+      headers = headers.filter((h) => h.key !== "spark_score");
+    }
+    return headers;
+  })();
 
-  const pdfGridCols = hasActualShareRate
-    ? "1.6fr 0.55fr 0.55fr 0.7fr 1.2fr 0.7fr 0.7fr"
-    : "1.6fr 0.55fr 0.55fr 0.7fr 1.3fr 0.7fr";
+  const colCount = SORT_HEADERS.length;
+  const gridCols = (() => {
+    const base = ["1.8fr", "0.7fr", "0.7fr", "0.8fr", "1fr"];
+    if (hasActualShareRate) base.push("0.7fr");
+    if (hasSparkScore) base.push("0.6fr");
+    base.push("0.7fr", "36px"); // verdict + chevron
+    return base.join(" ");
+  })();
+
+  const pdfGridCols = (() => {
+    const base = ["1.6fr", "0.55fr", "0.55fr", "0.7fr", "1.2fr"];
+    if (hasActualShareRate) base.push("0.6fr");
+    if (hasSparkScore) base.push("0.5fr");
+    base.push("0.7fr");
+    return base.join(" ");
+  })();
 
   const handleSort = (key: SortKey) => {
     if (sortKey === key) {
@@ -133,6 +164,9 @@ export default function FormatBreakdownTable({
           break;
         case "actual_share_rate":
           cmp = (a.f.actual_share_rate ?? 0) - (b.f.actual_share_rate ?? 0);
+          break;
+        case "spark_score":
+          cmp = (getSparkScore(a.f) ?? 0) - (getSparkScore(b.f) ?? 0);
           break;
         case "verdict":
           cmp =
@@ -381,6 +415,27 @@ export default function FormatBreakdownTable({
                     : "—"}
                 </span>
               )}
+              {hasSparkScore &&
+                (() => {
+                  const score = getSparkScore(f);
+                  return (
+                    <span
+                      style={{
+                        fontFamily: '"DM Sans", sans-serif',
+                        fontSize: 13,
+                        fontWeight: 600,
+                        color:
+                          (score ?? 0) >= 70
+                            ? "#30D158"
+                            : (score ?? 0) >= 40
+                              ? "#FFD60A"
+                              : "var(--ink-tertiary)",
+                      }}
+                    >
+                      {score != null ? score : "—"}
+                    </span>
+                  );
+                })()}
               <span
                 style={{
                   fontFamily: '"DM Sans", sans-serif',

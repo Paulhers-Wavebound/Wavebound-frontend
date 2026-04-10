@@ -2,7 +2,6 @@ import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useUserProfile } from "@/contexts/UserProfileContext";
 import { useLabelPermissions, LabelRole } from "@/hooks/useLabelPermissions";
-import LabelLayout from "./LabelLayout";
 import {
   Copy,
   Check,
@@ -375,68 +374,64 @@ export default function LabelSettings() {
 
   if (loading) {
     return (
-      <LabelLayout>
-        <div className="p-6 md:p-8 lg:p-10 space-y-5">
-          <div
-            style={{
-              fontFamily: '"DM Sans", sans-serif',
-              fontSize: 24,
-              fontWeight: 700,
-              color: "var(--ink)",
-            }}
-          >
-            Settings
-          </div>
-          <div className="space-y-4">
-            {[1, 2, 3].map((i) => (
-              <div
-                key={i}
-                className="animate-pulse"
-                style={{
-                  background: "var(--surface)",
-                  borderRadius: 16,
-                  height: 120,
-                  border: "1px solid var(--border)",
-                }}
-              />
-            ))}
-          </div>
+      <div className="p-6 md:p-8 lg:p-10 space-y-5">
+        <div
+          style={{
+            fontFamily: '"DM Sans", sans-serif',
+            fontSize: 24,
+            fontWeight: 700,
+            color: "var(--ink)",
+          }}
+        >
+          Settings
         </div>
-      </LabelLayout>
+        <div className="space-y-4">
+          {[1, 2, 3].map((i) => (
+            <div
+              key={i}
+              className="animate-pulse"
+              style={{
+                background: "var(--surface)",
+                borderRadius: 16,
+                height: 120,
+                border: "1px solid var(--border)",
+              }}
+            />
+          ))}
+        </div>
+      </div>
     );
   }
 
   if (!label) {
     return (
-      <LabelLayout>
-        <div className="p-6 md:p-8 lg:p-10">
-          <div
-            style={{
-              fontFamily: '"DM Sans", sans-serif',
-              fontSize: 24,
-              fontWeight: 700,
-              color: "var(--ink)",
-              marginBottom: 16,
-            }}
-          >
-            Settings
-          </div>
-          <div
-            style={{
-              fontFamily: '"DM Sans", sans-serif',
-              fontSize: 14,
-              color: "var(--ink-secondary)",
-            }}
-          >
-            No label found. Contact support if this is unexpected.
-          </div>
+      <div className="p-6 md:p-8 lg:p-10">
+        <div
+          style={{
+            fontFamily: '"DM Sans", sans-serif',
+            fontSize: 24,
+            fontWeight: 700,
+            color: "var(--ink)",
+            marginBottom: 16,
+          }}
+        >
+          Settings
         </div>
-      </LabelLayout>
+        <div
+          style={{
+            fontFamily: '"DM Sans", sans-serif',
+            fontSize: 14,
+            color: "var(--ink-secondary)",
+          }}
+        >
+          No label found. Contact support if this is unexpected.
+        </div>
+      </div>
     );
   }
 
   return (
-    <LabelLayout>
+    <>
       <div className="p-6 md:p-8 lg:p-10 space-y-6">
         <div
           style={{
@@ -1573,7 +1568,7 @@ export default function LabelSettings() {
         variant={confirmDialog.variant}
         onConfirm={confirmDialog.onConfirm}
       />
-    </LabelLayout>
+    </>
   );
 }
 

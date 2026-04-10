@@ -1,4 +1,10 @@
-import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import React, {
+  useState,
+  useRef,
+  useEffect,
+  useCallback,
+  useMemo,
+} from "react";
 import {
   Plus,
   MessageSquare,
@@ -17,7 +23,12 @@ import {
   Target,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/sheet";
+import {
+  Sheet,
+  SheetContent,
+  SheetTrigger,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -32,12 +43,22 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useChatSessionsContext } from "@/contexts/ChatSessionsContext";
-import { streamChatMessage, type StreamCallbacks } from "@/services/chatJobService";
+import {
+  streamChatMessage,
+  type StreamCallbacks,
+} from "@/services/chatJobService";
 import { useRateLimit } from "@/hooks/useRateLimit";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { formatDistanceToNow, isToday, isYesterday, subDays, isAfter } from "date-fns";
+import {
+  formatDistanceToNow,
+  isToday,
+  isYesterday,
+  subDays,
+  isAfter,
+} from "date-fns";
 import { motion, AnimatePresence } from "framer-motion";
 
+import { useLocation } from "react-router-dom";
 import SEOHead from "@/components/SEOHead";
 import ChatInput from "@/components/chat/ChatInput";
 import MessageList from "@/components/chat/MessageList";
@@ -50,8 +71,8 @@ const T = {
   border: "rgba(255,255,255,0.06)",
   text: "#FFFFFF",
   textSecondary: "#A3A3A3",
-  accent: "#8B5CF6",
-  accentHover: "#A78BFA",
+  accent: "#e8430a",
+  accentHover: "#ff5722",
 } as const;
 
 // ── Types ──
@@ -155,8 +176,14 @@ const SidebarContent = React.memo(function SidebarContent({
   }, [editingId]);
 
   return (
-    <div className="flex flex-col h-full" style={{ backgroundColor: "#0E0E0E", color: T.text }}>
-      <div className="p-4 flex items-center justify-between" style={{ borderBottom: `1px solid ${T.border}` }}>
+    <div
+      className="flex flex-col h-full"
+      style={{ backgroundColor: "#0E0E0E", color: T.text }}
+    >
+      <div
+        className="p-4 flex items-center justify-between"
+        style={{ borderBottom: `1px solid ${T.border}` }}
+      >
         <span className="font-semibold text-sm" style={{ color: T.text }}>
           Conversations
         </span>
@@ -171,7 +198,10 @@ const SidebarContent = React.memo(function SidebarContent({
           <Plus className="w-4 h-4" /> New
         </Button>
       </div>
-      <div className="flex-1 overflow-y-auto p-2 space-y-4" style={{ WebkitOverflowScrolling: "touch" }}>
+      <div
+        className="flex-1 overflow-y-auto p-2 space-y-4"
+        style={{ WebkitOverflowScrolling: "touch" }}
+      >
         {groups.map((group) => (
           <div key={group.label}>
             <p
@@ -184,14 +214,21 @@ const SidebarContent = React.memo(function SidebarContent({
               {group.items.map((session) => (
                 <div
                   key={session.id}
-                  onClick={() => editingId !== session.id && onSelectSession(session.id)}
+                  onClick={() =>
+                    editingId !== session.id && onSelectSession(session.id)
+                  }
                   className={cn(
                     "group flex items-center gap-2 px-2.5 py-2 rounded-lg cursor-pointer transition-colors",
-                    currentSessionId === session.id ? "bg-white/5" : "hover:bg-white/4",
+                    currentSessionId === session.id
+                      ? "bg-white/5"
+                      : "hover:bg-white/4",
                   )}
                   style={
                     currentSessionId === session.id
-                      ? { backgroundColor: "rgba(255,255,255,0.05)", borderLeft: `3px solid ${T.accent}` }
+                      ? {
+                          backgroundColor: "rgba(255,255,255,0.05)",
+                          borderLeft: `3px solid ${T.accent}`,
+                        }
                       : undefined
                   }
                 >
@@ -201,9 +238,18 @@ const SidebarContent = React.memo(function SidebarContent({
                       onToggleFavorite(session.id);
                     }}
                     className="shrink-0 p-0.5"
-                    style={{ color: session.is_favorite ? "#FBBF24" : "rgba(255,255,255,0.2)" }}
+                    style={{
+                      color: session.is_favorite
+                        ? "#FBBF24"
+                        : "rgba(255,255,255,0.2)",
+                    }}
                   >
-                    <Star className={cn("w-3.5 h-3.5", session.is_favorite && "fill-current")} />
+                    <Star
+                      className={cn(
+                        "w-3.5 h-3.5",
+                        session.is_favorite && "fill-current",
+                      )}
+                    />
                   </button>
                   <div className="flex-1 min-w-0">
                     {editingId === session.id ? (
@@ -226,12 +272,16 @@ const SidebarContent = React.memo(function SidebarContent({
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            if (editValue.trim()) onRenameSession(session.id, editValue.trim());
+                            if (editValue.trim())
+                              onRenameSession(session.id, editValue.trim());
                             setEditingId(null);
                           }}
                           className="p-1"
                         >
-                          <Check className="w-3 h-3" style={{ color: T.accent }} />
+                          <Check
+                            className="w-3 h-3"
+                            style={{ color: T.accent }}
+                          />
                         </button>
                         <button
                           onClick={(e) => {
@@ -240,19 +290,32 @@ const SidebarContent = React.memo(function SidebarContent({
                           }}
                           className="p-1"
                         >
-                          <X className="w-3 h-3" style={{ color: T.textSecondary }} />
+                          <X
+                            className="w-3 h-3"
+                            style={{ color: T.textSecondary }}
+                          />
                         </button>
                       </div>
                     ) : (
                       <>
                         <p
                           className="text-sm truncate"
-                          style={{ color: currentSessionId === session.id ? T.text : T.textSecondary }}
+                          style={{
+                            color:
+                              currentSessionId === session.id
+                                ? T.text
+                                : T.textSecondary,
+                          }}
                         >
                           {session.title}
                         </p>
-                        <p className="text-[11px] mt-0.5" style={{ color: "rgba(255,255,255,0.3)" }}>
-                          {formatDistanceToNow(new Date(session.updated_at), { addSuffix: true })}
+                        <p
+                          className="text-[11px] mt-0.5"
+                          style={{ color: "rgba(255,255,255,0.3)" }}
+                        >
+                          {formatDistanceToNow(new Date(session.updated_at), {
+                            addSuffix: true,
+                          })}
                         </p>
                       </>
                     )}
@@ -267,7 +330,10 @@ const SidebarContent = React.memo(function SidebarContent({
                         }}
                         className="p-1 rounded hover:bg-white/10"
                       >
-                        <Pencil className="w-3 h-3" style={{ color: T.textSecondary }} />
+                        <Pencil
+                          className="w-3 h-3"
+                          style={{ color: T.textSecondary }}
+                        />
                       </button>
                       <button
                         onClick={(e) => {
@@ -276,7 +342,10 @@ const SidebarContent = React.memo(function SidebarContent({
                         }}
                         className="p-1 rounded hover:bg-red-500/20"
                       >
-                        <Trash2 className="w-3 h-3" style={{ color: T.textSecondary }} />
+                        <Trash2
+                          className="w-3 h-3"
+                          style={{ color: T.textSecondary }}
+                        />
                       </button>
                     </div>
                   )}
@@ -287,7 +356,10 @@ const SidebarContent = React.memo(function SidebarContent({
         ))}
         {sessions.length === 0 && (
           <div className="text-center py-12">
-            <MessageSquare className="w-8 h-8 mx-auto mb-2" style={{ color: "rgba(255,255,255,0.15)" }} />
+            <MessageSquare
+              className="w-8 h-8 mx-auto mb-2"
+              style={{ color: "rgba(255,255,255,0.15)" }}
+            />
             <p className="text-sm" style={{ color: T.textSecondary }}>
               No chats yet
             </p>
@@ -301,23 +373,35 @@ const SidebarContent = React.memo(function SidebarContent({
 // ── Main page ──
 export default function ContentAssistant() {
   const isMobile = useIsMobile();
+  const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileSheetOpen, setMobileSheetOpen] = useState(false);
+  const [chatPrefill, setChatPrefill] = useState<string | null>(null);
+  const prefillConsumed = useRef(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const [showFollowUps, setShowFollowUps] = useState(false);
   const [showStatusIndicator, setShowStatusIndicator] = useState(false);
   const [streamError, setStreamError] = useState<string | null>(null);
-  const [toolStatuses, setToolStatuses] = useState<Map<string, { tool: string; status: 'searching' | 'processing' | 'done'; timestamp: number }>>(new Map());
+  const [toolStatuses, setToolStatuses] = useState<
+    Map<
+      string,
+      {
+        tool: string;
+        status: "searching" | "processing" | "done";
+        timestamp: number;
+      }
+    >
+  >(new Map());
 
   const abortRef = useRef<AbortController | null>(null);
   const lastSessionRef = useRef<string | null>(null);
   const hasReceivedDelta = useRef(false);
   const bufferRef = useRef("");
   const rafRef = useRef<number | null>(null);
-   const scrollContainerRef = useRef<HTMLDivElement>(null);
-   const streamingMsgRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const streamingMsgRef = useRef<HTMLDivElement>(null);
 
   const skipDbSyncUntil = useRef(0);
   const lastSendTime = useRef(0);
@@ -330,12 +414,24 @@ export default function ContentAssistant() {
     };
   }, []);
 
+  // Handle prefill from navigation state (e.g. Expansion Radar "View Strategy")
+  useEffect(() => {
+    const prefill = (location.state as { prefill?: string } | null)?.prefill;
+    if (prefill && !prefillConsumed.current) {
+      prefillConsumed.current = true;
+      setChatPrefill(prefill);
+      // Clear navigation state so refresh doesn't re-fill
+      window.history.replaceState({}, "");
+    }
+  }, [location.state]);
+
   useEffect(() => {
     const el = scrollContainerRef.current;
     if (!el) return;
     const onScroll = () => {
       const threshold = 100;
-      userScrolledUp.current = el.scrollHeight - el.scrollTop - el.clientHeight > threshold;
+      userScrolledUp.current =
+        el.scrollHeight - el.scrollTop - el.clientHeight > threshold;
     };
     el.addEventListener("scroll", onScroll, { passive: true });
     return () => el.removeEventListener("scroll", onScroll);
@@ -380,7 +476,8 @@ export default function ContentAssistant() {
   const { checkRateLimit, validateInput } = useRateLimit();
 
   useEffect(() => {
-    if (userId && sessions.length === 0 && !currentSessionId) createSession("New Chat");
+    if (userId && sessions.length === 0 && !currentSessionId)
+      createSession("New Chat");
   }, [userId, sessions.length, currentSessionId, createSession]);
 
   useEffect(() => {
@@ -399,7 +496,9 @@ export default function ContentAssistant() {
         role: m.role as "user" | "assistant",
         content:
           m.role === "assistant"
-            ? m.content.replace(/<hidden_data>[\s\S]*?(<\/hidden_data>|$)/gi, "").trim() || m.content
+            ? m.content
+                .replace(/<hidden_data>[\s\S]*?(<\/hidden_data>|$)/gi, "")
+                .trim() || m.content
             : m.content,
         timestamp: new Date(m.created_at),
       })),
@@ -428,7 +527,12 @@ export default function ContentAssistant() {
       setToolStatuses(new Map());
       setStreamError(null);
 
-      const userMsg: Message = { id: `u-${Date.now()}`, role: "user", content: validated, timestamp: new Date() };
+      const userMsg: Message = {
+        id: `u-${Date.now()}`,
+        role: "user",
+        content: validated,
+        timestamp: new Date(),
+      };
 
       setMessages((prev) => [...prev, userMsg]);
       userScrolledUp.current = false;
@@ -445,7 +549,15 @@ export default function ContentAssistant() {
             if (!hasReceivedDelta.current) {
               hasReceivedDelta.current = true;
               setShowStatusIndicator(false);
-              setMessages(prev => [...prev, { id: `a-${Date.now()}`, role: 'assistant', content: '', timestamp: new Date() }]);
+              setMessages((prev) => [
+                ...prev,
+                {
+                  id: `a-${Date.now()}`,
+                  role: "assistant",
+                  content: "",
+                  timestamp: new Date(),
+                },
+              ]);
             }
             bufferRef.current += chunk;
             if (rafRef.current === null) {
@@ -456,7 +568,10 @@ export default function ContentAssistant() {
                 setMessages((prev) => {
                   const updated = [...prev];
                   const last = updated[updated.length - 1];
-                  updated[updated.length - 1] = { ...last, content: last.content + text };
+                  updated[updated.length - 1] = {
+                    ...last,
+                    content: last.content + text,
+                  };
                   return updated;
                 });
                 const el = scrollContainerRef.current;
@@ -465,16 +580,23 @@ export default function ContentAssistant() {
                   const msgBottom = msgEl.getBoundingClientRect().bottom;
                   const containerBottom = el.getBoundingClientRect().bottom;
                   if (msgBottom > containerBottom + 40) {
-                    el.scrollBy({ top: msgBottom - containerBottom + 40, behavior: 'instant' });
+                    el.scrollBy({
+                      top: msgBottom - containerBottom + 40,
+                      behavior: "instant",
+                    });
                   }
                 }
               });
             }
           },
           onStatus: (tool, status) => {
-            setToolStatuses(prev => {
+            setToolStatuses((prev) => {
               const next = new Map(prev);
-              next.set(tool, { tool, status: status as 'searching' | 'processing' | 'done', timestamp: Date.now() });
+              next.set(tool, {
+                tool,
+                status: status as "searching" | "processing" | "done",
+                timestamp: Date.now(),
+              });
               return next;
             });
           },
@@ -489,7 +611,10 @@ export default function ContentAssistant() {
               const updated = [...prev];
               const last = updated[updated.length - 1];
               const raw = last.content + remaining;
-              const clean = raw.replace(/<hidden_data>[\s\S]*?(<\/hidden_data>|$)/gi, "").trim() || raw;
+              const clean =
+                raw
+                  .replace(/<hidden_data>[\s\S]*?(<\/hidden_data>|$)/gi, "")
+                  .trim() || raw;
               updated[updated.length - 1] = { ...last, content: clean };
               return updated;
             });
@@ -507,7 +632,6 @@ export default function ContentAssistant() {
             setStreamError(errorMsg);
             setIsStreaming(false);
             setShowStatusIndicator(false);
-            
           },
         };
 
@@ -533,12 +657,16 @@ export default function ContentAssistant() {
           setMessages((prev) => {
             const updated = [...prev];
             const last = updated[updated.length - 1];
-            updated[updated.length - 1] = { ...last, content: last.content + remaining };
+            updated[updated.length - 1] = {
+              ...last,
+              content: last.content + remaining,
+            };
             return updated;
           });
         }
         if (abortRef.current?.signal.aborted) return;
-        const errMsg = err instanceof Error ? err.message : "Something went wrong.";
+        const errMsg =
+          err instanceof Error ? err.message : "Something went wrong.";
         setStreamError(errMsg);
         setMessages((prev) => {
           const updated = [...prev];
@@ -546,7 +674,12 @@ export default function ContentAssistant() {
           if (last?.role === "assistant" && !last.content) {
             updated[updated.length - 1] = { ...last, content: errMsg };
           } else {
-            updated.push({ id: `e-${Date.now()}`, role: "assistant", content: errMsg, timestamp: new Date() });
+            updated.push({
+              id: `e-${Date.now()}`,
+              role: "assistant",
+              content: errMsg,
+              timestamp: new Date(),
+            });
           }
           return updated;
         });
@@ -570,7 +703,10 @@ export default function ContentAssistant() {
       setMessages((prev) => {
         const updated = [...prev];
         const last = updated[updated.length - 1];
-        updated[updated.length - 1] = { ...last, content: last.content + remaining };
+        updated[updated.length - 1] = {
+          ...last,
+          content: last.content + remaining,
+        };
         return updated;
       });
     }
@@ -613,9 +749,16 @@ export default function ContentAssistant() {
   return (
     <div
       className="h-dvh flex font-['Inter',system-ui,sans-serif]"
-      style={{ backgroundColor: T.bg, color: T.text, overscrollBehavior: "contain" }}
+      style={{
+        backgroundColor: T.bg,
+        color: T.text,
+        overscrollBehavior: "contain",
+      }}
     >
-      <SEOHead title="Chat - Wavebound" description="AI-powered content strategy assistant for musicians." />
+      <SEOHead
+        title="Chat - Wavebound"
+        description="AI-powered content strategy assistant for musicians."
+      />
 
       {!isMobile && (
         <AnimatePresence>
@@ -635,12 +778,22 @@ export default function ContentAssistant() {
       )}
 
       <div className="flex-1 flex flex-col min-w-0 h-full relative">
-        <div className="flex items-center gap-2 px-4 py-3 shrink-0" style={{ borderBottom: `1px solid ${T.border}` }}>
+        <div
+          className="flex items-center gap-2 px-4 py-3 shrink-0"
+          style={{ borderBottom: `1px solid ${T.border}` }}
+        >
           {isMobile ? (
             <Sheet open={mobileSheetOpen} onOpenChange={setMobileSheetOpen}>
               <SheetTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-white/5">
-                  <PanelLeft className="w-4 h-4" style={{ color: T.textSecondary }} />
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 hover:bg-white/5"
+                >
+                  <PanelLeft
+                    className="w-4 h-4"
+                    style={{ color: T.textSecondary }}
+                  />
                 </Button>
               </SheetTrigger>
               <SheetContent
@@ -660,23 +813,39 @@ export default function ContentAssistant() {
               className="h-8 w-8 hover:bg-white/5"
             >
               {sidebarOpen ? (
-                <PanelLeftClose className="w-4 h-4" style={{ color: T.textSecondary }} />
+                <PanelLeftClose
+                  className="w-4 h-4"
+                  style={{ color: T.textSecondary }}
+                />
               ) : (
-                <PanelLeft className="w-4 h-4" style={{ color: T.textSecondary }} />
+                <PanelLeft
+                  className="w-4 h-4"
+                  style={{ color: T.textSecondary }}
+                />
               )}
             </Button>
           )}
-          <span className="text-sm font-medium truncate" style={{ color: T.text }}>
-            {sessions.find((s) => s.id === currentSessionId)?.title || "New Chat"}
+          <span
+            className="text-sm font-medium truncate"
+            style={{ color: T.text }}
+          >
+            {sessions.find((s) => s.id === currentSessionId)?.title ||
+              "New Chat"}
           </span>
         </div>
 
-        <div ref={scrollContainerRef} className="flex-1 overflow-y-auto min-h-0 chat-scrollbar">
+        <div
+          ref={scrollContainerRef}
+          className="flex-1 overflow-y-auto min-h-0 chat-scrollbar"
+        >
           <div className="max-w-3xl mx-auto w-full px-4 py-6 pb-4">
             {!hasMessages && !isHistoryLoading && (
               <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4 relative">
                 <div className="absolute inset-0 bg-gradient-to-r from-purple-500/5 to-blue-500/5 rounded-3xl animate-ambient-glow pointer-events-none" />
-                <AudioWaveform className="w-10 h-10" style={{ color: T.accent }} />
+                <AudioWaveform
+                  className="w-10 h-10"
+                  style={{ color: T.accent }}
+                />
                 <p className="text-sm" style={{ color: T.textSecondary }}>
                   Your AI music strategist
                 </p>
@@ -686,7 +855,10 @@ export default function ContentAssistant() {
                       key={i}
                       onClick={() => handleSubmit(s.prompt)}
                       className="flex items-start gap-3 p-4 rounded-xl text-left transition-all duration-200 border hover:border-purple-500/30 cursor-pointer"
-                      style={{ backgroundColor: "#141414", borderColor: "rgba(255,255,255,0.1)" }}
+                      style={{
+                        backgroundColor: "#141414",
+                        borderColor: "rgba(255,255,255,0.1)",
+                      }}
                       onMouseEnter={(e) => {
                         e.currentTarget.style.backgroundColor = "#1E1E1E";
                       }}
@@ -694,12 +866,21 @@ export default function ContentAssistant() {
                         e.currentTarget.style.backgroundColor = "#141414";
                       }}
                     >
-                      <s.icon className="w-5 h-5 mt-0.5 shrink-0" style={{ color: T.accent }} />
+                      <s.icon
+                        className="w-5 h-5 mt-0.5 shrink-0"
+                        style={{ color: T.accent }}
+                      />
                       <div className="min-w-0">
-                        <p className="text-sm font-medium" style={{ color: T.text }}>
+                        <p
+                          className="text-sm font-medium"
+                          style={{ color: T.text }}
+                        >
                           {s.title}
                         </p>
-                        <p className="text-xs mt-0.5" style={{ color: T.textSecondary }}>
+                        <p
+                          className="text-xs mt-0.5"
+                          style={{ color: T.textSecondary }}
+                        >
                           {s.description}
                         </p>
                       </div>
@@ -718,11 +899,14 @@ export default function ContentAssistant() {
               streamingRef={streamingMsgRef}
               onFollowUpSubmit={handleSubmit}
               onRetry={() => {
-                const lastUserMsg = [...messages].reverse().find((m) => m.role === "user");
+                const lastUserMsg = [...messages]
+                  .reverse()
+                  .find((m) => m.role === "user");
                 if (lastUserMsg) {
                   setMessages((prev) => {
                     const last = prev[prev.length - 1];
-                    if (last?.role === "assistant" && !last.content) return prev.slice(0, -1);
+                    if (last?.role === "assistant" && !last.content)
+                      return prev.slice(0, -1);
                     return prev;
                   });
                   setStreamError(null);
@@ -739,22 +923,40 @@ export default function ContentAssistant() {
           onSubmit={handleSubmit}
           onCancel={handleCancel}
           isLoading={isStreaming}
+          prefill={chatPrefill}
         />
       </div>
 
-      <AlertDialog open={!!deleteConfirmId} onOpenChange={(open) => !open && setDeleteConfirmId(null)}>
-        <AlertDialogContent style={{ backgroundColor: T.surface, borderColor: T.border, color: T.text }}>
+      <AlertDialog
+        open={!!deleteConfirmId}
+        onOpenChange={(open) => !open && setDeleteConfirmId(null)}
+      >
+        <AlertDialogContent
+          style={{
+            backgroundColor: T.surface,
+            borderColor: T.border,
+            color: T.text,
+          }}
+        >
           <AlertDialogHeader>
-            <AlertDialogTitle style={{ color: T.text }}>Delete this chat?</AlertDialogTitle>
+            <AlertDialogTitle style={{ color: T.text }}>
+              Delete this chat?
+            </AlertDialogTitle>
             <AlertDialogDescription style={{ color: T.textSecondary }}>
               This will permanently delete this conversation.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel className="hover:bg-white/5" style={{ color: T.textSecondary, borderColor: T.border }}>
+            <AlertDialogCancel
+              className="hover:bg-white/5"
+              style={{ color: T.textSecondary, borderColor: T.border }}
+            >
               Cancel
             </AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDelete} style={{ backgroundColor: "#EF4444", color: "#FFFFFF" }}>
+            <AlertDialogAction
+              onClick={confirmDelete}
+              style={{ backgroundColor: "#EF4444", color: "#FFFFFF" }}
+            >
               Delete
             </AlertDialogAction>
           </AlertDialogFooter>

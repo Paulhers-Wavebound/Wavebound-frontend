@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Download,
   Check,
@@ -9,6 +10,8 @@ import {
   Play,
   ChevronDown,
   ChevronUp,
+  Trash2,
+  MessageCircle,
 } from "lucide-react";
 import type { FanBrief } from "@/types/fanBriefs";
 
@@ -18,6 +21,7 @@ interface BriefCardProps {
   onApprove: (id: string) => void;
   onSkip: (id: string) => void;
   onModifyHook: (id: string, newHook: string) => void;
+  onDelete?: (id: string) => void;
   /** Render a static YouTube thumbnail instead of a live iframe embed */
   staticPreview?: boolean;
 }
@@ -92,16 +96,42 @@ export default function BriefCard({
   onApprove,
   onSkip,
   onModifyHook,
+  onDelete,
   staticPreview = false,
 }: BriefCardProps) {
+  const navigate = useNavigate();
   const [isEditingHook, setIsEditingHook] = useState(false);
   const [editedHook, setEditedHook] = useState(brief.hook_text);
   const [replayKey, setReplayKey] = useState(0);
   const [showSource, setShowSource] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const editRef = useRef<HTMLTextAreaElement>(null);
   const embedUrl = getEmbedUrl(brief);
   const badge = statusBadgeStyles[brief.status] ?? statusBadgeStyles.pending;
   const isActionable = mode === "content";
+
+  const handleChatAboutThis = () => {
+    const hook = brief.modified_hook || brief.hook_text;
+    const lines = [
+      `I'm reviewing a fan brief for @${brief.artist_handle}:`,
+      ``,
+      `Hook: "${hook}"`,
+      brief.caption ? `Caption: ${brief.caption}` : null,
+      `Format: ${brief.format_recommendation.replace(/_/g, " ")}`,
+      `Platforms: ${brief.platform_recommendation.join(", ")}`,
+      brief.sound_pairing ? `Sound: ${brief.sound_pairing}` : null,
+      `Confidence: ${brief.confidence_score}%`,
+      `Why now: ${brief.why_now}`,
+      ``,
+      `What do you think about this brief? Any suggestions to improve the hook or approach?`,
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+    navigate("/label/assistant", {
+      state: { prefill: lines, newSession: true },
+    });
+  };
 
   useEffect(() => {
     if (isEditingHook && editRef.current) {
@@ -231,11 +261,11 @@ export default function BriefCard({
         <div style={{ padding: "16px 24px 0" }}>
           {brief.rendered_clip_url ? (
             <>
-              {/* Rendered clip player — 4:5 */}
+              {/* Rendered clip player — 9:16 */}
               <div
                 style={{
-                  position: "relative",
-                  paddingBottom: "125%",
+                  width: 270,
+                  height: 480,
                   borderRadius: 12,
                   overflow: "hidden",
                   background: "#000",
@@ -249,12 +279,9 @@ export default function BriefCard({
                   playsInline
                   controls
                   style={{
-                    position: "absolute",
-                    top: 0,
-                    left: 0,
                     width: "100%",
                     height: "100%",
-                    objectFit: "contain",
+                    objectFit: "cover",
                   }}
                 />
               </div>
@@ -347,8 +374,8 @@ export default function BriefCard({
             /* Rendering... placeholder */
             <div
               style={{
-                position: "relative",
-                paddingBottom: "125%",
+                width: 270,
+                height: 480,
                 borderRadius: 12,
                 overflow: "hidden",
                 background: "#000",
@@ -356,8 +383,8 @@ export default function BriefCard({
             >
               <div
                 style={{
-                  position: "absolute",
-                  inset: 0,
+                  width: "100%",
+                  height: "100%",
                   display: "flex",
                   flexDirection: "column",
                   alignItems: "center",
@@ -737,6 +764,39 @@ export default function BriefCard({
         </div>
       </div>
 
+      {/* Chat about this */}
+      <div style={{ padding: "12px 24px 0" }}>
+        <button
+          onClick={handleChatAboutThis}
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+            padding: "8px 14px",
+            borderRadius: 10,
+            border: "1px solid var(--border)",
+            background: "none",
+            color: "var(--ink-tertiary)",
+            fontFamily: '"DM Sans", sans-serif',
+            fontSize: 13,
+            fontWeight: 500,
+            cursor: "pointer",
+            transition: "color 150ms, border-color 150ms",
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.color = "var(--accent)";
+            e.currentTarget.style.borderColor = "var(--accent)";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.color = "var(--ink-tertiary)";
+            e.currentTarget.style.borderColor = "var(--border)";
+          }}
+        >
+          <MessageCircle size={14} />
+          Chat about this
+        </button>
+      </div>
+
       {/* Action buttons */}
       <div
         style={{
@@ -820,18 +880,118 @@ export default function BriefCard({
         ) : (
           <div
             style={{
-              fontFamily: '"DM Sans", sans-serif',
-              fontSize: 13,
-              color: "var(--ink-tertiary)",
-              fontStyle: "italic",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              width: "100%",
             }}
           >
-            {brief.status === "approved" && "Approved"}
-            {brief.status === "skipped" && "Skipped"}
-            {brief.status === "modified" &&
-              `Modified: "${brief.modified_hook}"`}
-            {brief.status === "posted" && "Posted"}
-            {brief.status === "archived" && "Archived"}
+            <div
+              style={{
+                fontFamily: '"DM Sans", sans-serif',
+                fontSize: 13,
+                color: "var(--ink-tertiary)",
+                fontStyle: "italic",
+              }}
+            >
+              {brief.status === "approved" && "Approved"}
+              {brief.status === "skipped" && "Skipped"}
+              {brief.status === "modified" &&
+                `Modified: "${brief.modified_hook}"`}
+              {brief.status === "posted" && "Posted"}
+              {brief.status === "archived" && "Archived"}
+            </div>
+            {onDelete && (
+              <>
+                {confirmDelete ? (
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                    }}
+                  >
+                    <span
+                      style={{
+                        fontFamily: '"DM Sans", sans-serif',
+                        fontSize: 12,
+                        color: "var(--ink-tertiary)",
+                      }}
+                    >
+                      Delete this clip?
+                    </span>
+                    <button
+                      onClick={() => {
+                        onDelete(brief.id);
+                        setConfirmDelete(false);
+                      }}
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 5,
+                        padding: "6px 14px",
+                        borderRadius: 8,
+                        border: "none",
+                        background: "rgba(255,69,58,0.15)",
+                        color: "#FF453A",
+                        fontFamily: '"DM Sans", sans-serif',
+                        fontSize: 12,
+                        fontWeight: 600,
+                        cursor: "pointer",
+                      }}
+                    >
+                      <Trash2 size={13} />
+                      Delete
+                    </button>
+                    <button
+                      onClick={() => setConfirmDelete(false)}
+                      style={{
+                        padding: "6px 12px",
+                        borderRadius: 8,
+                        border: "1px solid var(--border)",
+                        background: "none",
+                        color: "var(--ink-tertiary)",
+                        fontFamily: '"DM Sans", sans-serif',
+                        fontSize: 12,
+                        cursor: "pointer",
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setConfirmDelete(true)}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 5,
+                      padding: "6px 12px",
+                      borderRadius: 8,
+                      border: "1px solid var(--border)",
+                      background: "none",
+                      color: "var(--ink-tertiary)",
+                      fontFamily: '"DM Sans", sans-serif',
+                      fontSize: 12,
+                      fontWeight: 500,
+                      cursor: "pointer",
+                      transition: "color 150ms, border-color 150ms",
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.color = "#FF453A";
+                      e.currentTarget.style.borderColor = "rgba(255,69,58,0.3)";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.color = "var(--ink-tertiary)";
+                      e.currentTarget.style.borderColor = "var(--border)";
+                    }}
+                  >
+                    <Trash2 size={13} />
+                    Remove
+                  </button>
+                )}
+              </>
+            )}
           </div>
         )}
       </div>

@@ -36,6 +36,7 @@ export interface FormatBreakdown {
   top_niches?: { name: string; count: number }[];
   top_intents?: { name: string; count: number }[];
   dominant_vibe?: string;
+  spark_score?: number;
 }
 
 export interface WinnerFormat {
@@ -74,6 +75,7 @@ export interface TopVideo {
   niche?: string;
   intent?: string;
   vibe?: string;
+  spark_score?: number;
 }
 
 export interface TierFormatPref {
@@ -128,6 +130,31 @@ export interface LifecycleInfo {
   days_since_peak: number;
   current_velocity: number;
   insight: string;
+}
+
+// === V2 Cross-Platform Data ===
+
+export interface SpotifySnapshot {
+  date: string;
+  monthly_listeners: number;
+  streams?: number;
+  playlist_count?: number;
+}
+
+export interface PlaylistTracking {
+  playlist_name: string;
+  playlist_id: string;
+  action: "added" | "removed";
+  date: string;
+  followers: number;
+  curator?: string;
+  position?: number;
+}
+
+export interface ShazamSnapshot {
+  date: string;
+  shazam_count: number;
+  country?: string;
 }
 
 // === v2 Classification Types ===
@@ -230,6 +257,17 @@ export interface SoundAnalysis {
   vibe_distribution?: VibeEntry[];
   creator_demographics?: CreatorDemographics;
   unclassified_count?: number;
+
+  // v2 cross-platform
+  spotify_snapshots?: SpotifySnapshot[];
+  playlist_tracking?: PlaylistTracking[];
+  shazam_snapshots?: ShazamSnapshot[];
+
+  // v2 AI + cross-platform aggregates
+  ai_summary?: string | null;
+  ai_summary_updated_at?: string | null;
+  format_spark_scores?: Record<string, number>;
+  reels_count?: number;
 }
 
 // Monitoring state returned by list/get endpoints
@@ -314,6 +352,102 @@ export interface MonitoringHistorySummary {
   format_growth: Record<string, FormatGrowth>;
 }
 
+// === Sound Subscriptions ===
+
+export interface SoundSubscription {
+  subscription_id: string;
+  job_id: string;
+  is_own_sound: boolean;
+  notify_on_spike: boolean;
+  notes: string | null;
+  subscribed_at: string;
+  status: string;
+  sound_id: string | null;
+  track_name: string | null;
+  artist_name: string | null;
+  album_name: string | null;
+  cover_url: string | null;
+  creator_count: number;
+  videos_scraped: number;
+  videos_analyzed: number;
+  last_refresh_at: string | null;
+  refresh_count: number;
+  completed_at: string | null;
+  created_at: string | null;
+  spotify_id: string | null;
+  ai_summary: string | null;
+  monitoring_interval: string | null;
+  next_check_at: string | null;
+  velocity: number | null;
+  total_views: number | null;
+  lifecycle_stage: string | null;
+  status_label: string | null;
+}
+
+export interface SoundComparisonResponse {
+  sound_a: SoundComparisonEntry;
+  sound_b: SoundComparisonEntry;
+  deltas: SoundComparisonDeltas;
+  comparison_available: boolean;
+}
+
+export interface SoundComparisonEntry {
+  status: string;
+  job_id: string;
+  sound_id: string;
+  track_name: string;
+  artist_name: string;
+  album_name: string | null;
+  cover_url: string | null;
+  user_count: number | null;
+  completed_at: string;
+  last_refresh_at: string | null;
+  refresh_count: number;
+  monitoring: SoundMonitoring | null;
+  analysis: SoundAnalysis | null;
+  spotify_snapshots: SpotifySnapshot[];
+  playlist_tracking: PlaylistTracking[];
+  shazam_snapshots: ShazamSnapshot[];
+  format_spark_scores: Record<string, number> | null;
+  reels_count: number;
+  ai_summary: string | null;
+  ai_summary_updated_at: string | null;
+}
+
+export interface SoundComparisonDeltas {
+  velocity_diff: number;
+  velocity_a: number;
+  velocity_b: number;
+  creator_count_diff: number;
+  creator_count_a: number;
+  creator_count_b: number;
+  total_views_diff: number;
+  total_views_a: number;
+  total_views_b: number;
+  avg_spark_score_diff: number;
+  avg_spark_score_a: number;
+  avg_spark_score_b: number;
+  geographic_overlap: {
+    shared_countries: string[];
+    unique_a: string[];
+    unique_b: string[];
+  };
+  format_comparison: Record<
+    string,
+    { count_a: number; count_b: number; views_a: number; views_b: number }
+  >;
+  lifecycle_comparison: {
+    phase_a: string;
+    phase_b: string;
+    days_since_peak_a: number;
+    days_since_peak_b: number;
+  };
+  creator_tier_comparison: Record<
+    string,
+    { count_a: number; count_b: number; pct_a: number; pct_b: number }
+  >;
+}
+
 export interface SoundIntelligenceState {
   jobId: string | null;
   soundId: string | null;
@@ -333,27 +467,27 @@ export const FORMAT_COLORS: Record<string, string> = {
   // === v3 canonical format names ===
   "Lip Sync / Dance": "#FF453A",
   "Dance Choreography": "#FF6B6B",
-  "Comedy": "#FF6482",
-  "POV": "#0A84FF",
+  Comedy: "#FF6482",
+  POV: "#0A84FF",
   "Talking Head": "#5AC8FA",
-  "Tutorial": "#FF9F0A",
-  "Reaction": "#BF5AF2",
-  "Cover": "#E040FB",
-  "Vlog": "#0A84FF",
-  "Review": "#B5E48C",
+  Tutorial: "#FF9F0A",
+  Reaction: "#BF5AF2",
+  Cover: "#E040FB",
+  Vlog: "#0A84FF",
+  Review: "#B5E48C",
   "Lyric Overlay": "#e8430a",
   "Aesthetic Edit": "#64D2FF",
   "Transition Edit": "#30D158",
-  "Montage": "#7EC8E3",
-  "Slideshow": "#AC8E68",
+  Montage: "#7EC8E3",
+  Slideshow: "#AC8E68",
   "Text Story": "#C9B1FF",
-  "Concert": "#FFD60A",
-  "BTS": "#FFA726",
-  "ASMR": "#8E8E93",
-  "Pet": "#FFCA28",
-  "Food": "#FF8A65",
-  "Art": "#DA70D6",
-  "Fitness": "#34C759",
+  Concert: "#FFD60A",
+  BTS: "#FFA726",
+  ASMR: "#8E8E93",
+  Pet: "#FFCA28",
+  Food: "#FF8A65",
+  Art: "#DA70D6",
+  Fitness: "#34C759",
   "Gaming Clip": "#EF5350",
   // === Legacy mappings (pre-v3 data backwards compat) ===
   "Skit / Comedy": "#FF6482",

@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback } from "react";
-import LabelLayout from "@/pages/label/LabelLayout";
 import BriefCard from "@/components/fan-briefs/BriefCard";
 import { useUserProfile } from "@/contexts/UserProfileContext";
 import { supabase } from "@/integrations/supabase/client";
@@ -20,7 +19,8 @@ export default function LabelFanBriefs() {
     if (!labelId) return;
     try {
       // Content: pending briefs without a render
-      const contentQuery = supabase.from("fan_briefs")
+      const contentQuery = supabase
+        .from("fan_briefs")
         .select("*")
         .eq("label_id", labelId)
         .eq("status", "pending")
@@ -29,7 +29,8 @@ export default function LabelFanBriefs() {
         .limit(50);
 
       // Clips: approved briefs (rendered or rendering)
-      const clipsQuery = supabase.from("fan_briefs")
+      const clipsQuery = supabase
+        .from("fan_briefs")
         .select("*")
         .eq("label_id", labelId)
         .eq("status", "approved")
@@ -60,7 +61,8 @@ export default function LabelFanBriefs() {
   }, [labelId, fetchBriefs]);
 
   const handleApprove = async (briefId: string) => {
-    const { error } = await supabase.from("fan_briefs")
+    const { error } = await supabase
+      .from("fan_briefs")
       .update({
         status: "approved",
         approved_at: new Date().toISOString(),
@@ -91,7 +93,8 @@ export default function LabelFanBriefs() {
   };
 
   const handleSkip = async (briefId: string) => {
-    const { error } = await supabase.from("fan_briefs")
+    const { error } = await supabase
+      .from("fan_briefs")
       .update({ status: "skipped" })
       .eq("id", briefId);
 
@@ -108,7 +111,8 @@ export default function LabelFanBriefs() {
 
   const handleModifyHook = async (briefId: string, newHook: string) => {
     // Save modified hook but keep status as pending
-    const { error } = await supabase.from("fan_briefs")
+    const { error } = await supabase
+      .from("fan_briefs")
       .update({ modified_hook: newHook })
       .eq("id", briefId);
 
@@ -128,10 +132,42 @@ export default function LabelFanBriefs() {
     toast({ title: "Hook saved" });
   };
 
+  const handleDelete = async (briefId: string) => {
+    const brief = clipsBriefs.find((b) => b.id === briefId);
+
+    const { error } = await supabase
+      .from("fan_briefs")
+      .update({ status: "archived" })
+      .eq("id", briefId);
+
+    if (error) {
+      toast({
+        title: "Failed to delete",
+        description: error.message,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Delete rendered clip from storage
+    if (brief?.rendered_clip_url) {
+      const storagePath = `${brief.artist_handle}/rendered/${briefId}.mp4`;
+      const { error: storageErr } = await supabase.storage
+        .from("fan-brief-clips")
+        .remove([storagePath]);
+      if (storageErr) {
+        console.warn("Storage cleanup failed:", storageErr.message);
+      }
+    }
+
+    setClipsBriefs((prev) => prev.filter((b) => b.id !== briefId));
+    toast({ title: "Clip removed" });
+  };
+
   const activeBriefs = activeTab === "content" ? contentBriefs : clipsBriefs;
 
   return (
-    <LabelLayout>
+    <>
       <div
         style={{ maxWidth: 900, margin: "0 auto", padding: "32px 24px 80px" }}
       >
@@ -277,6 +313,7 @@ export default function LabelFanBriefs() {
                 onApprove={handleApprove}
                 onSkip={handleSkip}
                 onModifyHook={handleModifyHook}
+                onDelete={activeTab === "clips" ? handleDelete : undefined}
               />
             ))}
           </div>
@@ -288,6 +325,6 @@ export default function LabelFanBriefs() {
           to { transform: rotate(360deg); }
         }
       `}</style>
-    </LabelLayout>
+    </>
   );
 }

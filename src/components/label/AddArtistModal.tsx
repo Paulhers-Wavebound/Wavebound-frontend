@@ -63,49 +63,73 @@ export default function AddArtistModal({
       } = await supabase.auth.getUser();
 
       // Pre-insert stub rows with correct label_id
-      await supabase
-        .from("artist_intelligence")
-        .insert({
-          artist_handle: handle,
-          label_id: labelId,
-          status: "processing",
-        });
+      await supabase.from("artist_intelligence").insert({
+        artist_handle: handle,
+        label_id: labelId,
+        status: "processing",
+      });
       await supabase
         .from("roster_dashboard_metrics")
         .insert({ artist_handle: handle, label_id: labelId });
 
       // Ensure adding user has a link for RLS visibility
       if (user?.id) {
-        await supabase
-          .from("user_artist_links")
-          .upsert(
-            {
-              user_id: user.id,
-              artist_handle: handle,
-              label_id: labelId,
-              role: "admin",
-            },
-            { onConflict: "user_id,artist_handle" },
-          );
+        await supabase.from("user_artist_links").upsert(
+          {
+            user_id: user.id,
+            artist_handle: handle,
+            label_id: labelId,
+            role: "admin",
+          },
+          { onConflict: "user_id,artist_handle" },
+        );
       }
 
-      const { error } = await supabase.functions.invoke("start-onboarding", {
-        body: {
-          tiktok_handle: handle,
-          artist_name: artistName.trim() || undefined,
-          instagram_handle: igHandle || handle,
-          platform: "tiktok",
-          initiated_by: user?.id || null,
-          label_id: labelId,
+      const { data: onboardingData, error } = await supabase.functions.invoke(
+        "start-onboarding",
+        {
+          body: {
+            tiktok_handle: handle,
+            artist_name: artistName.trim() || undefined,
+            instagram_handle: igHandle || handle,
+            platform: "tiktok",
+            initiated_by: user?.id || null,
+            label_id: labelId,
+          },
         },
-      });
+      );
 
       if (error) throw error;
 
+      // Fire intelligence onboarding tasks if entity was created
+      const entityId = onboardingData?.entity_id;
+      if (entityId) {
+        supabase.functions
+          .invoke("trigger-artist-onboarding", {
+            body: {
+              entity_id: entityId,
+              tasks: ["comments", "catalog", "videos"],
+            },
+          })
+          .catch(() => {
+            // Fire and forget — data arrives via pipeline
+          });
+      }
+
+      // Discover and link sounds from the artist's TikTok videos
+      supabase.functions
+        .invoke("discover-artist-sounds", {
+          body: { artist_handle: handle },
+        })
+        .catch(() => {
+          // Fire and forget — ~10-15s, can be re-triggered later
+        });
+
       const name = artistName.trim() || handle;
       toast({
-        title: "Pipeline started",
-        description: "Artist will be ready in ~2 hours.",
+        title: `Setting up intelligence for ${name}`,
+        description:
+          "Comments, catalog, and video data will appear within minutes.",
       });
       onAdded?.(handle, name);
       setTiktokHandle("");

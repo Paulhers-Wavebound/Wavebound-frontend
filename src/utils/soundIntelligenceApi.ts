@@ -4,6 +4,8 @@ import type {
   SoundAlert,
   MonitoringSnapshot,
   MonitoringHistorySummary,
+  SoundSubscription,
+  SoundComparisonResponse,
 } from "@/types/soundIntelligence";
 
 const BASE_URL = "https://kxvgbowrkmowuyezoeke.supabase.co/functions/v1";
@@ -79,6 +81,24 @@ export function validateSoundUrl(input: string): {
   }
 
   return { valid: true };
+}
+
+export async function retrySoundAnalysis(jobId: string) {
+  const headers = await getAuthHeaders();
+  const res = await fetch(`${BASE_URL}/retry-sound-analysis`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ job_id: jobId }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: "Retry failed" }));
+    throw new Error(err.error || "Retry failed");
+  }
+  return res.json() as Promise<{
+    success: boolean;
+    job_id: string;
+    retried_stage: string;
+  }>;
 }
 
 export async function triggerSoundAnalysis(
@@ -158,7 +178,7 @@ export const JOB_STATUS_CONFIG: Record<
   { label: string; color: string }
 > = {
   pending: { label: "Pending", color: "#8E8E93" },
-  scraping: { label: "Scraping...", color: "#FF9F0A" },
+  scraping: { label: "Analysing...", color: "#FF9F0A" },
   classifying: { label: "Classifying...", color: "#0A84FF" },
   synthesizing: { label: "Synthesizing...", color: "#30D158" },
   refreshing: { label: "Refreshing...", color: "#0A84FF" },
@@ -205,14 +225,22 @@ export interface ListAnalysisEntry {
     format_count: number;
     videos_analyzed: number;
   } | null;
+  artist_handle: string | null;
+  source: "manual" | "auto_discovery";
+  tracking_expires_at: string | null;
 }
 
 export async function listSoundAnalyses(
   labelId: string,
+  filters?: { source?: string; artist_handle?: string },
 ): Promise<ListAnalysisEntry[]> {
   const headers = await getAuthHeaders();
+  const params = new URLSearchParams({ label_id: labelId });
+  if (filters?.source) params.set("source", filters.source);
+  if (filters?.artist_handle)
+    params.set("artist_handle", filters.artist_handle);
   const res = await fetch(
-    `${BASE_URL}/list-sound-analyses?label_id=${labelId}`,
+    `${BASE_URL}/list-sound-analyses?${params.toString()}`,
     { headers },
   );
   if (!res.ok) throw new Error("Failed to list analyses");
@@ -240,6 +268,74 @@ export function formatNumber(n: number): string {
   if (n >= 10_000) return (n / 1_000).toFixed(0) + "K";
   if (n >= 1_000) return n.toLocaleString();
   return String(n);
+}
+
+// --- Sound Subscriptions API ---
+
+export async function subscribeSound(
+  jobId: string,
+  opts?: { is_own_sound?: boolean; notes?: string },
+): Promise<{
+  subscription: {
+    id: string;
+    job_id: string;
+    is_own_sound: boolean;
+    created_at: string;
+  };
+  message: string;
+}> {
+  const headers = await getAuthHeaders();
+  const res = await fetch(`${BASE_URL}/subscribe-sound`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      job_id: jobId,
+      is_own_sound: opts?.is_own_sound ?? true,
+      notes: opts?.notes,
+    }),
+  });
+  if (res.status === 409) throw new Error("Already subscribed to this sound");
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: "Request failed" }));
+    throw new Error(err.error || "Failed to subscribe");
+  }
+  return res.json();
+}
+
+export async function unsubscribeSound(jobId: string): Promise<void> {
+  const headers = await getAuthHeaders();
+  const res = await fetch(`${BASE_URL}/unsubscribe-sound?job_id=${jobId}`, {
+    method: "DELETE",
+    headers,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: "Request failed" }));
+    throw new Error(err.error || "Failed to unsubscribe");
+  }
+}
+
+export async function getMySounds(): Promise<SoundSubscription[]> {
+  const headers = await getAuthHeaders();
+  const res = await fetch(`${BASE_URL}/get-my-sounds`, { headers });
+  if (!res.ok) throw new Error("Failed to fetch subscribed sounds");
+  const data = await res.json();
+  return data.sounds || [];
+}
+
+export async function getSoundComparison(
+  jobIdA: string,
+  jobIdB: string,
+): Promise<SoundComparisonResponse> {
+  const headers = await getAuthHeaders();
+  const params = new URLSearchParams({ job_id_a: jobIdA, job_id_b: jobIdB });
+  const res = await fetch(`${BASE_URL}/get-sound-comparison?${params}`, {
+    headers,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: "Request failed" }));
+    throw new Error(err.error || "Failed to fetch comparison");
+  }
+  return res.json();
 }
 
 // --- Monitoring API ---

@@ -2,6 +2,22 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Tiempos Text — licensed from Klim Type Foundry */
+@font-face {
+  font-family: "Tiempos Text";
+  src: url("/fonts/TiemposText-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Shared spinner animation */
+@keyframes labelSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 /* Custom scrollbar for chat */
 .chat-scrollbar::-webkit-scrollbar {
   width: 6px;
@@ -23,6 +39,16 @@
 }
 
 /* Ambient glow animation for empty chat state */
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+
 @keyframes ambient-glow {
   0%,
   100% {
@@ -36,6 +62,20 @@
 }
 .animate-ambient-glow {
   animation: ambient-glow 8s ease-in-out infinite;
+}
+
+/* ========================================
+   INTELLIGENCE TAB — responsive grid
+   ======================================== */
+.intel-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+@media (max-width: 900px) {
+  .intel-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* ========================================
@@ -698,9 +738,6 @@ All colors MUST be HSL. Glassmorphism with teal-blue gradients.
     @apply text-foreground bg-background;
     min-height: 100vh;
     position: relative;
-    transition:
-      background-color 0.3s ease,
-      color 0.3s ease;
   }
 
   /* Dark theme backgrounds with gradient overlay */
@@ -1119,80 +1156,103 @@ All colors MUST be HSL. Glassmorphism with teal-blue gradients.
 
 /* ========================================
    STREAMDOWN MARKDOWN — Wavebound dark theme
+   Geist (sans) for headings + UI elements
+   Newsreader (serif) for body text — warm, editorial feel
    ======================================== */
+.streamdown-container {
+  font-family: "Tiempos Text", "Newsreader", Georgia, serif;
+  font-size: 1rem;
+  line-height: 1.7;
+  letter-spacing: 0.005em;
+  -webkit-font-smoothing: antialiased;
+}
+
 .streamdown-container h1 {
+  font-family: "Geist", system-ui, sans-serif;
   color: #ffffff;
   font-weight: 600;
   font-size: 1.25rem;
-  margin-top: 1.5rem;
+  line-height: 1.4;
+  letter-spacing: -0.01em;
+  margin-top: 1.75rem;
   margin-bottom: 0.5rem;
 }
 
 .streamdown-container h2 {
+  font-family: "Geist", system-ui, sans-serif;
   color: #ffffff;
   font-weight: 600;
   font-size: 1.125rem;
+  line-height: 1.4;
+  letter-spacing: -0.01em;
   margin-top: 1.5rem;
   margin-bottom: 0.5rem;
 }
 
 .streamdown-container h3 {
+  font-family: "Geist", system-ui, sans-serif;
   color: #ffffff;
   font-weight: 600;
   font-size: 1rem;
+  line-height: 1.4;
+  letter-spacing: -0.005em;
   margin-top: 1.5rem;
   margin-bottom: 0.5rem;
 }
 
 .streamdown-container p {
   color: #e5e5e5;
-  line-height: 1.625;
-  margin-bottom: 0.75rem;
+  line-height: 1.7;
+  margin-bottom: 0.875rem;
 }
 
 .streamdown-container strong {
+  font-family: "Geist", system-ui, sans-serif;
   color: #ffffff;
   font-weight: 600;
+  font-size: 0.9375rem;
 }
 
 .streamdown-container em {
-  color: #a3a3a3;
+  color: #b0b0b0;
   font-style: italic;
 }
 
 .streamdown-container ul {
-  padding-left: 1rem;
-  margin-bottom: 0.75rem;
+  padding-left: 1.25rem;
+  margin-bottom: 0.875rem;
 }
 
 .streamdown-container ul li {
   color: #e5e5e5;
-  margin-bottom: 0.375rem;
-  line-height: 1.625;
+  margin-bottom: 0.5rem;
+  line-height: 1.65;
 }
 
 .streamdown-container ul li::marker {
-  color: #8b5cf6;
+  color: rgba(232, 67, 10, 0.6);
 }
 
 .streamdown-container ol {
-  padding-left: 1rem;
-  margin-bottom: 0.75rem;
+  padding-left: 1.25rem;
+  margin-bottom: 0.875rem;
 }
 
 .streamdown-container ol li {
   color: #e5e5e5;
-  margin-bottom: 0.375rem;
-  line-height: 1.625;
+  margin-bottom: 0.5rem;
+  line-height: 1.65;
 }
 
 .streamdown-container ol li::marker {
-  color: #a78bfa;
+  color: rgba(232, 67, 10, 0.5);
+  font-family: "Geist", system-ui, sans-serif;
+  font-weight: 500;
 }
 
 .streamdown-container code:not(pre code) {
-  background: rgba(255, 255, 255, 0.1);
-  color: #c4b5fd;
+  background: rgba(232, 67, 10, 0.1);
+  color: #fb923c;
   padding: 0.125rem 0.375rem;
   border-radius: 0.25rem;
   font-size: 0.875rem;
@@ -1200,8 +1260,8 @@ All colors MUST be HSL. Glassmorphism with teal-blue gradients.
 }
 
 .streamdown-container pre {
-  background: #141414;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: var(--bg-subtle, #1a1a18);
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.1));
   border-radius: 0.5rem;
   padding: 1rem;
   overflow-x: auto;
@@ -1217,17 +1277,17 @@ All colors MUST be HSL. Glassmorphism with teal-blue gradients.
 }
 
 .streamdown-container a {
-  color: #a78bfa;
+  color: #e8430a;
   text-decoration: underline;
   transition: color 0.15s;
 }
 
 .streamdown-container a:hover {
-  color: #c4b5fd;
+  color: #ff6a33;
 }
 
 .streamdown-container blockquote {
-  border-left: 2px solid rgba(139, 92, 246, 0.5);
+  border-left: 2px solid rgba(232, 67, 10, 0.4);
   padding-left: 1rem;
   color: #a3a3a3;
   font-style: italic;
@@ -1235,7 +1295,7 @@ All colors MUST be HSL. Glassmorphism with teal-blue gradients.
 }
 
 .streamdown-container hr {
-  border-color: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.06);
   margin: 1rem 0;
 }
 
@@ -1243,25 +1303,33 @@ All colors MUST be HSL. Glassmorphism with teal-blue gradients.
   width: 100%;
   border-collapse: collapse;
   margin: 0.75rem 0;
-  border-radius: 0.5rem;
-  overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  font-family: "Roboto Mono", ui-monospace, monospace;
+  font-size: 0.8125rem;
+}
+
+@media (max-width: 767px) {
+  .streamdown-container table {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
 }
 
 .streamdown-container th {
-  background: rgba(255, 255, 255, 0.08);
-  color: #ffffff;
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.87);
   font-weight: 600;
   text-align: left;
   padding: 0.625rem 0.75rem;
-  font-size: 0.875rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 0.8125rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  white-space: nowrap;
 }
 
 .streamdown-container td {
   color: #e5e5e5;
   padding: 0.5rem 0.75rem;
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
   border-bottom: 1px solid rgba(255, 255, 255, 0.05);
 }
 
@@ -1271,6 +1339,53 @@ All colors MUST be HSL. Glassmorphism with teal-blue gradients.
 
 .streamdown-container tr:hover td {
   background: rgba(255, 255, 255, 0.03);
+}
+
+/* ── Inline source citation tags ── */
+.inline-source-tag {
+  font-size: 0.6875rem;
+  line-height: 1;
+  color: rgba(255, 255, 255, 0.35);
+  background: rgba(255, 255, 255, 0.05);
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-family: "Roboto Mono", ui-monospace, monospace;
+  vertical-align: baseline;
+  margin-left: 3px;
+  white-space: nowrap;
+}
+
+/* ── Shimmer skeleton ── */
+@keyframes shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* ── Streaming cursor ── */
+@keyframes cursor-blink {
+  0%,
+  50% {
+    opacity: 0.8;
+  }
+  51%,
+  100% {
+    opacity: 0;
+  }
+}
+
+.streamdown-container.is-streaming > :last-child::after {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 1.1em;
+  background: rgba(255, 255, 255, 0.6);
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  animation: cursor-blink 1s step-end infinite;
 }
 
 /* Global scrollbar styling */

@@ -1,15 +1,31 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import LabelLayout from "./LabelLayout";
-import { ArrowLeft } from "lucide-react";
+import {
+  ArrowLeft,
+  Music,
+  TrendingUp,
+  TrendingDown,
+  Minus,
+  Trophy,
+  Zap,
+} from "lucide-react";
 import { format } from "date-fns";
 import SEOHead from "@/components/SEOHead";
+import { useSetPageTitle } from "@/contexts/PageTitleContext";
+import { useUserProfile } from "@/contexts/UserProfileContext";
+import IntelligenceTab from "@/components/label/intelligence/IntelligenceTab";
 import {
   parsePostingDates,
   calcFrequency,
   getLastPostDate,
 } from "@/utils/postingFrequency";
+import {
+  listSoundAnalyses,
+  ListAnalysisEntry,
+  formatNumber as formatSINumber,
+  timeAgo as siTimeAgo,
+} from "@/utils/soundIntelligenceApi";
 
 interface Artist {
   id: string;
@@ -55,32 +71,61 @@ function getInitials(name: string): string {
 
 export default function LabelArtistDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
+  const { labelId } = useUserProfile();
   const [artist, setArtist] = useState<Artist | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"report" | "plan" | "plan30">(
-    searchParams.get("tab") === "plan30"
-      ? "plan30"
-      : searchParams.get("tab") === "plan"
-        ? "plan"
-        : "report",
+  useSetPageTitle(artist?.artist_name ?? null);
+  const [activeTab, setActiveTab] = useState<
+    "intelligence" | "sounds" | "plan" | "plan30"
+  >(
+    searchParams.get("tab") === "sounds"
+      ? "sounds"
+      : searchParams.get("tab") === "plan30"
+        ? "plan30"
+        : searchParams.get("tab") === "plan"
+          ? "plan"
+          : "intelligence",
   );
   const [iframeHeight, setIframeHeight] = useState(600);
+  const [artistSounds, setArtistSounds] = useState<ListAnalysisEntry[]>([]);
+  const [soundsLoading, setSoundsLoading] = useState(false);
+
+  const fetchArtistSounds = useCallback(async () => {
+    if (!labelId || !artist?.artist_handle) return;
+    setSoundsLoading(true);
+    try {
+      const handle = (artist.artist_handle || "").replace(/^@+/, "");
+      const all = await listSoundAnalyses(labelId, { artist_handle: handle });
+      setArtistSounds(all);
+    } catch {
+      // non-critical
+    } finally {
+      setSoundsLoading(false);
+    }
+  }, [labelId, artist?.artist_handle]);
 
   useEffect(() => {
-    if (!id) return;
+    if (activeTab === "sounds" && artistSounds.length === 0 && !soundsLoading) {
+      fetchArtistSounds();
+    }
+  }, [activeTab, fetchArtistSounds]); // eslint-disable-line
+
+  useEffect(() => {
+    if (!id || !labelId) return;
     const fetchArtist = async () => {
       const { data } = await supabase
         .from("artist_intelligence")
         .select("*")
         .eq("id", id)
+        .eq("label_id", labelId)
         .single();
       setArtist(data as any);
       setLoading(false);
     };
     fetchArtist();
-  }, [id]);
+  }, [id, labelId]);
 
   useEffect(() => {
     const handler = (e: MessageEvent) => {
@@ -125,7 +170,7 @@ export default function LabelArtistDetailPage() {
 
   if (loading) {
     return (
-      <LabelLayout>
+      <>
         <div
           style={{
             display: "flex",
@@ -145,49 +190,46 @@ export default function LabelArtistDetailPage() {
             }}
           />
         </div>
-        <style>{`@keyframes labelSpin { to { transform: rotate(360deg); } }`}</style>
-      </LabelLayout>
+      </>
     );
   }
 
   if (!artist) {
     return (
-      <LabelLayout>
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          height: "60vh",
+          gap: 8,
+        }}
+      >
         <div
           style={{
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            justifyContent: "center",
-            height: "60vh",
-            gap: 8,
+            fontFamily: '"DM Sans", sans-serif',
+            fontSize: 16,
+            fontWeight: 500,
+            color: "var(--ink)",
           }}
         >
-          <div
-            style={{
-              fontFamily: '"DM Sans", sans-serif',
-              fontSize: 16,
-              fontWeight: 500,
-              color: "var(--ink)",
-            }}
-          >
-            Artist not found
-          </div>
-          <button
-            onClick={() => navigate("/label")}
-            style={{
-              fontFamily: '"DM Sans", sans-serif',
-              fontSize: 14,
-              color: "var(--ink-secondary)",
-              background: "none",
-              border: "none",
-              cursor: "pointer",
-            }}
-          >
-            ← Back to roster
-          </button>
+          Artist not found
         </div>
-      </LabelLayout>
+        <button
+          onClick={() => navigate("/label")}
+          style={{
+            fontFamily: '"DM Sans", sans-serif',
+            fontSize: 14,
+            color: "var(--ink-secondary)",
+            background: "none",
+            border: "none",
+            cursor: "pointer",
+          }}
+        >
+          ← Back to roster
+        </button>
+      </div>
     );
   }
 
@@ -217,7 +259,7 @@ export default function LabelArtistDetailPage() {
   ];
 
   return (
-    <LabelLayout>
+    <>
       <SEOHead
         title={`${artist.artist_name} — Wavebound Label`}
         description={`Intelligence for ${artist.artist_name}`}
@@ -391,6 +433,8 @@ export default function LabelArtistDetailPage() {
           }}
         >
           {[
+            { key: "intelligence" as const, label: "Intelligence" },
+            { key: "sounds" as const, label: "Sounds" },
             { key: "plan" as const, label: "Content Plan" },
             { key: "plan30" as const, label: "30-Day Plan" },
           ].map((tab) => (
@@ -398,6 +442,10 @@ export default function LabelArtistDetailPage() {
               key={tab.key}
               onClick={() => {
                 setActiveTab(tab.key);
+                setSearchParams(
+                  tab.key === "intelligence" ? {} : { tab: tab.key },
+                  { replace: true },
+                );
                 setIframeHeight(600);
               }}
               style={{
@@ -425,7 +473,18 @@ export default function LabelArtistDetailPage() {
 
         {/* Tab content */}
         <div style={{ marginTop: 24 }}>
-          {currentHtml ? (
+          {activeTab === "intelligence" ? (
+            <IntelligenceTab artistName={artist.artist_name} />
+          ) : activeTab === "sounds" ? (
+            <ArtistSoundsSection
+              sounds={artistSounds}
+              loading={soundsLoading}
+              artistName={artist.artist_name}
+              onNavigate={(jobId) =>
+                navigate(`/label/sound-intelligence/${jobId}`)
+              }
+            />
+          ) : currentHtml ? (
             <div
               style={{
                 borderRadius: "var(--radius)",
@@ -462,16 +521,396 @@ export default function LabelArtistDetailPage() {
                   color: "var(--ink-tertiary)",
                 }}
               >
-                {activeTab === "report"
-                  ? "Report not yet generated"
-                  : activeTab === "plan"
-                    ? "Content plan not yet generated"
-                    : "30-day plan not yet generated"}
+                {activeTab === "plan"
+                  ? "Content plan not yet generated"
+                  : "30-day plan not yet generated"}
               </div>
             </div>
           )}
         </div>
       </div>
-    </LabelLayout>
+    </>
+  );
+}
+
+/* ─── Velocity status config for sound cards ─── */
+const velocityStatusConfig: Record<
+  string,
+  { label: string; color: string; Icon: typeof TrendingUp }
+> = {
+  accelerating: { label: "Accelerating", color: "#30D158", Icon: TrendingUp },
+  active: { label: "Active", color: "#FF9F0A", Icon: Minus },
+  declining: { label: "Declining", color: "#FF453A", Icon: TrendingDown },
+};
+
+/* ─── Artist Sounds Section ─── */
+function ArtistSoundsSection({
+  sounds,
+  loading,
+  artistName,
+  onNavigate,
+}: {
+  sounds: ListAnalysisEntry[];
+  loading: boolean;
+  artistName: string;
+  onNavigate: (jobId: string) => void;
+}) {
+  if (loading) {
+    return (
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: "80px 0",
+          gap: 12,
+        }}
+      >
+        <div
+          style={{
+            width: 24,
+            height: 24,
+            border: "2.5px solid var(--border)",
+            borderTopColor: "var(--accent)",
+            borderRadius: "50%",
+            animation: "labelSpin 0.8s linear infinite",
+          }}
+        />
+        <div
+          style={{
+            fontFamily: '"DM Sans", sans-serif',
+            fontSize: 13,
+            color: "var(--ink-tertiary)",
+          }}
+        >
+          Loading tracked sounds...
+        </div>
+      </div>
+    );
+  }
+
+  const completed = sounds.filter((s) => s.status === "completed");
+  const processing = sounds.filter(
+    (s) => s.status !== "completed" && s.status !== "failed",
+  );
+
+  if (sounds.length === 0) {
+    return (
+      <div
+        style={{
+          border: "2px dashed var(--border)",
+          borderRadius: "var(--radius)",
+          padding: 80,
+          textAlign: "center",
+        }}
+      >
+        <Zap size={40} color="var(--ink-faint)" style={{ marginBottom: 12 }} />
+        <div
+          style={{
+            fontFamily: '"DM Sans", sans-serif',
+            fontSize: 16,
+            color: "var(--ink-tertiary)",
+            marginBottom: 6,
+          }}
+        >
+          No tracked sounds for {artistName}
+        </div>
+        <div
+          style={{
+            fontFamily: '"DM Sans", sans-serif',
+            fontSize: 13,
+            color: "var(--ink-faint)",
+          }}
+        >
+          Sounds are automatically tracked when this artist posts new music on
+          TikTok.
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      {/* Processing sounds */}
+      {processing.length > 0 && (
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 8,
+            marginBottom: 8,
+          }}
+        >
+          {processing.map((entry) => (
+            <div
+              key={entry.job_id}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 12,
+                padding: "12px 16px",
+                background: "var(--surface)",
+                borderRadius: 12,
+                borderTop: "0.5px solid var(--card-edge)",
+              }}
+            >
+              <div
+                style={{
+                  width: 16,
+                  height: 16,
+                  border: "2px solid var(--border)",
+                  borderTopColor: "var(--accent)",
+                  borderRadius: "50%",
+                  animation: "labelSpin 0.8s linear infinite",
+                  flexShrink: 0,
+                }}
+              />
+              <div
+                style={{
+                  fontFamily: '"DM Sans", sans-serif',
+                  fontSize: 14,
+                  color: "var(--ink)",
+                }}
+              >
+                {entry.track_name || "Analyzing..."}
+              </div>
+              <div
+                style={{
+                  fontFamily: '"DM Sans", sans-serif',
+                  fontSize: 12,
+                  color: "var(--ink-tertiary)",
+                  marginLeft: "auto",
+                }}
+              >
+                {entry.status}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Completed sound cards */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))",
+          gap: 16,
+        }}
+      >
+        {completed.map((entry) => {
+          const s = entry.summary;
+          const vCfg =
+            velocityStatusConfig[s?.velocity_status || "active"] ||
+            velocityStatusConfig.active;
+          const StatusIcon = vCfg.Icon;
+
+          return (
+            <div
+              key={entry.job_id}
+              onClick={() => onNavigate(entry.job_id)}
+              style={{
+                background: "var(--surface)",
+                borderRadius: 16,
+                borderTop: "0.5px solid var(--card-edge)",
+                padding: 20,
+                cursor: "pointer",
+                transition: "transform 150ms, box-shadow 150ms",
+              }}
+              onMouseEnter={(e) => {
+                (e.currentTarget as HTMLDivElement).style.transform =
+                  "translateY(-2px)";
+              }}
+              onMouseLeave={(e) => {
+                (e.currentTarget as HTMLDivElement).style.transform = "none";
+              }}
+            >
+              {/* Cover + title */}
+              <div
+                style={{
+                  display: "flex",
+                  gap: 12,
+                  alignItems: "center",
+                  marginBottom: 16,
+                }}
+              >
+                {entry.cover_url ? (
+                  <img
+                    src={entry.cover_url}
+                    alt={entry.track_name}
+                    style={{
+                      width: 44,
+                      height: 44,
+                      borderRadius: 10,
+                      objectFit: "cover",
+                      background: "var(--border-subtle)",
+                    }}
+                  />
+                ) : (
+                  <div
+                    style={{
+                      width: 44,
+                      height: 44,
+                      borderRadius: 10,
+                      background: "var(--border-subtle)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <Music size={18} color="var(--ink-tertiary)" />
+                  </div>
+                )}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div
+                    style={{
+                      fontFamily: '"DM Sans", sans-serif',
+                      fontSize: 15,
+                      fontWeight: 600,
+                      color: "var(--ink)",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {entry.track_name || "Unknown Track"}
+                  </div>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                      marginTop: 4,
+                    }}
+                  >
+                    <StatusIcon size={12} color={vCfg.color} />
+                    <span
+                      style={{
+                        fontFamily: '"DM Sans", sans-serif',
+                        fontSize: 11,
+                        fontWeight: 600,
+                        color: vCfg.color,
+                        textTransform: "uppercase",
+                      }}
+                    >
+                      {vCfg.label}
+                    </span>
+                    <span
+                      style={{
+                        fontFamily: '"DM Sans", sans-serif',
+                        fontSize: 11,
+                        color: "var(--ink-faint)",
+                        marginLeft: 4,
+                      }}
+                    >
+                      {siTimeAgo(
+                        entry.last_refresh_at ||
+                          entry.completed_at ||
+                          entry.created_at,
+                      )}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Stats row */}
+              <div
+                style={{
+                  display: "flex",
+                  gap: 16,
+                  borderTop: "1px solid var(--border)",
+                  paddingTop: 12,
+                }}
+              >
+                <StatCell
+                  label="Videos"
+                  value={s?.videos_analyzed?.toString() ?? "—"}
+                />
+                <StatCell
+                  label="Views"
+                  value={s ? formatSINumber(s.total_views) : "—"}
+                />
+                <StatCell
+                  label="Eng."
+                  value={s ? `${s.engagement_rate.toFixed(1)}%` : "—"}
+                />
+                {s?.winner_format && (
+                  <div style={{ flex: 1 }}>
+                    <div
+                      style={{
+                        fontFamily: '"DM Sans", sans-serif',
+                        fontSize: 10,
+                        fontWeight: 600,
+                        color: "var(--ink-faint)",
+                        textTransform: "uppercase",
+                        letterSpacing: "0.5px",
+                        marginBottom: 4,
+                      }}
+                    >
+                      Winner
+                    </div>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 4,
+                      }}
+                    >
+                      <Trophy
+                        size={11}
+                        color="var(--accent)"
+                        style={{ flexShrink: 0 }}
+                      />
+                      <span
+                        style={{
+                          fontFamily: '"DM Sans", sans-serif',
+                          fontSize: 13,
+                          color: "var(--ink-secondary)",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {s.winner_format}
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function StatCell({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={{ flex: 1 }}>
+      <div
+        style={{
+          fontFamily: '"DM Sans", sans-serif',
+          fontSize: 10,
+          fontWeight: 600,
+          color: "var(--ink-faint)",
+          textTransform: "uppercase",
+          letterSpacing: "0.5px",
+          marginBottom: 4,
+        }}
+      >
+        {label}
+      </div>
+      <div
+        style={{
+          fontFamily: '"DM Sans", sans-serif',
+          fontSize: 15,
+          fontWeight: 600,
+          color: "var(--ink)",
+        }}
+      >
+        {value}
+      </div>
+    </div>
   );
 }

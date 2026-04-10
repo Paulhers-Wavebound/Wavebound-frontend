@@ -195,7 +195,7 @@ export default function RosterCard({
         whileHover={{ scale: 1.02, y: -3 }}
         transition={{ type: "spring", stiffness: 400, damping: 25 }}
         className="group relative rounded-xl border border-border hover:border-primary/40 p-4 cursor-pointer"
-        style={{ background: "hsl(0 0% 5%)" }}
+        style={{ background: "var(--surface, hsl(0 0% 5%))" }}
       >
         {/* Top row: avatar + name + risk dot */}
         <div className="flex items-start gap-3">

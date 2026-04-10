@@ -1,483 +1,309 @@
-import { useEffect, useState, useMemo, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
-import LabelLayout from "./LabelLayout";
+import { useCallback, useEffect, useState } from "react";
 import SEOHead from "@/components/SEOHead";
-import RosterCard, { type RosterMetric } from "@/components/label/RosterCard";
-import RosterListView from "@/components/label/RosterListView";
-import PipelineProgress from "@/components/label/PipelineProgress";
-import RiskAlertsPanel from "@/components/label/RiskAlertsPanel";
-import { useAdminRole } from "@/hooks/useAdminRole";
+import MarketingDashboard from "@/components/label/marketing/MarketingDashboard";
+import ContentSocialDashboard from "@/components/label/content-social/ContentSocialDashboard";
+import { supabase } from "@/integrations/supabase/client";
 import { useUserProfile } from "@/contexts/UserProfileContext";
-import { useLabelPermissions } from "@/hooks/useLabelPermissions";
-import { Search, RefreshCw, LayoutGrid, List } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
-import { motion, AnimatePresence } from "framer-motion";
+import { useDashboardRole } from "@/contexts/DashboardRoleContext";
+import RoleSelector from "@/components/label/RoleSelector";
+import {
+  Bell,
+  AlertTriangle,
+  TrendingDown,
+  TrendingUp,
+  Flame,
+  Clock,
+  X,
+} from "lucide-react";
 
-type Filter = "all" | "attention" | "momentum" | "stalled";
-export default function LabelDashboard() {
-  const navigate = useNavigate();
-  const { isAdmin } = useAdminRole();
+interface Notification {
+  id: string;
+  icon: React.ElementType;
+  iconColor: string;
+  iconBg: string;
+  title: string;
+  body: string;
+  time: string;
+}
+
+const MOCK_NOTIFICATIONS: Notification[] = [
+  {
+    id: "wasted-spend",
+    icon: AlertTriangle,
+    iconColor: "#FF453A",
+    iconBg: "rgba(255,69,58,0.12)",
+    title: "$175K Wasted Spend Detected",
+    body: "84% of budget on US markets. 3 high-ROI markets at $0 spend.",
+    time: "12m ago",
+  },
+  {
+    id: "tyla-window",
+    icon: Clock,
+    iconColor: "#FF9F0A",
+    iconBg: "rgba(255,159,10,0.12)",
+    title: "Window Closing — Tyla (India)",
+    body: "~9 days left. TikTok India #11, $0 current spend. 4.8x ROI opportunity.",
+    time: "1h ago",
+  },
+  {
+    id: "lil-nas-window",
+    icon: Clock,
+    iconColor: "#FFD60A",
+    iconBg: "rgba(255,214,10,0.12)",
+    title: "Window Closing — Lil Nas X (Philippines)",
+    body: "~8 days left. TikTok Philippines #8, $0 spend. 5.4x ROI vs US.",
+    time: "2h ago",
+  },
+  {
+    id: "ice-spice-decline",
+    icon: TrendingDown,
+    iconColor: "#FF453A",
+    iconBg: "rgba(255,69,58,0.12)",
+    title: "Ice Spice — Momentum Declining",
+    body: "Down to 35. TikTok US #88 (-24). $35K/month at 0.6x ROI.",
+    time: "3h ago",
+  },
+];
+
+const ANOMALY_ICON_MAP: Record<
+  string,
+  { icon: React.ElementType; color: string; bg: string }
+> = {
+  views_spike: {
+    icon: TrendingUp,
+    color: "#30D158",
+    bg: "rgba(48,209,88,0.12)",
+  },
+  views_drop: {
+    icon: TrendingDown,
+    color: "#FF453A",
+    bg: "rgba(255,69,58,0.12)",
+  },
+  engagement_spike: {
+    icon: Flame,
+    color: "#FF9F0A",
+    bg: "rgba(255,159,10,0.12)",
+  },
+  engagement_drop: {
+    icon: TrendingDown,
+    color: "#FF9F0A",
+    bg: "rgba(255,159,10,0.12)",
+  },
+  posting_drought: {
+    icon: Clock,
+    color: "#FF453A",
+    bg: "rgba(255,69,58,0.12)",
+  },
+  posting_burst: {
+    icon: TrendingUp,
+    color: "#30D158",
+    bg: "rgba(48,209,88,0.12)",
+  },
+};
+
+const DEFAULT_ANOMALY_ICON = {
+  icon: AlertTriangle,
+  color: "#FFD60A",
+  bg: "rgba(255,214,10,0.12)",
+};
+
+function useContentNotifications() {
   const { labelId } = useUserProfile();
-  const { canEdit } = useLabelPermissions();
+  const [notifications, setNotifications] = useState<Notification[]>([]);
 
-  const [metrics, setMetrics] = useState<RosterMetric[]>([]);
-  const [alertDots, setAlertDots] = useState<
-    Map<string, "celebration" | "warning">
-  >(new Map());
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
-  const [search, setSearch] = useState("");
-  const [activeFilter, setActiveFilter] = useState<Filter>("all");
-  const [refreshing, setRefreshing] = useState(false);
-  const [viewMode, setViewMode] = useState<"grid" | "list">(
-    () =>
-      (localStorage.getItem("label-roster-view") as "grid" | "list") || "grid",
-  );
-  const [processing, setProcessing] = useState<
-    { tempId: string; artist_handle: string; artist_name: string }[]
-  >([]);
+  const fetchAnomalies = useCallback(async () => {
+    if (!labelId) return;
+    const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000)
+      .toISOString()
+      .split("T")[0];
 
-  const fetchMetrics = useCallback(async () => {
-    let viewQuery = supabase
-      .from("roster_dashboard_metrics")
-      .select("*")
-      .order("risk_level", { ascending: false });
-    let aiQuery = supabase
-      .from("artist_intelligence")
-      .select(
-        "artist_handle, artist_name, avatar_url, status, content_plan_html, intelligence_report_html, content_plan_30d_html, thirty_day_plan_html, artist_brief_html, label_id",
-      )
-      .eq("status", "completed");
+    const [anomalyRes, rosterRes] = await Promise.all([
+      supabase
+        .from("content_anomalies" as any)
+        .select("*")
+        .eq("label_id", labelId)
+        .eq("seen", false)
+        .gte("scan_date", threeDaysAgo)
+        .order("scan_date", { ascending: false })
+        .limit(10),
+      supabase
+        .from("roster_dashboard_metrics")
+        .select("artist_handle, artist_name")
+        .eq("label_id", labelId),
+    ]);
 
-    if (labelId) {
-      viewQuery = viewQuery.eq("label_id", labelId);
-      aiQuery = aiQuery.eq("label_id", labelId);
-    }
-
-    const [viewRes, aiRes] = await Promise.all([viewQuery, aiQuery]);
-
-    if (viewRes.error && aiRes.error) {
-      setError(true);
-      setLoading(false);
+    const data = anomalyRes.data;
+    if (!data || data.length === 0) {
+      setNotifications([]);
       return;
     }
 
-    const viewData: RosterMetric[] = (viewRes.data as any) || [];
-    const aiData: any[] = (aiRes.data as any) || [];
-
-    // Build set of confirmed-completed handles from artist_intelligence
-    const aiCompletedHandles = new Set(
-      aiData.map((a) => (a.artist_handle || "").trim().toLowerCase()),
-    );
-
-    // Build merged map: start with view data, then upsert from AI data
-    const mergedMap = new Map<string, RosterMetric>();
-    for (const m of viewData) {
-      const key = (m.artist_handle || "").trim().toLowerCase();
-      mergedMap.set(key, m);
+    // Build handle→name lookup
+    const nameMap = new Map<string, string>();
+    for (const r of (rosterRes.data as any[]) || []) {
+      const h = (r.artist_handle || "").trim().toLowerCase().replace(/^@+/, "");
+      if (r.artist_name) nameMap.set(h, r.artist_name);
     }
 
-    for (const a of aiData) {
-      const key = (a.artist_handle || "").trim().toLowerCase();
-      if (!key) continue;
-      const existing = mergedMap.get(key);
-      if (existing) {
-        // Override pipeline_status to completed since AI confirms it
-        (existing as any).pipeline_status = "completed";
-        // Backfill name/avatar if missing
-        if (!existing.artist_name)
-          existing.artist_name = a.artist_name || a.artist_handle;
-        if (!existing.avatar_url) existing.avatar_url = a.avatar_url || null;
-        // Backfill plan status from AI data
-        if (a.content_plan_html && !(existing as any).has_content_plan) {
-          (existing as any).has_content_plan = true;
-        }
-        if (
-          a.intelligence_report_html &&
-          !(existing as any).has_intelligence_report
-        ) {
-          (existing as any).has_intelligence_report = true;
-        }
-        if (
-          (a.content_plan_30d_html || a.thirty_day_plan_html) &&
-          !(existing as any).has_30day_plan
-        ) {
-          (existing as any).has_30day_plan = true;
-        }
-        if (a.artist_brief_html && !(existing as any).has_artist_brief) {
-          (existing as any).has_artist_brief = true;
-        }
-      } else {
-        // Add stub entry
-        mergedMap.set(key, {
-          artist_handle: a.artist_handle,
-          artist_name: a.artist_name || a.artist_handle,
-          avatar_url: a.avatar_url || null,
-          pipeline_status: "completed",
-          momentum_tier: null,
-          risk_level: "ok",
-          has_content_plan: !!a.content_plan_html,
-          has_intelligence_report: !!a.intelligence_report_html,
-          has_30day_plan: !!(a.content_plan_30d_html || a.thirty_day_plan_html),
-          has_artist_brief: !!a.artist_brief_html,
-        } as any);
-      }
-    }
+    const mapped: Notification[] = (data as any[]).map((a) => {
+      const style = ANOMALY_ICON_MAP[a.anomaly_type] || DEFAULT_ANOMALY_ICON;
+      const hoursAgo = Math.round(
+        (Date.now() - new Date(a.created_at || a.scan_date).getTime()) /
+          3_600_000,
+      );
+      const timeStr =
+        hoursAgo < 1
+          ? "just now"
+          : hoursAgo < 24
+            ? `${hoursAgo}h ago`
+            : `${Math.round(hoursAgo / 24)}d ago`;
 
-    const merged = Array.from(mergedMap.values());
+      const handle = (a.artist_handle || "")
+        .trim()
+        .toLowerCase()
+        .replace(/^@+/, "");
+      const displayName = nameMap.get(handle) || a.artist_handle;
 
-    setMetrics(merged);
-    setLoading(false);
+      return {
+        id: String(a.id),
+        icon: style.icon,
+        iconColor: style.color,
+        iconBg: style.bg,
+        title: `${displayName} — ${(a.anomaly_type || "").replace(/_/g, " ")}`,
+        body: a.insight_message || "",
+        time: timeStr,
+      };
+    });
 
-    // Fetch recent alerts for dot indicators
-    const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
-    const { data: alertData } = await supabase
-      .from("artist_alerts")
-      .select("artist_handle, severity, created_at")
-      .gte("created_at", cutoff)
-      .in("severity", ["celebration", "warning"]);
-
-    const dotMap = new Map<string, "celebration" | "warning">();
-    for (const a of (alertData as any[]) || []) {
-      const h = (a.artist_handle || "").trim().toLowerCase();
-      const existing = dotMap.get(h);
-      if (!existing || a.severity === "celebration") {
-        dotMap.set(h, a.severity);
-      }
-    }
-    setAlertDots(dotMap);
+    setNotifications(mapped);
   }, [labelId]);
 
   useEffect(() => {
-    fetchMetrics();
-  }, [fetchMetrics]);
+    fetchAnomalies();
+  }, [fetchAnomalies]);
 
-  const handleRefresh = async () => {
-    setRefreshing(true);
-    await supabase.rpc("refresh_roster_metrics");
-    await fetchMetrics();
-    setRefreshing(false);
-  };
+  return notifications;
+}
 
-  const handlePipelineComplete = useCallback(
-    async (handle: string) => {
-      setProcessing((prev) => prev.filter((p) => p.artist_handle !== handle));
-      await supabase.rpc("refresh_roster_metrics");
-      fetchMetrics();
-    },
-    [fetchMetrics],
-  );
+function NotificationBell() {
+  const { role } = useDashboardRole();
+  const [open, setOpen] = useState(false);
+  const [dismissed, setDismissed] = useState<Set<string>>(new Set());
+  const contentNotifications = useContentNotifications();
 
-  const handleOpenDeliverable = useCallback(
-    async (handle: string, type: "report" | "plan" | "plan30" | "brief") => {
-      const nh = (handle || "").replace(/^@/, "").toLowerCase().trim();
-      const columnMap: Record<string, string> = {
-        report: "intelligence_report_html",
-        plan: "content_plan_html",
-        plan30: "content_plan_30d_html",
-        brief: "artist_brief_html",
-      };
-      const { data } = await supabase
-        .from("artist_intelligence")
-        .select(
-          "intelligence_report_html, content_plan_html, content_plan_30d_html, thirty_day_plan_html, artist_brief_html",
-        )
-        .or(`artist_handle.eq.${nh},artist_handle.eq.@${nh}`)
-        .order("updated_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      const row = data as any;
-      const html =
-        row?.[columnMap[type]] ||
-        (type === "plan30" ? row?.thirty_day_plan_html : null);
-      if (!html) return;
-      const newTab = window.open("", "_blank");
-      if (newTab) {
-        newTab.document.write(html);
-        newTab.document.close();
-      }
-    },
-    [],
-  );
-
-  // Derived data
-  const processingHandles = new Set(processing.map((p) => p.artist_handle));
-
-  const filtered = useMemo(() => {
-    return metrics
-      .filter((a) => !processingHandles.has(a.artist_handle))
-      .filter((a) => (a as any).pipeline_status === "completed")
-      .filter((a) => {
-        if (!search) return true;
-        const q = search.toLowerCase();
-        return (
-          a.artist_name?.toLowerCase().includes(q) ||
-          a.artist_handle?.toLowerCase().includes(q)
-        );
-      })
-      .filter((a) => {
-        const tier = a.momentum_tier?.toLowerCase();
-        const risk = a.risk_level?.toLowerCase();
-        switch (activeFilter) {
-          case "attention":
-            return risk !== "ok";
-          case "momentum":
-            return (
-              tier === "momentum" || tier === "breakout" || tier === "viral"
-            );
-          case "stalled":
-            return tier === "stalled";
-          default:
-            return true;
-        }
-      });
-  }, [metrics, search, activeFilter, processingHandles]);
-
-  // Summary counts
-  const tierCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-    for (const m of metrics) {
-      const t = m.momentum_tier?.toLowerCase() || "unknown";
-      counts[t] = (counts[t] || 0) + 1;
-    }
-    return counts;
-  }, [metrics]);
-
-  const alertCount = useMemo(
-    () => metrics.filter((m) => m.risk_level?.toLowerCase() !== "ok").length,
-    [metrics],
-  );
-
-  const filters: { key: Filter; label: string }[] = [
-    { key: "all", label: "All" },
-    { key: "attention", label: "Needs Attention" },
-    { key: "momentum", label: "Momentum+" },
-    { key: "stalled", label: "Stalled" },
-  ];
-
-  if (loading) {
-    return (
-      <LabelLayout>
-        <div className="p-6 md:p-8 lg:p-10">
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-            {Array.from({ length: 8 }).map((_, i) => (
-              <Skeleton key={i} className="h-40 rounded-xl" />
-            ))}
-          </div>
-        </div>
-      </LabelLayout>
-    );
-  }
-
-  if (error) {
-    return (
-      <LabelLayout>
-        <div className="flex flex-col items-center justify-center h-[60vh] gap-3">
-          <p className="text-base font-medium text-foreground">
-            Something went wrong
-          </p>
-          <p className="text-sm text-muted-foreground">
-            Could not load your roster. Try refreshing.
-          </p>
-          <Button variant="outline" onClick={() => window.location.reload()}>
-            Retry
-          </Button>
-        </div>
-      </LabelLayout>
-    );
-  }
+  const allNotifications =
+    role === "content" ? contentNotifications : MOCK_NOTIFICATIONS;
+  const visible = allNotifications.filter((n) => !dismissed.has(n.id));
+  const count = visible.length;
 
   return (
-    <LabelLayout>
+    <div className="relative">
+      <button
+        onClick={() => setOpen(!open)}
+        className="relative flex items-center justify-center w-9 h-9 rounded-lg border border-white/[0.06] hover:border-white/12 transition-colors"
+        style={{ background: "#2C2C2E" }}
+      >
+        <Bell size={16} className="text-white/60" />
+        {count > 0 && (
+          <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-[#e8430a] text-[10px] font-bold text-white flex items-center justify-center leading-none">
+            {count}
+          </span>
+        )}
+      </button>
+
+      {open && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+          <div
+            className="absolute right-0 top-full mt-2 z-50 w-[360px] rounded-xl border border-white/[0.06] shadow-2xl overflow-hidden"
+            style={{ background: "#1C1C1E" }}
+          >
+            <div className="flex items-center justify-between px-4 py-3 border-b border-white/[0.06]">
+              <span className="text-xs font-semibold text-white/60 uppercase tracking-wider">
+                Notifications
+              </span>
+              {count > 0 && (
+                <button
+                  onClick={() =>
+                    setDismissed(new Set(allNotifications.map((n) => n.id)))
+                  }
+                  className="text-[11px] text-white/30 hover:text-white/55 transition-colors"
+                >
+                  Clear all
+                </button>
+              )}
+            </div>
+
+            <div className="max-h-[360px] overflow-y-auto">
+              {visible.length === 0 ? (
+                <div className="py-10 text-center text-sm text-white/30">
+                  All clear
+                </div>
+              ) : (
+                visible.map((n) => (
+                  <div
+                    key={n.id}
+                    className="flex items-start gap-3 px-4 py-3 border-b border-white/[0.03] last:border-b-0 hover:bg-white/[0.02] transition-colors"
+                  >
+                    <div
+                      className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5"
+                      style={{ background: n.iconBg }}
+                    >
+                      <n.icon size={13} style={{ color: n.iconColor }} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[12px] font-medium text-white/87 leading-tight">
+                        {n.title}
+                      </p>
+                      <p className="text-[11px] text-white/45 leading-snug mt-0.5">
+                        {n.body}
+                      </p>
+                      <span className="text-[10px] text-white/25 mt-1 block">
+                        {n.time}
+                      </span>
+                    </div>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setDismissed((prev) => new Set([...prev, n.id]));
+                      }}
+                      className="text-white/20 hover:text-white/50 transition-colors shrink-0 mt-0.5"
+                    >
+                      <X size={12} />
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+export default function LabelDashboard() {
+  const { role } = useDashboardRole();
+
+  return (
+    <>
       <SEOHead
         title="Dashboard — Wavebound Label"
         description="Your artist roster dashboard"
       />
-      <div className="p-6 md:p-8 lg:p-10 space-y-5">
-        {/* Summary bar */}
-        <div className="flex items-center flex-wrap gap-2 text-sm text-muted-foreground">
-          <span className="font-semibold text-foreground">
-            {metrics.length} Artists
-          </span>
-          {["viral", "breakout", "momentum", "stable", "stalled"].map((t) =>
-            tierCounts[t] ? (
-              <span key={t}>
-                · {tierCounts[t]} {t.charAt(0).toUpperCase() + t.slice(1)}
-              </span>
-            ) : null,
-          )}
-          {alertCount > 0 && (
-            <Badge variant="destructive" className="ml-2 text-xs">
-              {alertCount} alert{alertCount > 1 ? "s" : ""}
-            </Badge>
-          )}
-        </div>
 
-        {/* Risk Alerts */}
-        <RiskAlertsPanel metrics={metrics} />
-
-        {/* Toolbar */}
-        <div className="flex items-center gap-3 flex-wrap">
-          {/* Search */}
-          <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-border bg-card flex-1 min-w-[180px] max-w-[280px]">
-            <Search size={15} className="text-muted-foreground" />
-            <input
-              type="text"
-              placeholder="Search artists..."
-              aria-label="Search artists"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="bg-transparent border-none outline-none text-sm w-full text-foreground placeholder:text-muted-foreground"
-            />
-          </div>
-
-          {/* Filter pills */}
-          <div className="flex items-center gap-1.5">
-            {filters.map((f) => (
-              <button
-                key={f.key}
-                onClick={() => setActiveFilter(f.key)}
-                className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors border ${
-                  activeFilter === f.key
-                    ? "bg-primary text-primary-foreground border-primary"
-                    : "bg-card text-muted-foreground border-border hover:text-foreground"
-                }`}
-              >
-                {f.label}
-              </button>
-            ))}
-          </div>
-
-          <div className="flex-1" />
-
-          {isAdmin && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleRefresh}
-              disabled={refreshing}
-            >
-              <RefreshCw
-                size={14}
-                className={refreshing ? "animate-spin" : ""}
-              />
-              Refresh Metrics
-            </Button>
-          )}
-
-          {/* View toggle */}
-          <div className="flex items-center rounded-lg border border-border overflow-hidden">
-            <button
-              onClick={() => {
-                setViewMode("grid");
-                localStorage.setItem("label-roster-view", "grid");
-              }}
-              aria-label="Grid view"
-              className={`p-2 transition-colors ${viewMode === "grid" ? "bg-primary text-primary-foreground" : "bg-card text-muted-foreground hover:text-foreground"}`}
-            >
-              <LayoutGrid size={14} />
-            </button>
-            <button
-              onClick={() => {
-                setViewMode("list");
-                localStorage.setItem("label-roster-view", "list");
-              }}
-              aria-label="List view"
-              className={`p-2 transition-colors ${viewMode === "list" ? "bg-primary text-primary-foreground" : "bg-card text-muted-foreground hover:text-foreground"}`}
-            >
-              <List size={14} />
-            </button>
-          </div>
-        </div>
-
-        {/* Processing cards */}
-        {processing.length > 0 && (
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-            {processing.map((p) => (
-              <div
-                key={p.tempId}
-                className="rounded-xl border border-border p-4 space-y-3"
-              >
-                <div className="flex items-center gap-3">
-                  <Skeleton className="h-12 w-12 rounded-full" />
-                  <div className="space-y-1">
-                    <p className="text-sm font-semibold text-foreground">
-                      {p.artist_name}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      @{p.artist_handle?.replace(/^@+/, "")}
-                    </p>
-                  </div>
-                </div>
-                <PipelineProgress
-                  artistHandle={p.artist_handle}
-                  onComplete={() => handlePipelineComplete(p.artist_handle)}
-                />
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Roster view */}
-        {viewMode === "grid" ? (
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-            <AnimatePresence mode="sync">
-              {filtered.map((artist) => (
-                <motion.div
-                  key={artist.artist_handle}
-                  layout
-                  initial={{ opacity: 0, scale: 0.95 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.95 }}
-                  transition={{ duration: 0.2 }}
-                >
-                  <RosterCard
-                    artist={artist}
-                    onClick={() =>
-                      navigate(`/label/artists/${artist.artist_handle}`)
-                    }
-                    alertDot={alertDots.get(
-                      (artist.artist_handle || "").trim().toLowerCase(),
-                    )}
-                    onOpenDeliverable={handleOpenDeliverable}
-                  />
-                </motion.div>
-              ))}
-            </AnimatePresence>
-          </div>
-        ) : (
-          <RosterListView
-            artists={filtered}
-            onArtistClick={(handle) => navigate(`/label/artists/${handle}`)}
-            onOpenDeliverable={handleOpenDeliverable}
-          />
-        )}
-
-        {filtered.length === 0 &&
-          !loading &&
-          metrics.length === 0 &&
-          processing.length === 0 && (
-            <div className="flex flex-col items-center justify-center py-24 gap-3">
-              <p className="text-lg font-semibold text-foreground">
-                Your roster is empty
-              </p>
-              <p className="text-sm text-muted-foreground">
-                {canEdit
-                  ? "Add your first artist to get started"
-                  : "No artists on this roster yet"}
-              </p>
-            </div>
-          )}
-
-        {filtered.length === 0 && !loading && metrics.length > 0 && (
-          <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
-            <p className="text-sm">No artists match your filters.</p>
-          </div>
-        )}
+      {/* Role selector + notifications pinned top-right */}
+      <div className="flex items-center justify-end gap-2 px-6 md:px-8 lg:px-10 pt-5 pb-0">
+        <RoleSelector />
+        <NotificationBell />
       </div>
-    </LabelLayout>
+
+      {/* Render the active role view */}
+      {role === "marketing" ? (
+        <MarketingDashboard />
+      ) : (
+        <ContentSocialDashboard />
+      )}
+    </>
   );
 }

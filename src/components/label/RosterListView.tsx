@@ -91,11 +91,11 @@ export default function RosterListView({
   }, [artists, sortCol, sortDir]);
 
   const headerStyle: React.CSSProperties = {
-    background: "#1C1C1E",
+    background: "var(--surface, #1C1C1E)",
     fontSize: 11,
     fontWeight: 600,
     letterSpacing: 1,
-    color: "rgba(255,255,255,0.45)",
+    color: "var(--ink-tertiary, rgba(255,255,255,0.45))",
     textTransform: "uppercase",
   };
 
@@ -143,11 +143,15 @@ export default function RosterListView({
                 onClick={() => onArtistClick(artist.artist_handle)}
                 style={{
                   height: 56,
-                  background: i % 2 === 0 ? "#111111" : "#0a0a0a",
-                  borderBottom: "0.5px solid rgba(255,255,255,0.06)",
+                  background:
+                    i % 2 === 0
+                      ? "var(--bg-subtle, #111111)"
+                      : "var(--bg, #0a0a0a)",
+                  borderBottom:
+                    "0.5px solid var(--border, rgba(255,255,255,0.06))",
                   cursor: "pointer",
                 }}
-                className="hover:bg-[hsl(0_0%_12%)] transition-colors"
+                className="hover:brightness-110 transition-colors"
               >
                 {/* Artist */}
                 <td className="px-4">

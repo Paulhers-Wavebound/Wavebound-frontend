@@ -187,7 +187,7 @@ function ContentXRay({
             </thead>
             <tbody>
               {sorted.map((f: any, i: number) => {
-                const { label } = parseVerdict(f.verdict ?? "");
+                const { label, description } = parseVerdict(f.verdict ?? "");
                 const perf = safeNum(
                   f.avg_performance_ratio ?? f.avg_view_multiplier,
                 );
@@ -213,11 +213,16 @@ function ContentXRay({
                     >
                       {perf != null ? `${perf.toFixed(1)}x` : "—"}
                     </td>
-                    <td className="py-2.5 pr-4 text-center">
+                    <td
+                      className="py-2.5 pr-4 text-center max-w-[180px]"
+                      title={
+                        description ? `${label}: ${description}` : undefined
+                      }
+                    >
                       {label && (
                         <span
                           className={cn(
-                            "inline-flex items-center justify-center rounded-md px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide leading-none whitespace-nowrap",
+                            "inline-flex items-center justify-center rounded-md px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide leading-none whitespace-nowrap max-w-full overflow-hidden text-ellipsis",
                             verdictBadgeClass(label),
                           )}
                         >
