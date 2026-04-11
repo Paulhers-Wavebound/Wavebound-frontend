@@ -53,6 +53,12 @@ export interface ContentArtist {
   // From wb_comment_sentiment (joined)
   sentiment_score: number | null;
   fan_energy: number | null;
+  // From artist_sound_velocity (joined)
+  top_sound_title: string | null;
+  top_sound_new_ugc: number | null;
+  top_sound_total_ugc: number | null;
+  sound_velocity: string | null;
+  sounds_tracked: number | null;
 }
 
 export type ContentPriorityType =
@@ -117,12 +123,14 @@ export type ContentFilter =
   | "posting_gap"
   | "top_performers"
   | "declining"
-  | "format_shift";
+  | "format_shift"
+  | "ugc_surge";
 
 export type ContentSortKey =
   | "content_health"
   | "performance"
   | "format_alpha"
+  | "top_sound"
   | "activity"
   | "artist";
 
@@ -542,6 +550,7 @@ export const CONTENT_FILTER_TABS: { key: ContentFilter; label: string }[] = [
   { key: "top_performers", label: "Top Performers" },
   { key: "declining", label: "Declining" },
   { key: "format_shift", label: "Format Shift" },
+  { key: "ugc_surge", label: "UGC Surge" },
 ];
 
 export function filterContentArtists(
@@ -569,6 +578,13 @@ export function filterContentArtists(
       );
     case "format_shift":
       return artists.filter((a) => a.format_shift === true);
+    case "ugc_surge":
+      return artists.filter(
+        (a) =>
+          a.sound_velocity === "up" ||
+          a.sound_velocity === "new" ||
+          (a.top_sound_new_ugc != null && a.top_sound_new_ugc > 0),
+      );
     default:
       return artists;
   }
@@ -583,6 +599,7 @@ export function getFilterCounts(
     top_performers: filterContentArtists(artists, "top_performers").length,
     declining: filterContentArtists(artists, "declining").length,
     format_shift: filterContentArtists(artists, "format_shift").length,
+    ugc_surge: filterContentArtists(artists, "ugc_surge").length,
   };
 }
 
@@ -609,6 +626,10 @@ export function sortContentArtists(
       case "format_alpha":
         va = a.best_format_vs_median || 0;
         vb = b.best_format_vs_median || 0;
+        break;
+      case "top_sound":
+        va = a.top_sound_new_ugc || a.top_sound_total_ugc || 0;
+        vb = b.top_sound_new_ugc || b.top_sound_total_ugc || 0;
         break;
       case "activity":
         // Lower days = more active = sorts first (descending)

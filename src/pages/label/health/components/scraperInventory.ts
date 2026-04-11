@@ -392,14 +392,14 @@ export const SCRIPT_INVENTORY: ScriptEntry[] = [
     coverage: "200 SC calls/day budget",
   },
   {
-    scraper_name: null,
+    scraper_name: "identity_coverage_report",
     label: "Coverage Report",
-    description: "Coverage analysis report (on-demand)",
+    description: "Platform identity coverage scan — per-platform artist counts + gaps",
     category: "Identity",
-    schedule: "Manual",
-    machine: "Any",
+    schedule: "Daily",
+    machine: "Main Hetzner",
     script: "identity/check-coverage.ts",
-    status: "manual",
+    status: "active",
   },
 
   // ═══ PLAYLIST TRACKING ═══

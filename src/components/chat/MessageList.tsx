@@ -86,6 +86,8 @@ function extractFollowUps(content: string): string[] {
 
 function generateGenericFollowUps(content: string): string[] {
   const lower = content.toLowerCase();
+  if (lower.includes("morning brief"))
+    return ["Tell me more", "Show me detailed metrics"];
   if (lower.includes("roster") || lower.includes("artist"))
     return ["Show me detailed metrics", "Who needs the most attention?"];
   if (

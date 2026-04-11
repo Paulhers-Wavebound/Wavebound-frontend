@@ -11,6 +11,57 @@ function getGreeting(): string {
   return "Good evening";
 }
 
+/**
+ * Split brief text into situation ("What's happening") and action ("What to do").
+ * Looks for the first sentence that starts with action-oriented language.
+ */
+function splitBrief(text: string): { situation: string; action: string } {
+  // Sentence-split on period followed by space + uppercase letter
+  const sentences = text.match(/[^.!?]+[.!?]+(\s|$)/g);
+  if (!sentences || sentences.length <= 1)
+    return { situation: text, action: "" };
+
+  const actionStarters = [
+    /^the most urgent/i,
+    /^the key action/i,
+    /^the (top )?priorit/i,
+    /^prioriti[sz]e/i,
+    /^focus on/i,
+    /^action items/i,
+    /^immediately/i,
+    /^i recommend/i,
+    /^you should/i,
+    /^we (should|need|recommend)/i,
+    /^start by/i,
+    /^first,/i,
+    /^to capitaliz/i,
+    /^activate/i,
+    /^consider/i,
+    /^take action/i,
+    /^act now/i,
+    /^your team should/i,
+  ];
+
+  let splitIdx = -1;
+  for (let i = 0; i < sentences.length; i++) {
+    const trimmed = sentences[i].trim();
+    if (actionStarters.some((re) => re.test(trimmed))) {
+      splitIdx = i;
+      break;
+    }
+  }
+
+  // Fallback: split roughly in half if no action phrase detected
+  if (splitIdx <= 0) {
+    splitIdx = Math.ceil(sentences.length / 2);
+  }
+
+  return {
+    situation: sentences.slice(0, splitIdx).join("").trim(),
+    action: sentences.slice(splitIdx).join("").trim(),
+  };
+}
+
 export default function PresidentBriefCard({
   text,
   generatedAt,
@@ -26,12 +77,10 @@ export default function PresidentBriefCard({
   const displayName = userName || "there";
   const greeting = getGreeting();
 
-  const prefillText = [
-    `Here's my morning brief:`,
-    ``,
+  const assistantPrefill = [
+    `Here's your morning brief:\n`,
     text,
-    ``,
-    `What should I prioritize today based on this?`,
+    `\nWhat would you like to dig into?`,
   ].join("\n");
 
   const updatedLabel = generatedAt
@@ -100,16 +149,29 @@ export default function PresidentBriefCard({
             {greeting}, {displayName}.
           </h3>
 
-          {/* Brief text */}
-          <p
-            className="text-[15px] leading-[1.85]"
-            style={{
+          {/* Brief text — split into two paragraphs with breathing room */}
+          {(() => {
+            const { situation, action } = splitBrief(text);
+            const pStyle = {
               fontFamily: '"Tiempos Text", Georgia, serif',
               color: "rgba(255,255,255,0.75)",
-            }}
-          >
-            {text}
-          </p>
+            };
+            return (
+              <div>
+                <p className="text-[15px] leading-[1.85]" style={pStyle}>
+                  {situation}
+                </p>
+                {action && (
+                  <>
+                    <hr className="border-t border-white/[0.06] my-5" />
+                    <p className="text-[15px] leading-[1.85]" style={pStyle}>
+                      {action}
+                    </p>
+                  </>
+                )}
+              </div>
+            );
+          })()}
 
           {/* Actions */}
           <div className="flex items-center justify-end gap-3 mt-5 pt-2.5 border-t border-white/[0.06]">
@@ -123,7 +185,7 @@ export default function PresidentBriefCard({
             <button
               onClick={() =>
                 navigate("/label/assistant", {
-                  state: { prefill: prefillText },
+                  state: { assistantPrefill, newSession: true },
                 })
               }
               className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-[12px] font-medium text-[#e8430a] hover:bg-[#e8430a]/10 transition-colors"

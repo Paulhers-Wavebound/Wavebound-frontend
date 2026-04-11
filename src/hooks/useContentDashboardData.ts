@@ -28,6 +28,7 @@ export function useContentDashboardData(): ContentDashboardData {
   const [sentimentRaw, setSentimentRaw] = useState<any[]>([]);
   const [catalogRaw, setCatalogRaw] = useState<any[]>([]);
   const [siSoundsRaw, setSiSoundsRaw] = useState<any[]>([]);
+  const [soundVelocityRaw, setSoundVelocityRaw] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -44,6 +45,7 @@ export function useContentDashboardData(): ContentDashboardData {
       setSentimentRaw([]);
       setCatalogRaw([]);
       setSiSoundsRaw([]);
+      setSoundVelocityRaw([]);
       setLoading(false);
       return;
     }
@@ -67,10 +69,23 @@ export function useContentDashboardData(): ContentDashboardData {
         .gte("scan_date", sevenDaysAgo.split("T")[0])
         .order("scan_date", { ascending: false });
 
-      const [rosterRes, anomalyRes] = await Promise.all([
-        rosterQuery,
-        anomalyQuery,
-      ]);
+      // SI sounds query — independent of roster, runs in parallel
+      const siSoundsQuery = supabase.rpc("get_si_sound_performance", {
+        p_label_id: labelId,
+      });
+
+      // Sound velocity — per-artist top sound + weekly UGC momentum
+      const soundVelocityQuery = supabase.rpc("get_artist_sound_velocity", {
+        p_label_id: labelId,
+      });
+
+      const [rosterRes, anomalyRes, siSoundsRes, soundVelocityRes] =
+        await Promise.all([
+          rosterQuery,
+          anomalyQuery,
+          siSoundsQuery,
+          soundVelocityQuery,
+        ]);
 
       if (rosterRes.error) {
         console.error("Roster fetch error:", rosterRes.error);
@@ -83,6 +98,8 @@ export function useContentDashboardData(): ContentDashboardData {
       const anomalies: any[] = anomalyRes.data || [];
       setRosterRaw(roster);
       setAnomaliesRaw(anomalies);
+      setSiSoundsRaw(siSoundsRes.data || []);
+      setSoundVelocityRaw(soundVelocityRes.data || []);
 
       // Phase 2: Content DNA + Evolution (depend on roster handles)
       const handles = roster.map((r: any) => normalizeHandle(r.artist_handle));
@@ -185,6 +202,12 @@ export function useContentDashboardData(): ContentDashboardData {
       }
     }
 
+    // Sound velocity: keyed by normalized handle
+    const soundVelocityByHandle = new Map<string, any>();
+    for (const sv of soundVelocityRaw) {
+      soundVelocityByHandle.set(normalizeHandle(sv.artist_handle), sv);
+    }
+
     // Sentiment: keyed by entity_id, take first (most recent) per entity
     const sentimentByHandle = new Map<string, any>();
     for (const s of sentimentRaw) {
@@ -200,6 +223,7 @@ export function useContentDashboardData(): ContentDashboardData {
       const evo = evoMap.get(h);
       const summary = summaryByHandle.get(h);
       const sentiment = sentimentByHandle.get(h);
+      const sv = soundVelocityByHandle.get(h);
 
       return {
         artist_handle: r.artist_handle,
@@ -251,9 +275,22 @@ export function useContentDashboardData(): ContentDashboardData {
         // Sentiment
         sentiment_score: sentiment?.sentiment_score ?? null,
         fan_energy: sentiment?.fan_energy ?? null,
+        // Sound velocity
+        top_sound_title: sv?.top_sound_title ?? null,
+        top_sound_new_ugc: sv?.top_sound_new_ugc ?? null,
+        top_sound_total_ugc: sv?.top_sound_total_ugc ?? null,
+        sound_velocity: sv?.velocity ?? null,
+        sounds_tracked: sv?.sounds_tracked ?? null,
       };
     });
-  }, [rosterRaw, contentDnaRaw, evolutionRaw, videoSummaryRaw, sentimentRaw]);
+  }, [
+    rosterRaw,
+    contentDnaRaw,
+    evolutionRaw,
+    videoSummaryRaw,
+    sentimentRaw,
+    soundVelocityRaw,
+  ]);
 
   const anomalies = useMemo<ContentAnomaly[]>(
     () =>
@@ -275,24 +312,63 @@ export function useContentDashboardData(): ContentDashboardData {
     [anomaliesRaw],
   );
 
-  const songUGC = useMemo<SongUGC[]>(
-    () =>
-      catalogRaw.map((c: any) => ({
-        song_name: c.song_name || "Unknown",
-        artist_name: c.artist_name,
-        tiktok_video_count: c.tiktok_video_count || 0,
-        total_tiktok_plays: c.total_tiktok_plays || 0,
-        unique_creators: c.unique_creators || 0,
-        fan_videos: c.fan_videos || 0,
-        fan_to_artist_ratio: c.fan_to_artist_ratio || 0,
-        tiktok_status: c.tiktok_status,
-        cross_platform_gap: c.cross_platform_gap,
-        videos_last_7d: c.videos_last_7d,
-        videos_last_30d: c.videos_last_30d,
-        tiktok_music_id: c.tiktok_music_id || null,
-      })),
-    [catalogRaw],
-  );
+  const songUGC = useMemo<SongUGC[]>(() => {
+    // Catalog sounds (from catalog_tiktok_performance — entity-linked)
+    const catalogSongs: SongUGC[] = catalogRaw.map((c: any) => ({
+      song_name: c.song_name || "Unknown",
+      artist_name: c.artist_name,
+      tiktok_video_count: c.tiktok_video_count || 0,
+      total_tiktok_plays: c.total_tiktok_plays || 0,
+      unique_creators: c.unique_creators || 0,
+      fan_videos: c.fan_videos || 0,
+      fan_to_artist_ratio: c.fan_to_artist_ratio || 0,
+      tiktok_status: c.tiktok_status,
+      cross_platform_gap: c.cross_platform_gap,
+      videos_last_7d: c.videos_last_7d,
+      videos_last_30d: c.videos_last_30d,
+      tiktok_music_id: c.tiktok_music_id || null,
+    }));
+
+    // Deduplicate: build set of sound IDs already in catalog
+    const catalogSoundIds = new Set(
+      catalogSongs.map((s) => s.tiktok_music_id).filter(Boolean),
+    );
+
+    // Map SI status → SongUGC tiktok_status
+    const mapSiStatus = (s: string | null): string => {
+      switch (s) {
+        case "accelerating":
+          return "trending";
+        case "declining":
+          return "established";
+        default:
+          return "active";
+      }
+    };
+
+    // SI sounds not yet in catalog
+    const siSongs: SongUGC[] = siSoundsRaw
+      .filter((si: any) => si.sound_id && !catalogSoundIds.has(si.sound_id))
+      .map((si: any) => ({
+        song_name: si.track_name || "Unknown",
+        artist_name: si.artist_name || null,
+        tiktok_video_count: si.videos_count || 0,
+        total_tiktok_plays: Number(si.total_views) || 0,
+        unique_creators: Number(si.unique_creators) || 0,
+        fan_videos: 0,
+        fan_to_artist_ratio: 0,
+        tiktok_status: mapSiStatus(si.si_status),
+        cross_platform_gap: null,
+        videos_last_7d: si.weekly_new_videos || null,
+        videos_last_30d: null,
+        tiktok_music_id: si.sound_id,
+      }));
+
+    // Catalog first (richer data), then SI sounds, sorted by total plays
+    return [...catalogSongs, ...siSongs].sort(
+      (a, b) => b.total_tiktok_plays - a.total_tiktok_plays,
+    );
+  }, [catalogRaw, siSoundsRaw]);
 
   return { artists, anomalies, songUGC, loading, error, refresh, refreshing };
 }

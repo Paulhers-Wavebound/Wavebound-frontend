@@ -1,5 +1,12 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { ArrowUp, Square, ImageIcon, X } from "lucide-react";
+import {
+  ArrowUp,
+  Square,
+  ImageIcon,
+  X,
+  ChevronDown,
+  Check,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
@@ -57,6 +64,14 @@ export function fileToBase64(file: File): Promise<PendingImage> {
   });
 }
 
+type ChatRole = "ar" | "marketing" | "executive";
+
+const ROLE_LABELS: Record<ChatRole, string> = {
+  ar: "A&R Scout",
+  marketing: "Marketing",
+  executive: "Executive",
+};
+
 interface ChatInputProps {
   onSubmit: (text: string) => void;
   onCancel: () => void;
@@ -66,6 +81,8 @@ interface ChatInputProps {
   pendingImage?: PendingImage | null;
   onImageAttach?: (image: PendingImage) => void;
   onImageRemove?: () => void;
+  activeRole?: ChatRole;
+  onRoleChange?: (role: ChatRole) => void;
 }
 
 export default function ChatInput({
@@ -77,10 +94,26 @@ export default function ChatInput({
   pendingImage,
   onImageAttach,
   onImageRemove,
+  activeRole,
+  onRoleChange,
 }: ChatInputProps) {
   const [input, setInput] = useState("");
+  const [roleOpen, setRoleOpen] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const roleRef = useRef<HTMLDivElement>(null);
+
+  // Close role dropdown on outside click
+  useEffect(() => {
+    if (!roleOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (roleRef.current && !roleRef.current.contains(e.target as Node)) {
+        setRoleOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [roleOpen]);
 
   // Populate input from prefill (e.g. navigating from Expansion Radar)
   useEffect(() => {
@@ -217,8 +250,8 @@ export default function ChatInput({
             </div>
           )}
 
-          {/* Input row */}
-          <div className="flex items-end gap-2 px-3 py-2">
+          {/* Textarea */}
+          <div className="px-3 pt-2">
             <Textarea
               ref={textareaRef}
               value={input}
@@ -242,81 +275,142 @@ export default function ChatInput({
               style={{ color: T.text }}
               rows={1}
             />
+          </div>
 
-            {/* Hidden file input */}
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/png,image/jpeg,image/webp,image/gif"
-              className="hidden"
-              onChange={async (e) => {
-                const file = e.target.files?.[0];
-                if (file) await handleFileSelect(file);
-                e.target.value = "";
-              }}
-            />
+          {/* Toolbar row */}
+          <div className="flex items-center justify-between px-3 pb-2 pt-0.5">
+            {/* Left: image upload */}
+            <div className="flex items-center gap-1">
+              {/* Hidden file input */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/gif"
+                className="hidden"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (file) await handleFileSelect(file);
+                  e.target.value = "";
+                }}
+              />
+              {onImageAttach && (
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isLoading}
+                  className={cn(
+                    "p-2 rounded-lg transition-colors",
+                    isLoading
+                      ? "opacity-30 cursor-not-allowed"
+                      : "hover:bg-white/5",
+                  )}
+                  title="Attach image"
+                >
+                  <ImageIcon
+                    className="w-4 h-4"
+                    style={{ color: T.textSecondary }}
+                  />
+                </button>
+              )}
+            </div>
 
-            {/* Image upload button */}
-            {onImageAttach && (
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                disabled={isLoading}
+            {/* Right: role dropdown + send */}
+            <div className="flex items-center gap-2">
+              {/* Role dropdown — Claude model-selector style */}
+              {activeRole && onRoleChange && (
+                <div ref={roleRef} className="relative">
+                  <button
+                    onClick={() => setRoleOpen((p) => !p)}
+                    className="flex items-center gap-1 px-2 py-1 rounded-lg text-[13px] transition-colors hover:bg-white/[0.06]"
+                    style={{ color: T.textSecondary }}
+                  >
+                    {ROLE_LABELS[activeRole]}
+                    <ChevronDown
+                      className={cn(
+                        "w-3.5 h-3.5 transition-transform duration-150",
+                        roleOpen && "rotate-180",
+                      )}
+                    />
+                  </button>
+                  {roleOpen && (
+                    <div
+                      className="absolute bottom-full right-0 mb-1 py-1 rounded-xl min-w-[160px] z-50"
+                      style={{
+                        background: "#2C2C2E",
+                        border: "1px solid rgba(255,255,255,0.1)",
+                        boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
+                      }}
+                    >
+                      {(Object.keys(ROLE_LABELS) as ChatRole[]).map((role) => (
+                        <button
+                          key={role}
+                          onClick={() => {
+                            onRoleChange(role);
+                            setRoleOpen(false);
+                          }}
+                          className="flex items-center justify-between w-full px-3 py-2 text-[13px] transition-colors hover:bg-white/[0.06]"
+                          style={{
+                            color:
+                              role === activeRole
+                                ? "rgba(255,255,255,0.87)"
+                                : T.textSecondary,
+                          }}
+                        >
+                          {ROLE_LABELS[role]}
+                          {role === activeRole && (
+                            <Check
+                              className="w-3.5 h-3.5"
+                              style={{ color: T.accent }}
+                            />
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Send / Cancel button */}
+              <Button
+                size="icon"
+                onClick={isLoading ? onCancel : handleSubmit}
+                disabled={!isLoading && !canSend}
                 className={cn(
-                  "p-2 rounded-lg transition-colors mb-0.5",
-                  isLoading
-                    ? "opacity-30 cursor-not-allowed"
-                    : "hover:bg-white/5",
+                  "h-9 w-9 rounded-full shrink-0 transition-all duration-200",
+                  !isLoading && !canSend && "opacity-30 cursor-not-allowed",
                 )}
-                title="Attach image"
-              >
-                <ImageIcon
-                  className="w-4 h-4"
-                  style={{ color: T.textSecondary }}
-                />
-              </button>
-            )}
-
-            {/* Send / Cancel button */}
-            <Button
-              size="icon"
-              onClick={isLoading ? onCancel : handleSubmit}
-              disabled={!isLoading && !canSend}
-              className={cn(
-                "h-9 w-9 rounded-full shrink-0 transition-all duration-200 mb-0.5",
-                !isLoading && !canSend && "opacity-30 cursor-not-allowed",
-              )}
-              style={{
-                backgroundColor: isLoading
-                  ? "rgba(239,68,68,0.8)"
-                  : canSend
+                style={{
+                  backgroundColor: isLoading
+                    ? "rgba(239,68,68,0.8)"
+                    : canSend
+                      ? T.accent
+                      : T.elevated,
+                  color: "#FFFFFF",
+                  boxShadow:
+                    !isLoading && canSend
+                      ? "0 0 16px rgba(232,67,10,0.15)"
+                      : "none",
+                  transition:
+                    "background-color 200ms ease-out, box-shadow 200ms ease-out",
+                }}
+                onMouseEnter={(e) => {
+                  if (isLoading) return;
+                  if (canSend)
+                    e.currentTarget.style.backgroundColor = T.accentHover;
+                }}
+                onMouseLeave={(e) => {
+                  if (isLoading) return;
+                  e.currentTarget.style.backgroundColor = canSend
                     ? T.accent
-                    : T.elevated,
-                color: "#FFFFFF",
-                boxShadow:
-                  !isLoading && canSend
-                    ? "0 0 16px rgba(232,67,10,0.15)"
-                    : "none",
-                transition:
-                  "background-color 200ms ease-out, box-shadow 200ms ease-out",
-              }}
-              onMouseEnter={(e) => {
-                if (isLoading) return;
-                if (canSend)
-                  e.currentTarget.style.backgroundColor = T.accentHover;
-              }}
-              onMouseLeave={(e) => {
-                if (isLoading) return;
-                e.currentTarget.style.backgroundColor = canSend
-                  ? T.accent
-                  : T.elevated;
-              }}
-            >
-              {isLoading ? (
-                <Square className="w-3.5 h-3.5 fill-current" />
-              ) : (
-                <ArrowUp className="w-4 h-4" />
-              )}
-            </Button>
+                    : T.elevated;
+                }}
+              >
+                {isLoading ? (
+                  <Square className="w-3.5 h-3.5 fill-current" />
+                ) : (
+                  <ArrowUp className="w-4 h-4" />
+                )}
+              </Button>
+            </div>
           </div>
         </div>
       </div>

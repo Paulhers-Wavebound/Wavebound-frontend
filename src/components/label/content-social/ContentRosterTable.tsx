@@ -1,6 +1,19 @@
 import React, { useState, useMemo, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { ChevronUp, ChevronDown, ChevronRight } from "lucide-react";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
+import {
+  ChevronUp,
+  ChevronDown,
+  ChevronRight,
+  Clock,
+  TrendingUp,
+  Heart,
+  Lightbulb,
+  BarChart3,
+  Music2,
+  Zap,
+  CalendarClock,
+} from "lucide-react";
 import InfoPopover from "@/components/sound-intelligence/InfoPopover";
 import type {
   ContentArtist,
@@ -231,14 +244,52 @@ function derivePriorityAction(artist: ContentArtist): string {
   return "Run a content DNA scan to unlock format insights";
 }
 
-function DetailItem({ label, value }: { label: string; value: string }) {
+/* ease-out-quart: snappy deceleration, not springy */
+const EASE_OUT: [number, number, number, number] = [0.25, 1, 0.5, 1];
+
+function MetricTile({
+  icon: Icon,
+  label,
+  value,
+  sub,
+  index,
+  skipMotion,
+}: {
+  icon: React.ElementType;
+  label: string;
+  value: string;
+  sub?: string;
+  index: number;
+  skipMotion?: boolean;
+}) {
   return (
-    <div className="py-1">
-      <span className="text-[10px] font-medium uppercase tracking-wider text-white/25">
-        {label}
-      </span>
-      <p className="text-[11px] text-white/65 leading-tight">{value}</p>
-    </div>
+    <motion.div
+      initial={skipMotion ? false : { opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={
+        skipMotion
+          ? { duration: 0 }
+          : { duration: 0.25, delay: index * 0.06, ease: EASE_OUT }
+      }
+      className="flex items-start gap-2.5 rounded-lg bg-white/[0.03] px-3.5 py-3 min-w-0"
+    >
+      <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-white/[0.05]">
+        <Icon size={14} className="text-white/40" />
+      </div>
+      <div className="min-w-0">
+        <span className="text-[10px] font-medium uppercase tracking-wider text-white/30">
+          {label}
+        </span>
+        <p className="text-[13px] font-medium text-white/80 leading-snug truncate">
+          {value}
+        </p>
+        {sub && (
+          <p className="text-[11px] text-white/40 leading-tight mt-0.5">
+            {sub}
+          </p>
+        )}
+      </div>
+    </motion.div>
   );
 }
 
@@ -249,6 +300,7 @@ function ExpandedRow({
   artist: ContentArtist;
   colSpan: number;
 }) {
+  const reduced = useReducedMotion();
   const freq = Math.max(
     artist.posting_freq_7d ?? 0,
     artist.posting_freq_30d ?? 0,
@@ -256,68 +308,156 @@ function ExpandedRow({
   const trend = artist.plays_trend_pct ?? artist.delta_avg_views_pct;
   const engagement = artist.avg_engagement_30d ?? artist.avg_engagement_rate;
 
-  const velocityDetail =
+  const velocityValue =
     artist.avg_views_30d != null
-      ? `${fmtViews(artist.avg_views_30d)} avg views${trend != null && trend !== 0 ? ` (${trend > 0 ? "+" : ""}${trend.toFixed(0)}% last 7d)` : trend != null ? " (flat)" : ""}`
+      ? fmtViews(artist.avg_views_30d) + " avg"
       : null;
+  const velocitySub =
+    trend != null && trend !== 0
+      ? `${trend > 0 ? "+" : ""}${trend.toFixed(0)}% vs last 7d`
+      : trend != null
+        ? "Flat vs last 7d"
+        : undefined;
 
-  const hookDetail =
-    artist.avg_hook_score != null
-      ? `Hook score: ${(artist.avg_hook_score * 100).toFixed(0)}%`
-      : null;
+  const tiles: {
+    icon: React.ElementType;
+    label: string;
+    value: string;
+    sub?: string;
+  }[] = [];
+
+  if (freq > 0) {
+    tiles.push({ icon: Clock, label: "Cadence", value: freqToLabel(freq) });
+  }
+  if (velocityValue) {
+    tiles.push({
+      icon: TrendingUp,
+      label: "Velocity",
+      value: velocityValue,
+      sub: velocitySub,
+    });
+  }
+  if (engagement != null) {
+    tiles.push({
+      icon: Heart,
+      label: "Engagement",
+      value: `${engagement.toFixed(2)}%`,
+    });
+  }
+  if (artist.top_sound_title) {
+    const ugc = artist.top_sound_new_ugc;
+    const ugcSub =
+      ugc != null && ugc > 0
+        ? `+${fmtViews(ugc)} new this week`
+        : artist.top_sound_total_ugc
+          ? `${fmtViews(artist.top_sound_total_ugc)} total UGC`
+          : undefined;
+    tiles.push({
+      icon: Music2,
+      label: "Top Sound",
+      value: artist.top_sound_title,
+      sub: ugcSub,
+    });
+  }
+  if (artist.best_format) {
+    const mult = artist.best_format_vs_median;
+    const multSub =
+      mult != null && mult > 1 ? `${mult.toFixed(1)}x vs median` : undefined;
+    tiles.push({
+      icon: Zap,
+      label: "Format Alpha",
+      value: artist.best_format,
+      sub: multSub,
+    });
+  }
+  {
+    const days = artist.days_since_last_post;
+    const daysValue =
+      days != null
+        ? days === 0
+          ? "Today"
+          : days === 1
+            ? "1 day ago"
+            : `${days} days ago`
+        : "Unknown";
+    const freqSub =
+      artist.posting_freq_30d != null && artist.posting_freq_30d > 0
+        ? freqToLabel(artist.posting_freq_30d / 4)
+        : undefined;
+    tiles.push({
+      icon: CalendarClock,
+      label: "Last Post",
+      value: daysValue,
+      sub: freqSub,
+    });
+  }
+
+  const hasTiles = tiles.length > 0;
+  const skip = !!reduced;
 
   return (
-    <>
-      <tr style={{ background: "#141416" }}>
-        {/* Under Artist — empty */}
-        <td className="pl-4 pr-2 pt-0 pb-2" />
-
-        {/* Under Content Health — Cadence */}
-        <td className="px-2 pt-0 pb-2 align-top">
-          {freq > 0 && <DetailItem label="Cadence" value={freqToLabel(freq)} />}
-        </td>
-
-        {/* Under Content Velocity — Velocity + Engagement */}
-        <td className="px-2 pt-0 pb-2 align-top hidden lg:table-cell">
-          <div className="space-y-1">
-            {velocityDetail && (
-              <DetailItem label="Velocity" value={velocityDetail} />
+    <tr
+      style={{
+        background: "#141416",
+        borderBottom: "1px solid rgba(255,255,255,0.06)",
+      }}
+    >
+      <td colSpan={colSpan} className="p-0">
+        <motion.div
+          initial={skip ? false : { height: 0, opacity: 0 }}
+          animate={{ height: "auto", opacity: 1 }}
+          exit={skip ? { opacity: 0 } : { height: 0, opacity: 0 }}
+          transition={
+            skip ? { duration: 0 } : { duration: 0.25, ease: EASE_OUT }
+          }
+          style={{ overflow: "hidden" }}
+        >
+          <div className="px-4 pt-1.5 pb-3">
+            {/* Metric tiles */}
+            {hasTiles ? (
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 mb-2.5">
+                {tiles.map((t, i) => (
+                  <MetricTile
+                    key={t.label}
+                    index={i}
+                    skipMotion={skip}
+                    {...t}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="flex items-center gap-2.5 rounded-lg bg-white/[0.02] px-4 py-4 mb-2.5">
+                <BarChart3 size={15} className="text-white/20" />
+                <p className="text-[12px] text-white/30">
+                  No detailed metrics yet — run a content scan to populate
+                </p>
+              </div>
             )}
-            {engagement != null && (
-              <DetailItem
-                label="Engagement"
-                value={`${engagement.toFixed(2)}%`}
-              />
-            )}
+
+            {/* Priority action banner */}
+            <motion.div
+              initial={skip ? false : { opacity: 0, y: 4 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={
+                skip
+                  ? { duration: 0 }
+                  : {
+                      duration: 0.25,
+                      delay: hasTiles ? tiles.length * 0.06 + 0.05 : 0.1,
+                      ease: EASE_OUT,
+                    }
+              }
+              className="flex items-center gap-2 rounded-md bg-[#e8430a]/[0.06] px-3 py-2"
+            >
+              <Lightbulb size={13} className="shrink-0 text-[#e8430a]/70" />
+              <p className="text-[11px] text-[#e8430a]/90 leading-tight">
+                {derivePriorityAction(artist)}
+              </p>
+            </motion.div>
           </div>
-        </td>
-
-        {/* Under Format Alpha — Retention */}
-        <td className="px-2 pt-0 pb-2 align-top hidden md:table-cell">
-          {hookDetail && <DetailItem label="Retention" value={hookDetail} />}
-        </td>
-
-        {/* Under Activity — empty */}
-        <td className="pl-2 pt-0 pb-2" />
-
-        {/* Chevron spacer */}
-        <td className="pr-2 pt-0 pb-2" />
-      </tr>
-
-      {/* Priority Action — full width */}
-      <tr
-        style={{
-          background: "#141416",
-          borderBottom: "1px solid rgba(255,255,255,0.03)",
-        }}
-      >
-        <td colSpan={colSpan} className="px-4 pb-3 pt-0">
-          <p className="text-[11px] italic text-[#e8430a]">
-            {derivePriorityAction(artist)}
-          </p>
-        </td>
-      </tr>
-    </>
+        </motion.div>
+      </td>
+    </tr>
   );
 }
 
@@ -334,6 +474,56 @@ function FormatAlphaCell({ artist }: { artist: ContentArtist }) {
     <span className="text-[12px] text-white/87 leading-tight truncate max-w-[120px]">
       {format}
     </span>
+  );
+}
+
+/* ─── Top Sound cell ──────────────────────────────────────── */
+
+function TopSoundCell({ artist }: { artist: ContentArtist }) {
+  const title = artist.top_sound_title;
+  const newUgc = artist.top_sound_new_ugc;
+  const totalUgc = artist.top_sound_total_ugc;
+  const velocity = artist.sound_velocity;
+
+  if (!title) {
+    return <span className="text-[12px] text-white/30">—</span>;
+  }
+
+  const velocityColor =
+    velocity === "up" || velocity === "new"
+      ? "#30D158"
+      : velocity === "down"
+        ? "#FF453A"
+        : "#FFD60A";
+
+  const arrow =
+    velocity === "up" || velocity === "new"
+      ? "\u25B2"
+      : velocity === "down"
+        ? "\u25BC"
+        : "";
+
+  return (
+    <div className="flex flex-col gap-0.5">
+      <div className="flex items-center gap-1.5 min-w-0">
+        <span className="text-[12px] text-white/87 truncate max-w-[110px]">
+          {title}
+        </span>
+        {newUgc != null && newUgc > 0 && (
+          <span
+            className="text-[11px] font-semibold tabular-nums whitespace-nowrap"
+            style={{ color: velocityColor }}
+          >
+            +{fmtViews(newUgc)} {arrow}
+          </span>
+        )}
+      </div>
+      {totalUgc != null && totalUgc > 0 && (
+        <p className="text-[11px] text-white/40 tabular-nums leading-tight">
+          {fmtViews(totalUgc)} total UGC
+        </p>
+      )}
+    </div>
   );
 }
 
@@ -432,7 +622,7 @@ export default function ContentRosterTable({
           </button>
         ))}
         <InfoPopover
-          text="Filters — Posting Gap: no posts in 5+ days. Top Performers: views up 15%+ or improving. Declining: views/engagement falling or stalled. Format Shift: changed primary format. Columns — Content Health: cadence + consistency (green < 3 days, yellow 3–7, red 7+). Performance: 30-day avg views, trend %, engagement rate. Format Alpha: top-performing format and multiplier vs median (e.g. 3.2x = 3.2 times above median views). Activity: days since last post, frequency, total videos."
+          text="Filters — Posting Gap: no posts in 5+ days. Top Performers: views up 15%+ or improving. Declining: views/engagement falling or stalled. Format Shift: changed primary format. Columns — Content Health: cadence + consistency (green < 3 days, yellow 3–7, red 7+). Content Velocity: 30-day avg views and trend %. Top Sound: best-performing sound this week. Expand a row for more: Format Alpha, Last Post, Engagement."
           width={340}
         />
       </div>
@@ -457,7 +647,7 @@ export default function ContentRosterTable({
                   onSort={handleSort}
                 />
               </th>
-              <th className="px-2 py-2.5 text-left hidden lg:table-cell">
+              <th className="px-2 py-2.5 text-left hidden md:table-cell">
                 <SortHeader
                   label="Content Velocity"
                   sortKey="performance"
@@ -468,18 +658,9 @@ export default function ContentRosterTable({
               </th>
               <th className="px-2 py-2.5 text-left hidden md:table-cell">
                 <SortHeader
-                  label="Format Alpha"
-                  sortKey="format_alpha"
-                  active={sortKey === "format_alpha"}
-                  asc={sortAsc}
-                  onSort={handleSort}
-                />
-              </th>
-              <th className="pl-2 py-2.5 text-left">
-                <SortHeader
-                  label="Activity"
-                  sortKey="activity"
-                  active={sortKey === "activity"}
+                  label="Top Sound"
+                  sortKey="top_sound"
+                  active={sortKey === "top_sound"}
                   asc={sortAsc}
                   onSort={handleSort}
                 />
@@ -493,9 +674,7 @@ export default function ContentRosterTable({
               return (
                 <React.Fragment key={artist.artist_handle}>
                   <tr
-                    onClick={() =>
-                      navigate(`/label/artists/${artist.artist_handle}`)
-                    }
+                    onClick={(e) => toggleExpand(artist.artist_handle, e)}
                     className="group cursor-pointer transition-colors hover:bg-white/[0.025]"
                     style={{
                       borderBottom: isExpanded
@@ -526,34 +705,31 @@ export default function ContentRosterTable({
                     </td>
 
                     {/* Performance */}
-                    <td className="px-2 py-2 hidden lg:table-cell">
+                    <td className="px-2 py-2 hidden md:table-cell">
                       <PerformanceCell artist={artist} />
                     </td>
 
-                    {/* Format Alpha */}
+                    {/* Top Sound */}
                     <td className="px-2 py-2 hidden md:table-cell">
-                      <FormatAlphaCell artist={artist} />
+                      <TopSoundCell artist={artist} />
                     </td>
 
-                    {/* Activity */}
-                    <td className="pl-2 py-2">
-                      <ActivityCell artist={artist} />
-                    </td>
-
-                    {/* Expand chevron */}
-                    <td className="pr-2 py-2 text-center">
+                    {/* Navigate chevron */}
+                    <td className="pr-3 py-2 text-center">
                       <button
-                        onClick={(e) => toggleExpand(artist.artist_handle, e)}
-                        className="p-1 rounded-md text-white/25 hover:text-white/60 hover:bg-white/[0.04] transition-colors"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigate(`/label/artists/${artist.artist_handle}`);
+                        }}
+                        className="p-2.5 -m-1.5 rounded-lg text-white/20 hover:text-white/55 hover:bg-white/[0.05] transition-colors"
                       >
-                        <ChevronRight
-                          size={14}
-                          className={`transition-transform duration-150 ${isExpanded ? "rotate-90" : ""}`}
-                        />
+                        <ChevronRight size={16} />
                       </button>
                     </td>
                   </tr>
-                  {isExpanded && <ExpandedRow artist={artist} colSpan={6} />}
+                  <AnimatePresence>
+                    {isExpanded && <ExpandedRow artist={artist} colSpan={5} />}
+                  </AnimatePresence>
                 </React.Fragment>
               );
             })}

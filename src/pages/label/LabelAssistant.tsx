@@ -147,13 +147,28 @@ export default function LabelAssistant() {
 
   const navState = location.state as {
     prefill?: string;
+    assistantPrefill?: string;
     newSession?: boolean;
   } | null;
   const prefillText = navState?.prefill || null;
+  const assistantPrefillText = navState?.assistantPrefill || null;
   const forceNewSession = navState?.newSession ?? false;
   const prefillFired = useRef(false);
 
-  const [messages, setMessages] = useState<Message[]>([]);
+  // If arriving with an assistant prefill, show it immediately as a message.
+  // Initialize in state so it renders on the very first paint — no async race.
+  const [prefillMsg] = useState<Message | null>(() => {
+    if (!assistantPrefillText) return null;
+    return {
+      id: crypto.randomUUID(),
+      role: "assistant",
+      content: assistantPrefillText,
+      timestamp: new Date(),
+    };
+  });
+  const [messages, setMessages] = useState<Message[]>(
+    prefillMsg ? [prefillMsg] : [],
+  );
   const [isStreaming, setIsStreaming] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     try {
@@ -203,7 +218,7 @@ export default function LabelAssistant() {
 
   const abortRef = useRef<AbortController | null>(null);
   const streamingMsgRef = useRef<string>("");
-  const skipDbSyncUntil = useRef<number>(0);
+  const skipDbSyncUntil = useRef<number>(prefillMsg ? Date.now() + 15000 : 0);
   const currentToolsRef = useRef<string[]>([]);
   const dragStartRef = useRef<{ x: number; w: number } | null>(null);
   const dragCounterRef = useRef(0);
@@ -229,12 +244,6 @@ export default function LabelAssistant() {
     },
     [],
   );
-
-  const ROLE_CONFIG = {
-    ar: { label: "A&R Scout", icon: "🔍" },
-    marketing: { label: "Marketing", icon: "📱" },
-    executive: { label: "Executive", icon: "📊" },
-  } as const;
 
   // ── Sidebar drag resize ──
   const handleDragStart = useCallback(
@@ -525,6 +534,27 @@ export default function LabelAssistant() {
     }
   }, [prefillText, forceNewSession, isStreaming, handleSend, createSession]);
 
+  // ── Persist assistant-prefill to a new session (message already in state via useState init) ──
+  useEffect(() => {
+    if (!prefillMsg || prefillFired.current) return;
+    prefillFired.current = true;
+
+    // Delay session creation so the hook's loadSessions completes first
+    // and doesn't overwrite currentSessionId afterward.
+    const timer = setTimeout(async () => {
+      skipDbSyncUntil.current = Date.now() + 10000;
+      setMessageSourcesMap(new Map());
+      const sid = await createSession();
+      if (!sid) return;
+
+      // Re-assert the message after createSession set messages to []
+      setMessages(() => [prefillMsg]);
+      addMessage(sid, "assistant", prefillMsg.content);
+    }, 1200);
+
+    return () => clearTimeout(timer);
+  }, [prefillMsg, createSession, addMessage]);
+
   // ── Keyboard shortcut: Cmd/Ctrl+Shift+O → new conversation ──
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -762,7 +792,7 @@ export default function LabelAssistant() {
   return (
     <>
       <div
-        className={cn("flex", isMobile ? "h-[calc(100dvh-48px)]" : "h-screen")}
+        className={cn("flex", isMobile ? "h-[calc(100dvh-48px)]" : "h-full")}
         style={{ background: T.bg }}
       >
         {/* Desktop sidebar — collapsed icon strip or expanded panel */}
@@ -899,28 +929,6 @@ export default function LabelAssistant() {
                 {currentSession?.title || "Label Intelligence"}
               </h1>
             </div>
-            {/* Role selector */}
-            <div className="flex items-center gap-1 shrink-0">
-              {(["ar", "marketing", "executive"] as const).map((r) => (
-                <button
-                  key={r}
-                  onClick={() => handleRoleChange(r)}
-                  className="px-2.5 py-1 text-xs font-medium rounded-full transition-all whitespace-nowrap"
-                  style={{
-                    background:
-                      activeRole === r ? T.accent + "22" : "transparent",
-                    color: activeRole === r ? T.accent : T.textSecondary,
-                    border:
-                      activeRole === r
-                        ? `1px solid ${T.accent}44`
-                        : "1px solid transparent",
-                  }}
-                  title={ROLE_CONFIG[r].label}
-                >
-                  {ROLE_CONFIG[r].icon} {ROLE_CONFIG[r].label}
-                </button>
-              ))}
-            </div>
             <Button
               variant="ghost"
               size="icon"
@@ -966,6 +974,8 @@ export default function LabelAssistant() {
             pendingImage={pendingImage}
             onImageAttach={setPendingImage}
             onImageRemove={() => setPendingImage(null)}
+            activeRole={activeRole}
+            onRoleChange={handleRoleChange}
           />
 
           {/* Drag-and-drop overlay */}
