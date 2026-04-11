@@ -83,6 +83,14 @@ export function validateSoundUrl(input: string): {
   return { valid: true };
 }
 
+export async function cancelSoundAnalysis(jobId: string) {
+  const { error } = await supabase
+    .from("sound_intelligence_jobs")
+    .update({ status: "cancelled", updated_at: new Date().toISOString() })
+    .eq("id", jobId);
+  if (error) throw new Error(error.message || "Cancel failed");
+}
+
 export async function retrySoundAnalysis(jobId: string) {
   const headers = await getAuthHeaders();
   const res = await fetch(`${BASE_URL}/retry-sound-analysis`, {

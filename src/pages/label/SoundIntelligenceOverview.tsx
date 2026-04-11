@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import {
   triggerSoundAnalysis,
   retrySoundAnalysis,
+  cancelSoundAnalysis,
   extractSoundId,
   validateSoundUrl,
   formatNumber,
@@ -755,13 +756,18 @@ export default function SoundIntelligenceOverview() {
                         </button>
                       )}
                       <button
-                        onClick={(e) => {
+                        onClick={async (e) => {
                           e.stopPropagation();
                           setEntries((prev) =>
                             prev.filter((x) => x.job_id !== entry.job_id),
                           );
+                          try {
+                            await cancelSoundAnalysis(entry.job_id);
+                          } catch {
+                            fetchList();
+                          }
                         }}
-                        title="Dismiss"
+                        title="Cancel analysis"
                         style={{
                           background: "none",
                           border: "none",
