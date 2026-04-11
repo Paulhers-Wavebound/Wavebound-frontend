@@ -60,6 +60,13 @@ src/
 - Service role: $SUPABASE_SERVICE_KEY env var (terminal only, never in client code)
 - Auth: Bearer JWT from `supabase.auth.getSession()` for protected endpoints
 
+## AI Model Policy
+- **Judgment / analysis / briefs / recommendations:** Always `claude-opus-4-6` with extended thinking (`thinking: { type: "enabled", budget_tokens: 10000 }`)
+- **RAG / retrieval / summarization:** `claude-sonnet-4-6` is acceptable
+- **Simple classifications / tagging:** `claude-flash-4-6` is acceptable
+- Never use Sonnet or Flash for tasks that require weighing tradeoffs or making judgment calls
+- API version: `anthropic-version: 2023-06-01`
+
 ## API Patterns
 ```typescript
 // Pattern 1: Direct Supabase client (most common)
@@ -139,6 +146,9 @@ After completing any task, write a session diary to `docs/session-diaries/YYYY-M
 3. **What was tested** — tsc result, anything verified programmatically
 4. **What to verify in browser** — anything needing Paul's eyes
 7. **"While I was in here" recommendations: implement obvious UX wins automatically.** Only ASK for items that change architecture, add dependencies, or touch production data. Polish, consistency fixes, and missing states — just do them.
+
+## Content & Social Bible (mandatory for feature work)
+Before implementing any new feature, modifying UI, or running a site inspection to find improvements, read `docs/content-social-bible.md`. This is the canonical reference for WHO we're building for, WHAT decisions they make, and WHEN in their day they need each screen. Every component must trace back to a decision in the Bible's taxonomy. If it doesn't enable a decision, it's noise — don't build it.
 
 ## Skills (mandatory)
 Before starting ANY task, scan ~/.claude/skills/ for relevant skill files and read them FIRST. This is non-negotiable — no code, no edits, no files until you've checked which skills apply. You have the intelligence to determine relevance; use it.

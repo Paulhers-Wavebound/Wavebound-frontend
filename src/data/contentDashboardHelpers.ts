@@ -59,6 +59,20 @@ export interface ContentArtist {
   top_sound_total_ugc: number | null;
   sound_velocity: string | null;
   sounds_tracked: number | null;
+  // Calculated: Save-to-Reach conversion ratio
+  avg_saves_30d: number | null;
+  save_to_reach_pct: number | null;
+  // From artist_intelligence.weekly_pulse (Layer 3 AI judgment)
+  weekly_pulse: {
+    focused_sound?: { title: string; reason: string; action: string };
+    catalogue_alert?: {
+      title: string;
+      delta: string;
+      reason: string;
+      action: string;
+    };
+  } | null;
+  weekly_pulse_generated_at: string | null;
 }
 
 export type ContentPriorityType =
@@ -154,6 +168,34 @@ export function fmtFreq(postsPerWeek: number | null | undefined): string {
   if (postsPerWeek >= 7) return `${Math.round(postsPerWeek / 7)}x/day`;
   if (postsPerWeek >= 1) return `${postsPerWeek.toFixed(1)}x/wk`;
   return `${(postsPerWeek * 4).toFixed(1)}x/mo`;
+}
+
+// ─── Save-to-Reach helpers (Bible §9 benchmarks) ────────
+
+export function saveToReachColor(pct: number | null): string {
+  if (pct == null) return "rgba(255,255,255,0.30)";
+  if (pct >= 5.0) return "#BF5AF2"; // purple — exceptional
+  if (pct >= 1.5) return "#30D158"; // green — healthy
+  if (pct >= 0.8) return "#FFD60A"; // yellow — fair
+  return "#FF453A"; // red — low
+}
+
+export function saveToReachLabel(pct: number | null): string {
+  if (pct == null) return "—";
+  if (pct >= 5.0) return "Exceptional";
+  if (pct >= 1.5) return "Healthy";
+  if (pct >= 0.8) return "Fair";
+  return "Low";
+}
+
+// ─── Tier grouping (Bible §10 artist tiering) ───────────
+
+export type TierGroup = "breakout" | "momentum" | "catalog";
+
+export function getTierGroup(tier: string | null): TierGroup {
+  if (tier === "viral" || tier === "breakout") return "breakout";
+  if (tier === "momentum") return "momentum";
+  return "catalog"; // stable, stalled, null
 }
 
 // ─── Normalizer ───────────────────────────────────────────
@@ -497,6 +539,567 @@ export function generateContentBriefing(
         : ["Review content plans for upcoming releases."],
     summary,
   };
+}
+
+// ─── Signal Report (Bible §3: replaces 08:00-10:00 manual triage) ─
+
+/**
+ * Decision point categories from the Bible's decision taxonomy (§4).
+ * Each maps to a specific type of action the strategist takes.
+ */
+export type DecisionCategory =
+  | "BUDGET_REALLOCATION" // Shift spend to high-performing content
+  | "FORMAT_PIVOT" // Switch content format based on data
+  | "CRISIS_RESPONSE" // Risk flags, suppression, fraud
+  | "CATALOG_ACTIVATION" // Legacy track gaining organic traction
+  | "CONTENT_PIPELINE" // Posting drought, missing content plans
+  | "MOMENTUM_CAPTURE" // Breakout happening, scale immediately
+  | "CONVERSION_ALERT"; // High views but low save rate (Viral Mirage)
+
+export interface DecisionPoint {
+  /** Which decision category from the Bible taxonomy */
+  category: DecisionCategory;
+  /** The artist this decision concerns */
+  artist_name: string;
+  artist_handle: string;
+  /** Artist avatar for visual identification */
+  avatar_url: string | null;
+  /** The signal: what happened / what was detected */
+  signal: string;
+  /** The decision: what the strategist needs to do — specific and actionable */
+  decision: string;
+  /** Urgency: how fast must this be acted on */
+  urgency: "now" | "today" | "this_week";
+  /** Key numbers backing the decision */
+  evidence: { label: string; value: string; color?: string }[];
+}
+
+export interface SignalReportTodo {
+  text: string;
+  artist_name: string;
+  avatar_url: string | null;
+  category: DecisionCategory;
+  urgency: "now" | "today" | "this_week";
+}
+
+export interface SignalReport {
+  /** Date string for display */
+  date: string;
+  /** 1-2 sentence roster pulse: overall direction */
+  rosterPulse: string;
+  /** The 3-5 critical decision points — the core of the signal report */
+  decisionPoints: DecisionPoint[];
+  /** Risk alerts (critical/warning risk_flags across roster) */
+  riskAlerts: {
+    artist_name: string;
+    avatar_url: string | null;
+    message: string;
+    severity: string;
+  }[];
+  /** Proposed TODO list derived from decision points */
+  todos: SignalReportTodo[];
+  /** Roster-level metrics for the header */
+  metrics: {
+    activeArtists: number;
+    totalArtists: number;
+    avgVelocityDelta: number;
+    avgSaveRate: number | null;
+    breakoutCount: number;
+    atRiskCount: number;
+  };
+}
+
+/**
+ * Generate the Signal Report — the document that replaces the strategist's
+ * 08:00-10:00 manual triage. This is what they'd present at the 10am standup.
+ *
+ * Uses ALL available data: roster metrics, anomalies, content DNA, sound velocity,
+ * weekly pulse (Layer 3 AI), sentiment, risk flags, save rates, format shifts.
+ */
+export function generateSignalReport(
+  artists: ContentArtist[],
+  anomalies: ContentAnomaly[],
+  songUGC: SongUGC[],
+  labelName: string,
+): SignalReport {
+  const now = new Date();
+  const dateStr = now.toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+  });
+
+  const decisionPoints: DecisionPoint[] = [];
+  const nameMap = new Map(
+    artists.map((a) => [normalizeHandle(a.artist_handle), a.artist_name]),
+  );
+
+  // ── Compute roster-level metrics ──────────────────────
+
+  const withViewDelta = artists.filter((a) => a.delta_avg_views_pct != null);
+  const avgVelocityDelta =
+    withViewDelta.length > 0
+      ? withViewDelta.reduce((s, a) => s + (a.delta_avg_views_pct ?? 0), 0) /
+        withViewDelta.length
+      : 0;
+
+  const withSaveRate = artists.filter((a) => a.save_to_reach_pct != null);
+  const avgSaveRate =
+    withSaveRate.length > 0
+      ? withSaveRate.reduce((s, a) => s + (a.save_to_reach_pct ?? 0), 0) /
+        withSaveRate.length
+      : null;
+
+  const activeArtists = artists.filter(
+    (a) => a.days_since_last_post != null && a.days_since_last_post < 3,
+  ).length;
+
+  const breakoutCount = artists.filter(
+    (a) => a.momentum_tier === "viral" || a.momentum_tier === "breakout",
+  ).length;
+
+  const atRiskCount = artists.filter(
+    (a) =>
+      a.risk_level === "critical" ||
+      a.risk_level === "warning" ||
+      a.momentum_tier === "stalled",
+  ).length;
+
+  // ── Roster Pulse ──────────────────────────────────────
+
+  const direction =
+    avgVelocityDelta > 5 ? "up" : avgVelocityDelta < -5 ? "down" : "steady";
+  const directionPhrase =
+    direction === "up"
+      ? `trending up ${Math.abs(avgVelocityDelta).toFixed(0)}% WoW`
+      : direction === "down"
+        ? `trending down ${Math.abs(avgVelocityDelta).toFixed(0)}% WoW`
+        : "holding steady WoW";
+
+  const pulseDetails: string[] = [];
+  pulseDetails.push(
+    `${activeArtists} of ${artists.length} artists actively posting`,
+  );
+  if (breakoutCount > 0) {
+    pulseDetails.push(`${breakoutCount} in breakout momentum`);
+  }
+  if (atRiskCount > 0) {
+    pulseDetails.push(`${atRiskCount} need attention`);
+  }
+
+  const rosterPulse = `Roster velocity ${directionPhrase}. ${pulseDetails.join(", ")}.`;
+
+  // ── Decision Point 1: MOMENTUM CAPTURE ────────────────
+  // Artists with breakout velocity — scale immediately
+
+  const surging = artists
+    .filter((a) => a.delta_avg_views_pct != null && a.delta_avg_views_pct > 25)
+    .sort(
+      (a, b) => (b.delta_avg_views_pct || 0) - (a.delta_avg_views_pct || 0),
+    );
+
+  for (const a of surging.slice(0, 2)) {
+    const evidence: DecisionPoint["evidence"] = [
+      {
+        label: "Views",
+        value: fmtPct(a.delta_avg_views_pct),
+        color: "#30D158",
+      },
+    ];
+    if (a.best_format) {
+      evidence.push({
+        label: "Top Format",
+        value: a.best_format,
+      });
+      if (a.best_format_vs_median != null && a.best_format_vs_median > 1) {
+        evidence.push({
+          label: "vs Median",
+          value: `${a.best_format_vs_median.toFixed(1)}x`,
+          color: "#30D158",
+        });
+      }
+    }
+    if (a.save_to_reach_pct != null) {
+      evidence.push({
+        label: "Save Rate",
+        value: `${a.save_to_reach_pct.toFixed(1)}%`,
+        color: saveToReachColor(a.save_to_reach_pct),
+      });
+    }
+
+    decisionPoints.push({
+      category: "MOMENTUM_CAPTURE",
+      artist_name: a.artist_name,
+      artist_handle: a.artist_handle,
+      avatar_url: a.avatar_url,
+      signal: `Content velocity up ${a.delta_avg_views_pct?.toFixed(0)}%${a.best_format ? ` — ${a.best_format} format is driving it` : ""}`,
+      decision: a.best_format
+        ? `${a.best_format} content outperforming${a.best_format_vs_median != null && a.best_format_vs_median > 1 ? ` at ${a.best_format_vs_median.toFixed(1)}x median` : ""} — evaluate scaling this format.`
+        : `Velocity spike detected — review which content is driving it.`,
+      urgency: "now",
+      evidence,
+    });
+  }
+
+  // ── Decision Point 2: BUDGET REALLOCATION via anomaly spikes ─
+
+  const spikes = anomalies.filter(
+    (a) =>
+      a.anomaly_type === "views_spike" &&
+      (a.severity === "highlight" || a.severity === "normal"),
+  );
+
+  for (const spike of spikes.slice(0, 1)) {
+    const artistName =
+      nameMap.get(normalizeHandle(spike.artist_handle)) || spike.artist_handle;
+    const artist = artists.find(
+      (a) =>
+        normalizeHandle(a.artist_handle) ===
+        normalizeHandle(spike.artist_handle),
+    );
+
+    // Don't duplicate if already captured by MOMENTUM_CAPTURE
+    if (
+      surging.some(
+        (s) =>
+          normalizeHandle(s.artist_handle) ===
+          normalizeHandle(spike.artist_handle),
+      )
+    )
+      continue;
+
+    const evidence: DecisionPoint["evidence"] = [
+      {
+        label: "Views",
+        value: fmtViews(spike.metric_value),
+        color: "#30D158",
+      },
+      {
+        label: "vs Median",
+        value: `${spike.deviation_multiple?.toFixed(1) || "?"}x`,
+      },
+    ];
+    if (artist?.best_format) {
+      evidence.push({ label: "Format", value: artist.best_format });
+    }
+
+    decisionPoints.push({
+      category: "BUDGET_REALLOCATION",
+      artist_name: artistName,
+      artist_handle: spike.artist_handle,
+      avatar_url: artist?.avatar_url ?? null,
+      signal: `Breakout video at ${spike.deviation_multiple?.toFixed(1) || "?"}x median views. ${spike.insight_message}`,
+      decision: `Breakout video detected — review the hook and format. Algorithm is currently favoring this content.`,
+      urgency: "now",
+      evidence,
+    });
+  }
+
+  // ── Decision Point 3: FORMAT PIVOT ────────────────────
+  // Artists with declining views who have a clear best format they're not using
+
+  const declining = artists
+    .filter(
+      (a) =>
+        a.delta_avg_views_pct != null &&
+        a.delta_avg_views_pct < -15 &&
+        a.best_format != null,
+    )
+    .sort(
+      (a, b) => (a.delta_avg_views_pct || 0) - (b.delta_avg_views_pct || 0),
+    );
+
+  for (const a of declining.slice(0, 1)) {
+    const evidence: DecisionPoint["evidence"] = [
+      {
+        label: "Views",
+        value: fmtPct(a.delta_avg_views_pct),
+        color: "#FF453A",
+      },
+    ];
+    if (a.best_format) {
+      evidence.push({ label: "Best Format", value: a.best_format });
+    }
+    if (a.worst_format) {
+      evidence.push({
+        label: "Worst Format",
+        value: a.worst_format,
+        color: "#FF453A",
+      });
+    }
+    if (a.avg_hook_score != null) {
+      evidence.push({
+        label: "Hook Score",
+        value: `${Math.round(a.avg_hook_score)}/100`,
+      });
+    }
+
+    const hasFormatShift = a.format_shift && a.prior_top_format;
+    decisionPoints.push({
+      category: "FORMAT_PIVOT",
+      artist_name: a.artist_name,
+      artist_handle: a.artist_handle,
+      avatar_url: a.avatar_url,
+      signal: `Views down ${Math.abs(a.delta_avg_views_pct || 0).toFixed(0)}%.${hasFormatShift ? ` Recently shifted from ${a.prior_top_format} to ${a.recent_top_format}.` : ""}`,
+      decision: `${a.best_format} format performing at ${a.best_format_vs_median != null && a.best_format_vs_median > 1 ? `${a.best_format_vs_median.toFixed(1)}x median` : "above average"} while ${a.worst_format || "other formats"} underperforming — review format mix.`,
+      urgency: "today",
+      evidence,
+    });
+  }
+
+  // ── Decision Point 4: CATALOG ACTIVATION ──────────────
+  // Sounds gaining organic UGC traction (from weekly_pulse or sound velocity)
+
+  const catalogActivations = artists.filter(
+    (a) =>
+      a.weekly_pulse?.catalogue_alert != null ||
+      (a.sound_velocity === "up" &&
+        a.top_sound_new_ugc != null &&
+        a.top_sound_new_ugc > 5 &&
+        getTierGroup(a.momentum_tier) === "catalog"),
+  );
+
+  for (const a of catalogActivations.slice(0, 1)) {
+    const catAlert = a.weekly_pulse?.catalogue_alert;
+    const evidence: DecisionPoint["evidence"] = [];
+
+    if (catAlert) {
+      evidence.push({
+        label: "Sound",
+        value: catAlert.title,
+      });
+      evidence.push({
+        label: "Delta",
+        value: catAlert.delta,
+        color: "#30D158",
+      });
+    } else {
+      if (a.top_sound_title) {
+        evidence.push({ label: "Sound", value: a.top_sound_title });
+      }
+      if (a.top_sound_new_ugc != null) {
+        evidence.push({
+          label: "New UGC",
+          value: `+${fmtViews(a.top_sound_new_ugc)}`,
+          color: "#30D158",
+        });
+      }
+    }
+
+    decisionPoints.push({
+      category: "CATALOG_ACTIVATION",
+      artist_name: a.artist_name,
+      artist_handle: a.artist_handle,
+      avatar_url: a.avatar_url,
+      signal: catAlert
+        ? `${catAlert.title}: ${catAlert.reason}`
+        : `"${a.top_sound_title}" — +${fmtViews(a.top_sound_new_ugc)} new UGC videos this week.`,
+      decision:
+        catAlert?.action ||
+        `Catalog track showing UGC momentum — evaluate whether to allocate content resources to this sound.`,
+      urgency: "today",
+      evidence,
+    });
+  }
+
+  // ── Decision Point 5: CONTENT PIPELINE ────────────────
+  // Posting droughts — artists who need content activation
+
+  const droughts = artists
+    .filter(
+      (a) => a.days_since_last_post != null && a.days_since_last_post >= 7,
+    )
+    .sort(
+      (a, b) => (b.days_since_last_post || 0) - (a.days_since_last_post || 0),
+    );
+
+  for (const a of droughts.slice(0, 1)) {
+    const evidence: DecisionPoint["evidence"] = [
+      {
+        label: "Days Silent",
+        value: `${a.days_since_last_post}`,
+        color: "#FF453A",
+      },
+    ];
+    if (a.posting_freq_30d != null) {
+      evidence.push({
+        label: "Usual Freq",
+        value: fmtFreq(a.posting_freq_30d / 4),
+      });
+    }
+    if (!a.has_content_plan) {
+      evidence.push({
+        label: "Content Plan",
+        value: "Missing",
+        color: "#FF453A",
+      });
+    }
+
+    decisionPoints.push({
+      category: "CONTENT_PIPELINE",
+      artist_name: a.artist_name,
+      artist_handle: a.artist_handle,
+      avatar_url: a.avatar_url,
+      signal: `Silent for ${a.days_since_last_post} days. ${!a.has_content_plan ? "No content plan on file." : "Has a content plan but not executing."}`,
+      decision: !a.has_content_plan
+        ? `No content plan on file and ${a.days_since_last_post} days inactive — needs attention.`
+        : `Content plan exists but ${a.days_since_last_post} days without a post — check what's blocking execution.`,
+      urgency: a.days_since_last_post! >= 14 ? "now" : "today",
+      evidence,
+    });
+  }
+
+  // ── Decision Point 6: CONVERSION ALERT (Viral Mirage) ─
+  // High views but terrible save rate
+
+  const viralMirages = artists
+    .filter(
+      (a) =>
+        a.save_to_reach_pct != null &&
+        a.save_to_reach_pct < 0.8 &&
+        a.avg_views_30d != null &&
+        a.avg_views_30d > 5000,
+    )
+    .sort((a, b) => (a.save_to_reach_pct || 0) - (b.save_to_reach_pct || 0));
+
+  for (const a of viralMirages.slice(0, 1)) {
+    const evidence: DecisionPoint["evidence"] = [
+      {
+        label: "Save Rate",
+        value: `${a.save_to_reach_pct?.toFixed(1)}%`,
+        color: "#FF453A",
+      },
+      {
+        label: "Views",
+        value: fmtViews(a.avg_views_30d),
+      },
+    ];
+    if (a.best_format) {
+      evidence.push({ label: "Format", value: a.best_format });
+    }
+
+    decisionPoints.push({
+      category: "CONVERSION_ALERT",
+      artist_name: a.artist_name,
+      artist_handle: a.artist_handle,
+      avatar_url: a.avatar_url,
+      signal: `${fmtViews(a.avg_views_30d)} avg views but only ${a.save_to_reach_pct?.toFixed(1)}% save rate \u2014 Viral Mirage.`,
+      decision: `${fmtViews(a.avg_views_30d)} avg views but ${a.save_to_reach_pct?.toFixed(1)}% save rate — content reaching audience but not converting to saves. Review hook strategy.`,
+      urgency: "this_week",
+      evidence,
+    });
+  }
+
+  // ── AI-generated focus sounds as decision points ──────
+
+  for (const a of artists) {
+    if (a.weekly_pulse?.focused_sound && decisionPoints.length < 5) {
+      // Don't duplicate artists already in decision points
+      if (decisionPoints.some((dp) => dp.artist_handle === a.artist_handle))
+        continue;
+
+      const fs = a.weekly_pulse.focused_sound;
+      decisionPoints.push({
+        category: "MOMENTUM_CAPTURE",
+        artist_name: a.artist_name,
+        artist_handle: a.artist_handle,
+        avatar_url: a.avatar_url,
+        signal: fs.reason,
+        decision: fs.action,
+        urgency: "today",
+        evidence: [{ label: "Focus Sound", value: fs.title }],
+      });
+    }
+  }
+
+  // ── Sort by urgency (now > today > this_week), cap at 5 ─
+
+  const urgencyOrder: Record<string, number> = {
+    now: 0,
+    today: 1,
+    this_week: 2,
+  };
+  decisionPoints.sort(
+    (a, b) => urgencyOrder[a.urgency] - urgencyOrder[b.urgency],
+  );
+  const topDecisions = decisionPoints.slice(0, 5);
+
+  // ── Risk Alerts ───────────────────────────────────────
+
+  const riskAlerts: SignalReport["riskAlerts"] = [];
+  for (const a of artists) {
+    if (a.risk_flags && a.risk_flags.length > 0) {
+      for (const flag of a.risk_flags) {
+        if (flag.severity === "critical" || flag.severity === "warning") {
+          riskAlerts.push({
+            artist_name: a.artist_name,
+            avatar_url: a.avatar_url,
+            message: flag.message,
+            severity: flag.severity,
+          });
+        }
+      }
+    }
+  }
+  // Sort critical first
+  riskAlerts.sort((a, b) =>
+    a.severity === "critical" && b.severity !== "critical" ? -1 : 1,
+  );
+
+  // ── TODO List ─────────────────────────────────────────
+
+  const todos: SignalReportTodo[] = topDecisions.map((dp) => ({
+    text: dp.decision,
+    artist_name: dp.artist_name,
+    avatar_url: dp.avatar_url,
+    category: dp.category,
+    urgency: dp.urgency,
+  }));
+
+  // Add risk-related TODOs
+  if (riskAlerts.length > 0) {
+    const criticalRisks = riskAlerts.filter((r) => r.severity === "critical");
+    if (criticalRisks.length > 0) {
+      todos.unshift({
+        text: `Investigate critical risk: ${criticalRisks[0].message}`,
+        artist_name: criticalRisks[0].artist_name,
+        avatar_url: criticalRisks[0].avatar_url,
+        category: "CRISIS_RESPONSE",
+        urgency: "now",
+      });
+    }
+  }
+
+  return {
+    date: dateStr,
+    rosterPulse,
+    decisionPoints: topDecisions,
+    riskAlerts: riskAlerts.slice(0, 5),
+    todos: todos.slice(0, 7),
+    metrics: {
+      activeArtists,
+      totalArtists: artists.length,
+      avgVelocityDelta,
+      avgSaveRate,
+      breakoutCount,
+      atRiskCount,
+    },
+  };
+}
+
+// ── Keep generatePDBBriefing for backward compat (text fallback) ──
+
+export function generatePDBBriefing(
+  artists: ContentArtist[],
+  anomalies: ContentAnomaly[],
+  labelName: string,
+): string {
+  const report = generateSignalReport(artists, anomalies, [], labelName);
+  const parts = [report.rosterPulse];
+  for (const dp of report.decisionPoints.slice(0, 3)) {
+    parts.push(`${dp.artist_name}: ${dp.signal} ${dp.decision}`);
+  }
+  return `The Wavebound Brief (${report.date}): ${parts.join(". ")}`;
 }
 
 // ─── Insight Generator ────────────────────────────────────

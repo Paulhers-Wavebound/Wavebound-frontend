@@ -75,16 +75,20 @@ Deno.serve(async (req: Request) => {
         .select("relname,n_live_tup,last_vacuum,last_analyze")
         .order("n_live_tup", { ascending: false });
 
-      var tables = (pgStats || []).map(function (t: any) {
-        return {
-          name: t.relname,
-          estimated_rows: t.n_live_tup || 0,
-          total_bytes: null,
-          size_pretty: null,
-          last_vacuum: t.last_vacuum,
-          last_analyze: t.last_analyze,
-        };
-      });
+      var tables = (pgStats || [])
+        .map(function (t: any) {
+          return {
+            name: t.relname,
+            estimated_rows: t.n_live_tup || 0,
+            total_bytes: null,
+            size_pretty: null,
+            last_vacuum: t.last_vacuum,
+            last_analyze: t.last_analyze,
+          };
+        })
+        .filter(function (t: any) {
+          return t.name;
+        });
 
       return jsonResponse({
         tables: tables,
@@ -96,17 +100,21 @@ Deno.serve(async (req: Request) => {
     }
 
     // RPC exists — use full data
-    var tables = (tableStats || []).map(function (t: any) {
-      return {
-        name: t.table_name,
-        estimated_rows: t.estimated_rows || 0,
-        total_bytes: t.total_bytes || 0,
-        size_pretty: t.size_pretty || "0 bytes",
-        table_bytes: t.table_bytes || 0,
-        index_bytes: t.index_bytes || 0,
-        toast_bytes: t.toast_bytes || 0,
-      };
-    });
+    var tables = (tableStats || [])
+      .map(function (t: any) {
+        return {
+          name: t.table_name,
+          estimated_rows: t.estimated_rows || 0,
+          total_bytes: t.total_bytes || 0,
+          size_pretty: t.size_pretty || "0 bytes",
+          table_bytes: t.table_bytes || 0,
+          index_bytes: t.index_bytes || 0,
+          toast_bytes: t.toast_bytes || 0,
+        };
+      })
+      .filter(function (t: any) {
+        return t.name;
+      });
 
     var totalBytes = tables.reduce(function (sum: number, t: any) {
       return sum + (t.total_bytes || 0);
@@ -125,7 +133,7 @@ Deno.serve(async (req: Request) => {
 });
 
 function formatBytes(bytes: number): string {
-  if (bytes === 0) return "0 B";
+  if (bytes <= 0) return "0 B";
   var units = ["B", "KB", "MB", "GB", "TB"];
   var i = Math.floor(Math.log(bytes) / Math.log(1024));
   return (bytes / Math.pow(1024, i)).toFixed(1) + " " + units[i];

@@ -1,8 +1,11 @@
 import { CheckCircle2, AlertTriangle, XCircle } from "lucide-react";
+import {
+  SUPABASE_URL_RAW,
+  SUPABASE_ANON_KEY as SUPABASE_ANON_KEY_SRC,
+} from "@/integrations/supabase/client";
 
-export const SUPABASE_URL = "https://kxvgbowrkmowuyezoeke.supabase.co";
-export const SUPABASE_ANON_KEY =
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4dmdib3dya21vd3V5ZXpvZWtlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTY3NjUzMjUsImV4cCI6MjA3MjM0MTMyNX0.jyd5K06zFJv9yK2tj8Pj2oATohbKnMD6hXwit6T50DY";
+export const SUPABASE_URL = SUPABASE_URL_RAW;
+export const SUPABASE_ANON_KEY = SUPABASE_ANON_KEY_SRC;
 
 export const SCRAPER_LABELS: Record<string, string> = {
   kworb_listeners: "Spotify listeners (25K)",

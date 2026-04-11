@@ -29,6 +29,7 @@ export function useContentDashboardData(): ContentDashboardData {
   const [catalogRaw, setCatalogRaw] = useState<any[]>([]);
   const [siSoundsRaw, setSiSoundsRaw] = useState<any[]>([]);
   const [soundVelocityRaw, setSoundVelocityRaw] = useState<any[]>([]);
+  const [weeklyPulseRaw, setWeeklyPulseRaw] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -46,6 +47,7 @@ export function useContentDashboardData(): ContentDashboardData {
       setCatalogRaw([]);
       setSiSoundsRaw([]);
       setSoundVelocityRaw([]);
+      setWeeklyPulseRaw([]);
       setLoading(false);
       return;
     }
@@ -105,7 +107,10 @@ export function useContentDashboardData(): ContentDashboardData {
       const handles = roster.map((r: any) => normalizeHandle(r.artist_handle));
 
       if (handles.length > 0) {
-        const [dnaRes, evoRes] = await Promise.all([
+        // Also fetch artist_handle list for weekly_pulse query
+        const rosterHandles = roster.map((r: any) => r.artist_handle).filter(Boolean);
+
+        const [dnaRes, evoRes, pulseRes] = await Promise.all([
           supabase
             .from("artist_content_dna" as any)
             .select(
@@ -118,7 +123,14 @@ export function useContentDashboardData(): ContentDashboardData {
               "artist_handle, entity_id, performance_trend, strategy_label, format_shift, views_change_pct, recent_top_format, prior_top_format",
             )
             .in("artist_handle", handles),
+          supabase
+            .from("artist_intelligence")
+            .select("artist_handle, weekly_pulse, weekly_pulse_generated_at")
+            .in("artist_handle", rosterHandles)
+            .not("weekly_pulse", "is", null),
         ]);
+
+        setWeeklyPulseRaw(pulseRes.data || []);
 
         const dnaData = dnaRes.data || [];
         setContentDnaRaw(dnaData);
@@ -208,6 +220,12 @@ export function useContentDashboardData(): ContentDashboardData {
       soundVelocityByHandle.set(normalizeHandle(sv.artist_handle), sv);
     }
 
+    // Weekly pulse: keyed by normalized handle
+    const pulseByHandle = new Map<string, any>();
+    for (const p of weeklyPulseRaw) {
+      pulseByHandle.set(normalizeHandle(p.artist_handle), p);
+    }
+
     // Sentiment: keyed by entity_id, take first (most recent) per entity
     const sentimentByHandle = new Map<string, any>();
     for (const s of sentimentRaw) {
@@ -224,6 +242,7 @@ export function useContentDashboardData(): ContentDashboardData {
       const summary = summaryByHandle.get(h);
       const sentiment = sentimentByHandle.get(h);
       const sv = soundVelocityByHandle.get(h);
+      const pulse = pulseByHandle.get(h);
 
       return {
         artist_handle: r.artist_handle,
@@ -281,6 +300,18 @@ export function useContentDashboardData(): ContentDashboardData {
         top_sound_total_ugc: sv?.top_sound_total_ugc ?? null,
         sound_velocity: sv?.velocity ?? null,
         sounds_tracked: sv?.sounds_tracked ?? null,
+        // Save-to-Reach conversion ratio (only when saves data is actually populated, not zero)
+        avg_saves_30d: r.avg_saves_30d ?? null,
+        save_to_reach_pct:
+          r.avg_saves_30d != null &&
+          r.avg_saves_30d > 0 &&
+          r.avg_views_30d != null &&
+          r.avg_views_30d > 0
+            ? (r.avg_saves_30d / r.avg_views_30d) * 100
+            : null,
+        // Layer 3: AI focus (from weekly_pulse)
+        weekly_pulse: pulse?.weekly_pulse ?? null,
+        weekly_pulse_generated_at: pulse?.weekly_pulse_generated_at ?? null,
       };
     });
   }, [
@@ -290,6 +321,7 @@ export function useContentDashboardData(): ContentDashboardData {
     videoSummaryRaw,
     sentimentRaw,
     soundVelocityRaw,
+    weeklyPulseRaw,
   ]);
 
   const anomalies = useMemo<ContentAnomaly[]>(

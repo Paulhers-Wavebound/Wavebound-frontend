@@ -11,6 +11,7 @@ import {
 } from "recharts";
 import { supabase } from "@/integrations/supabase/client";
 import { SCRAPER_LABELS } from "@/components/admin/health/constants";
+import HealthLoadingSkeleton from "./HealthLoadingSkeleton";
 import {
   formatDuration,
   formatNumber,
@@ -69,10 +70,10 @@ function buildScraperPerf(rows: PerfRow[]): ScraperPerf[] {
       const successRuns = runs.filter(
         (r) => r.status === "success" && r.duration_ms != null,
       );
-      const durations = successRuns.map((r) => r.duration_ms!);
+      const durations = successRuns.map((r) => r.duration_ms ?? 0);
       const rowCounts = successRuns
         .filter((r) => r.rows_inserted != null)
-        .map((r) => r.rows_inserted!);
+        .map((r) => r.rows_inserted ?? 0);
 
       const avgDuration =
         durations.length > 0
@@ -135,7 +136,7 @@ export default function HealthPerformance() {
     queryKey: ["health-performance"],
     queryFn: fetchPerfData,
     refetchInterval: 60_000,
-    staleTime: 30_000,
+    staleTime: 60_000,
   });
 
   const scrapers = rows ? buildScraperPerf(rows) : [];
@@ -162,7 +163,7 @@ export default function HealthPerformance() {
             hour: "2-digit",
             minute: "2-digit",
           }),
-          duration: Math.round(r.duration_ms! / 1000),
+          duration: Math.round((r.duration_ms ?? 0) / 1000),
           rows: r.rows_inserted || 0,
         }))
     : [];
@@ -264,16 +265,7 @@ export default function HealthPerformance() {
       </div>
 
       {isLoading ? (
-        <div
-          style={{
-            padding: 24,
-            color: "var(--ink-faint)",
-            fontFamily: '"DM Sans", sans-serif',
-            fontSize: 13,
-          }}
-        >
-          Loading performance data...
-        </div>
+        <HealthLoadingSkeleton />
       ) : (
         <>
           {/* Detail chart for selected scraper */}

@@ -8,7 +8,133 @@ import {
   SUPABASE_ANON_KEY,
 } from "@/components/admin/health/constants";
 import { useIsMobile } from "@/hooks/use-mobile";
+import ErrorBoundary from "@/components/ErrorBoundary";
 import HealthSidebar from "./HealthSidebar";
+import HealthLoadingSkeleton from "./HealthLoadingSkeleton";
+
+function HealthErrorFallback({
+  error,
+  resetError,
+}: {
+  error?: Error;
+  resetError: () => void;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    if (!error?.message) return;
+    navigator.clipboard.writeText(error.message).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+
+  return (
+    <div
+      style={{
+        padding: 32,
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        gap: 16,
+        maxWidth: 420,
+        margin: "48px auto",
+      }}
+    >
+      <div
+        style={{
+          width: 48,
+          height: 48,
+          borderRadius: 12,
+          background: "rgba(239, 68, 68, 0.1)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontSize: 22,
+        }}
+      >
+        !
+      </div>
+      <h3
+        style={{
+          fontFamily: '"DM Sans", sans-serif',
+          fontSize: 16,
+          fontWeight: 600,
+          color: "var(--ink)",
+          margin: 0,
+        }}
+      >
+        This section crashed
+      </h3>
+      {error?.message && (
+        <div style={{ width: "100%", position: "relative" }}>
+          <div
+            style={{
+              fontFamily: '"JetBrains Mono", monospace',
+              fontSize: 11,
+              color: "#ef4444",
+              background: "rgba(239, 68, 68, 0.06)",
+              borderRadius: 8,
+              padding: "10px 14px",
+              width: "100%",
+              wordBreak: "break-word",
+              maxHeight: 120,
+              overflow: "auto",
+            }}
+          >
+            {error.message}
+          </div>
+          <button
+            onClick={handleCopy}
+            style={{
+              position: "absolute",
+              top: 6,
+              right: 6,
+              fontFamily: '"DM Sans", sans-serif',
+              fontSize: 10,
+              fontWeight: 500,
+              padding: "3px 8px",
+              borderRadius: 4,
+              border: "1px solid rgba(239, 68, 68, 0.2)",
+              background: "rgba(239, 68, 68, 0.08)",
+              color: "#ef4444",
+              cursor: "pointer",
+            }}
+          >
+            {copied ? "Copied" : "Copy"}
+          </button>
+        </div>
+      )}
+      <button
+        onClick={resetError}
+        style={{
+          fontFamily: '"DM Sans", sans-serif',
+          fontSize: 13,
+          fontWeight: 600,
+          padding: "8px 20px",
+          borderRadius: 8,
+          border: "none",
+          background: "#e8430a",
+          color: "#fff",
+          cursor: "pointer",
+        }}
+      >
+        Try Again
+      </button>
+      <p
+        style={{
+          fontFamily: '"DM Sans", sans-serif',
+          fontSize: 12,
+          color: "var(--ink-faint)",
+          margin: 0,
+          textAlign: "center",
+        }}
+      >
+        Use the sidebar to navigate to a different section.
+      </p>
+    </div>
+  );
+}
 
 async function fetchHealthData(): Promise<HealthData> {
   const session = (await supabase.auth.getSession()).data.session;
@@ -45,7 +171,7 @@ export default function HealthLayout() {
       queryKey: ["admin-health"],
       queryFn: fetchHealthData,
       refetchInterval: 60_000,
-      staleTime: 30_000,
+      staleTime: 60_000,
     });
 
   useEffect(() => {
@@ -89,16 +215,7 @@ export default function HealthLayout() {
         }}
       >
         {isLoading && !data ? (
-          <div
-            style={{
-              fontFamily: '"DM Sans", sans-serif',
-              color: "var(--ink-tertiary)",
-              fontSize: 14,
-              padding: 24,
-            }}
-          >
-            Loading system health...
-          </div>
+          <HealthLoadingSkeleton />
         ) : error && !data ? (
           <div
             style={{
@@ -111,21 +228,10 @@ export default function HealthLayout() {
             Failed to load: {(error as Error).message}
           </div>
         ) : (
-          <Suspense
-            fallback={
-              <div
-                style={{
-                  fontFamily: '"DM Sans", sans-serif',
-                  color: "var(--ink-tertiary)",
-                  fontSize: 14,
-                  padding: 24,
-                }}
-              >
-                Loading...
-              </div>
-            }
-          >
-            <Outlet context={ctx} />
+          <Suspense fallback={<HealthLoadingSkeleton />}>
+            <ErrorBoundary fallback={HealthErrorFallback}>
+              <Outlet context={ctx} />
+            </ErrorBoundary>
           </Suspense>
         )}
       </main>

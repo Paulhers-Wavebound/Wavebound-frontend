@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { SCRAPER_LABELS } from "@/components/admin/health/constants";
+import HealthLoadingSkeleton from "./HealthLoadingSkeleton";
 import {
   relativeTime,
   formatDuration,
@@ -51,7 +52,7 @@ export default function HealthActivity() {
     queryKey: ["health-activity-feed"],
     queryFn: fetchActivity,
     refetchInterval: 30_000,
-    staleTime: 15_000,
+    staleTime: 30_000,
   });
 
   const filtered =
@@ -186,17 +187,7 @@ export default function HealthActivity() {
         }}
       >
         {isLoading ? (
-          <div
-            style={{
-              padding: 24,
-              textAlign: "center",
-              color: "var(--ink-faint)",
-              fontFamily: '"DM Sans", sans-serif',
-              fontSize: 13,
-            }}
-          >
-            Loading activity...
-          </div>
+          <HealthLoadingSkeleton />
         ) : filtered.length === 0 ? (
           <div
             style={{
@@ -358,8 +349,10 @@ export default function HealthActivity() {
                     >
                       {isExpanded
                         ? row.error_message
-                        : row.error_message!.slice(0, 120)}
-                      {!isExpanded && row.error_message!.length > 120 && " ..."}
+                        : row.error_message?.slice(0, 120)}
+                      {!isExpanded &&
+                        (row.error_message?.length ?? 0) > 120 &&
+                        " ..."}
                     </div>
                   )}
                 </div>

@@ -6,6 +6,7 @@ import {
   SUPABASE_URL,
   SUPABASE_ANON_KEY,
 } from "@/components/admin/health/constants";
+import HealthLoadingSkeleton from "./HealthLoadingSkeleton";
 
 interface PlatformCoverage {
   platform: string;
@@ -113,18 +114,7 @@ export default function HealthIdentity() {
   });
 
   if (isLoading || !data) {
-    return (
-      <div
-        style={{
-          fontFamily: '"DM Sans", sans-serif',
-          color: "var(--ink-tertiary)",
-          fontSize: 14,
-          padding: 24,
-        }}
-      >
-        Loading identity coverage...
-      </div>
-    );
+    return <HealthLoadingSkeleton />;
   }
 
   // Group platforms by category

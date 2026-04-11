@@ -602,6 +602,40 @@ function ExpandedRow({
           style={{ overflow: "hidden" }}
         >
           <div className="px-4 pt-1.5 pb-3">
+            {/* AI Focus: full reason text (un-truncated) */}
+            {artist.weekly_pulse?.focused_sound?.reason && (
+              <motion.div
+                initial={skip ? false : { opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={
+                  skip ? { duration: 0 } : { duration: 0.2, ease: EASE_OUT }
+                }
+                className="flex items-start gap-2 rounded-md bg-white/[0.03] px-3 py-2.5 mb-2"
+              >
+                <Music2
+                  size={13}
+                  className="shrink-0 text-[#e8430a]/70 mt-0.5"
+                />
+                <div className="min-w-0">
+                  <span
+                    className="text-[9px] font-semibold tracking-wider uppercase px-1.5 py-0.5 rounded mr-1.5"
+                    style={{
+                      color: "#e8430a",
+                      background: "rgba(232,67,10,0.12)",
+                    }}
+                  >
+                    FOCUS
+                  </span>
+                  <span className="text-[12px] font-medium text-white/87">
+                    {artist.weekly_pulse.focused_sound.title}
+                  </span>
+                  <p className="text-[11px] text-white/55 leading-relaxed mt-1">
+                    {artist.weekly_pulse.focused_sound.reason}
+                  </p>
+                </div>
+              </motion.div>
+            )}
+
             {/* AI Focus alert (Phase 6: catalogue alert from weekly_pulse) */}
             {artist.weekly_pulse?.catalogue_alert && (
               <motion.div
@@ -613,7 +647,7 @@ function ExpandedRow({
                 className="flex items-center gap-2 rounded-md bg-[#BF5AF2]/[0.08] px-3 py-2 mb-2"
               >
                 <Music2 size={13} className="shrink-0 text-[#BF5AF2]/80" />
-                <p className="text-[11px] text-[#BF5AF2]/90 leading-tight">
+                <p className="text-[11px] text-[#BF5AF2]/90 leading-relaxed">
                   <span className="font-semibold">Catalog alert:</span> &quot;
                   {artist.weekly_pulse.catalogue_alert.title}&quot;{" "}
                   {artist.weekly_pulse.catalogue_alert.delta} &mdash;{" "}
@@ -643,26 +677,31 @@ function ExpandedRow({
               </div>
             )}
 
-            {/* Priority action banner */}
-            <motion.div
-              initial={skip ? false : { opacity: 0, y: 4 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={
-                skip
-                  ? { duration: 0 }
-                  : {
-                      duration: 0.25,
-                      delay: hasTiles ? tiles.length * 0.06 + 0.05 : 0.1,
-                      ease: EASE_OUT,
-                    }
-              }
-              className="flex items-center gap-2 rounded-md bg-[#e8430a]/[0.06] px-3 py-2"
-            >
-              <Lightbulb size={13} className="shrink-0 text-[#e8430a]/70" />
-              <p className="text-[11px] text-[#e8430a]/90 leading-tight">
-                {derivePriorityAction(artist)}
-              </p>
-            </motion.div>
+            {/* Priority action banner — skip when it would just echo the AI focus reason shown above */}
+            {!(
+              artist.weekly_pulse?.focused_sound?.action &&
+              artist.weekly_pulse?.focused_sound?.reason
+            ) && (
+              <motion.div
+                initial={skip ? false : { opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={
+                  skip
+                    ? { duration: 0 }
+                    : {
+                        duration: 0.25,
+                        delay: hasTiles ? tiles.length * 0.06 + 0.05 : 0.1,
+                        ease: EASE_OUT,
+                      }
+                }
+                className="flex items-center gap-2 rounded-md bg-[#e8430a]/[0.06] px-3 py-2"
+              >
+                <Lightbulb size={13} className="shrink-0 text-[#e8430a]/70" />
+                <p className="text-[11px] text-[#e8430a]/90 leading-tight">
+                  {derivePriorityAction(artist)}
+                </p>
+              </motion.div>
+            )}
           </div>
         </motion.div>
       </td>
@@ -690,7 +729,8 @@ function TopSoundCell({ artist }: { artist: ContentArtist }) {
           </span>
         </div>
         <p className="text-[11px] text-white/50 leading-tight line-clamp-1">
-          {focused.reason}
+          {focused.reason?.split(/\s+/).slice(0, 5).join(" ")}
+          {(focused.reason?.split(/\s+/).length ?? 0) > 5 ? "…" : ""}
         </p>
       </div>
     );
@@ -920,9 +960,9 @@ function ArtistCard({
 
       {/* Top Sound / AI Focus */}
       {focused ? (
-        <div className="flex items-center gap-1.5 px-2.5 py-2 rounded-lg bg-white/[0.03]">
+        <div className="flex items-start gap-1.5 px-2.5 py-2 rounded-lg bg-white/[0.03]">
           <span
-            className="text-[9px] font-semibold tracking-wider uppercase px-1.5 py-0.5 rounded shrink-0"
+            className="text-[9px] font-semibold tracking-wider uppercase px-1.5 py-0.5 rounded shrink-0 mt-0.5"
             style={{ color: "#e8430a", background: "rgba(232,67,10,0.12)" }}
           >
             FOCUS
@@ -931,7 +971,7 @@ function ArtistCard({
             <p className="text-[12px] text-white/87 truncate">
               {focused.title}
             </p>
-            <p className="text-[10px] text-white/45 truncate">
+            <p className="text-[10px] text-white/45 leading-relaxed">
               {focused.reason}
             </p>
           </div>

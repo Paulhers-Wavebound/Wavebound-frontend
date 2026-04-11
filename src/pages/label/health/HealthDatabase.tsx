@@ -6,6 +6,7 @@ import {
   SUPABASE_ANON_KEY,
 } from "@/components/admin/health/constants";
 import { formatCompact } from "@/components/admin/health/helpers";
+import HealthLoadingSkeleton from "./HealthLoadingSkeleton";
 
 interface TableInfo {
   name: string;
@@ -26,7 +27,7 @@ interface DbSizesData {
 }
 
 function formatBytes(bytes: number | null): string {
-  if (bytes == null || bytes === 0) return "—";
+  if (bytes == null || bytes <= 0) return "—";
   const units = ["B", "KB", "MB", "GB", "TB"];
   const i = Math.floor(Math.log(bytes) / Math.log(1024));
   return (bytes / Math.pow(1024, i)).toFixed(1) + " " + units[i];
@@ -34,6 +35,7 @@ function formatBytes(bytes: number | null): string {
 
 // Categorize tables
 function getCategory(name: string): string {
+  if (!name) return "Other";
   if (name.startsWith("wb_observations")) return "Observations";
   if (name.startsWith("wb_")) return "Core Data";
   if (
@@ -106,10 +108,10 @@ export default function HealthDatabase() {
     queryKey: ["db-sizes"],
     queryFn: fetchDbSizes,
     refetchInterval: 300_000, // 5 min
-    staleTime: 120_000,
+    staleTime: 300_000,
   });
 
-  const tables = data?.tables || [];
+  const tables = (data?.tables || []).filter((t) => t.name);
   const hasBytes = tables.some((t) => t.total_bytes != null);
 
   // Group and count
@@ -314,16 +316,7 @@ export default function HealthDatabase() {
           </div>
 
           {isLoading ? (
-            <div
-              style={{
-                padding: 24,
-                color: "var(--ink-faint)",
-                fontFamily: '"DM Sans", sans-serif',
-                fontSize: 13,
-              }}
-            >
-              Loading database sizes...
-            </div>
+            <HealthLoadingSkeleton />
           ) : (
             <div
               style={{

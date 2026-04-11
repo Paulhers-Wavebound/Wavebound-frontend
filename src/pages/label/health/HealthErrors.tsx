@@ -13,6 +13,7 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import { SCRAPER_LABELS } from "@/components/admin/health/constants";
 import { relativeTime } from "@/components/admin/health/helpers";
+import HealthLoadingSkeleton from "./HealthLoadingSkeleton";
 
 interface ErrorRow {
   id: string;
@@ -87,7 +88,7 @@ export default function HealthErrors() {
     queryKey: ["health-error-trends"],
     queryFn: fetchErrors,
     refetchInterval: 60_000,
-    staleTime: 30_000,
+    staleTime: 60_000,
   });
 
   const dailyData = rows ? buildDailyChart(rows) : [];
@@ -169,16 +170,7 @@ export default function HealthErrors() {
       </div>
 
       {isLoading ? (
-        <div
-          style={{
-            padding: 24,
-            color: "var(--ink-faint)",
-            fontFamily: '"DM Sans", sans-serif',
-            fontSize: 13,
-          }}
-        >
-          Loading error data...
-        </div>
+        <HealthLoadingSkeleton />
       ) : (
         <>
           {/* Daily error chart */}
@@ -469,9 +461,9 @@ export default function HealthErrors() {
                         >
                           {isExpanded
                             ? row.error_message
-                            : row.error_message.slice(0, 120)}
+                            : row.error_message?.slice(0, 120)}
                           {!isExpanded &&
-                            row.error_message.length > 120 &&
+                            (row.error_message?.length ?? 0) > 120 &&
                             " ..."}
                         </div>
                       )}

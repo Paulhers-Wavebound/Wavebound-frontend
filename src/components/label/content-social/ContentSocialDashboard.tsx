@@ -8,8 +8,16 @@ import {
   buildPriorityItems,
   generateContentBriefing,
   generateContentInsight,
+  generateSignalReport,
 } from "@/data/contentDashboardHelpers";
+import type {
+  SignalReport,
+  DecisionCategory,
+  DecisionPoint,
+} from "@/data/contentDashboardHelpers";
+import type { AISignalReport } from "@/hooks/usePresidentBrief";
 import PresidentBriefCard from "@/components/label/PresidentBriefCard";
+import SignalReportCard from "./SignalReportCard";
 import ContentBriefingCard from "./ContentBriefingCard";
 import ContentPriorityCards from "./ContentPriorityCards";
 import ContentRosterTable from "./ContentRosterTable";
@@ -48,7 +56,6 @@ export default function ContentSocialDashboard() {
     );
     // When AI briefs exist, replace client-side actions with AI-extracted ones
     if (aiBriefs.hasAiBriefs && aiBriefs.actionItems.length > 0) {
-      // Group by artist — if all same artist, omit prefix from each line
       const items = aiBriefs.actionItems.slice(0, 4);
       const uniqueArtists = new Set(items.map((a) => a.artistName));
       const singleArtist = uniqueArtists.size === 1;
@@ -72,6 +79,115 @@ export default function ContentSocialDashboard() {
     () => generateContentInsight(artists, anomalies),
     [artists, anomalies],
   );
+
+  // Signal Report — prefer AI-generated (from generate-signal-report edge function)
+  // Falls back to client-side generation if no AI report exists
+  const signalReport = useMemo((): SignalReport | null => {
+    if (artists.length === 0) return null;
+
+    const aiReport = presidentBrief.aiReport;
+
+    // If we have an AI-generated Signal Report, map it to our SignalReport type
+    if (aiReport && aiReport.decision_points?.length > 0) {
+      const VALID_CATEGORIES = new Set([
+        "MOMENTUM_CAPTURE", "BUDGET_REALLOCATION", "FORMAT_PIVOT",
+        "CATALOG_ACTIVATION", "CONTENT_PIPELINE", "CRISIS_RESPONSE", "CONVERSION_ALERT",
+      ]);
+
+      // Map artist names to their data for avatars and handles
+      const artistMap = new Map(
+        artists.map((a) => [a.artist_name.toLowerCase(), a]),
+      );
+
+      const dateStr = new Date().toLocaleDateString("en-US", {
+        weekday: "long", month: "long", day: "numeric",
+      });
+
+      // Compute roster-level metrics from live data (always fresh)
+      const withViewDelta = artists.filter((a) => a.delta_avg_views_pct != null);
+      const avgVelocityDelta = withViewDelta.length > 0
+        ? withViewDelta.reduce((s, a) => s + (a.delta_avg_views_pct ?? 0), 0) / withViewDelta.length
+        : 0;
+      const withSaveRate = artists.filter((a) => a.save_to_reach_pct != null);
+      const avgSaveRate = withSaveRate.length > 0
+        ? withSaveRate.reduce((s, a) => s + (a.save_to_reach_pct ?? 0), 0) / withSaveRate.length
+        : null;
+      const breakoutCount = artists.filter((a) => a.momentum_tier === "breakout" || a.momentum_tier === "viral").length;
+      const atRiskCount = artists.filter(
+        (a) => a.risk_flags && a.risk_flags.some((f: { severity: string }) => f.severity === "critical"),
+      ).length;
+
+      const decisionPoints: DecisionPoint[] = aiReport.decision_points.map((dp) => {
+        // Find the first matching artist for avatar/handle
+        const matchedArtist = dp.artist_names?.length > 0
+          ? artistMap.get(dp.artist_names[0].toLowerCase()) || null
+          : null;
+        const displayName = dp.artist_names?.length > 1
+          ? dp.artist_names.join(", ")
+          : dp.artist_names?.[0] || "Roster";
+
+        const category = VALID_CATEGORIES.has(dp.category)
+          ? (dp.category as DecisionCategory)
+          : "MOMENTUM_CAPTURE";
+
+        return {
+          category,
+          artist_name: displayName,
+          artist_handle: matchedArtist?.artist_handle || "",
+          avatar_url: matchedArtist?.avatar_url || null,
+          signal: dp.signal,
+          decision: dp.decision,
+          urgency: dp.urgency,
+          evidence: (dp.evidence || []).map((e) => {
+            // AI returns flat strings like "Billboard #65" — show as single chip
+            if (typeof e === "string") {
+              return { label: e, value: "" };
+            }
+            return e as { label: string; value: string; color?: string };
+          }),
+        };
+      });
+
+      // Extract risk alerts from live data (not from AI — always current)
+      const riskAlerts = artists
+        .flatMap((a) =>
+          (a.risk_flags || [])
+            .filter((f: { severity: string }) => f.severity === "critical" || f.severity === "warning")
+            .map((f: { severity: string; message: string }) => ({
+              artist_name: a.artist_name,
+              avatar_url: a.avatar_url || null,
+              message: f.message,
+              severity: f.severity,
+            })),
+        )
+        .sort((a, b) => (a.severity === "critical" ? -1 : 1) - (b.severity === "critical" ? -1 : 1))
+        .slice(0, 5);
+
+      return {
+        date: dateStr,
+        rosterPulse: aiReport.roster_pulse || aiReport.headline,
+        decisionPoints,
+        riskAlerts,
+        todos: [], // AI report doesn't generate checkable todos — decisions ARE the actions
+        metrics: {
+          activeArtists: artists.filter((a) => a.days_since_last_post != null && a.days_since_last_post < 14).length,
+          totalArtists: artists.length,
+          avgVelocityDelta,
+          avgSaveRate,
+          breakoutCount,
+          atRiskCount,
+        },
+      };
+    }
+
+    // Fallback: client-side generation
+    return generateSignalReport(
+      artists,
+      anomalies,
+      songUGC,
+      labelName || "Your Label",
+    );
+  }, [artists, anomalies, songUGC, labelName, presidentBrief.aiReport]);
 
   if (loading) {
     return (
@@ -127,12 +243,13 @@ export default function ContentSocialDashboard() {
         <span className="text-sm text-white/40">{artists.length} Artists</span>
       </div>
 
-      {/* Executive Briefing — President Brief when available, fallback to legacy */}
-      {presidentBrief.text ? (
-        <PresidentBriefCard
-          text={presidentBrief.text}
-          generatedAt={presidentBrief.generatedAt}
+      {/* Signal Report — always primary. Replaces the 08:00-10:00 manual triage. */}
+      {signalReport ? (
+        <SignalReportCard
+          report={signalReport}
           userName={userName}
+          aiBriefText={presidentBrief.aiReport?.headline || presidentBrief.text}
+          aiBriefGeneratedAt={presidentBrief.generatedAt}
         />
       ) : (
         <ContentBriefingCard

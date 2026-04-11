@@ -9,6 +9,7 @@ import {
   relativeTime,
   formatDuration,
 } from "@/components/admin/health/helpers";
+import HealthLoadingSkeleton from "./HealthLoadingSkeleton";
 
 interface Workflow {
   id: string;
@@ -78,7 +79,7 @@ export default function HealthN8n() {
     queryKey: ["n8n-status"],
     queryFn: fetchN8nStatus,
     refetchInterval: 30_000,
-    staleTime: 15_000,
+    staleTime: 30_000,
   });
 
   const stats = data?.stats;
@@ -231,16 +232,7 @@ export default function HealthN8n() {
           </div>
 
           {isLoading ? (
-            <div
-              style={{
-                padding: 24,
-                color: "var(--ink-faint)",
-                fontFamily: '"DM Sans", sans-serif',
-                fontSize: 13,
-              }}
-            >
-              Loading n8n data...
-            </div>
+            <HealthLoadingSkeleton />
           ) : view === "executions" ? (
             /* Recent executions */
             <div

@@ -122,7 +122,7 @@ export default function HealthOverview() {
                       whiteSpace: "nowrap",
                     }}
                   >
-                    {s.error_message.slice(0, 150)}
+                    {s.error_message?.slice(0, 150)}
                   </div>
                 )}
               </div>
