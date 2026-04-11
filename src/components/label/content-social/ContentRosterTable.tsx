@@ -13,12 +13,19 @@ import {
   Music2,
   Zap,
   CalendarClock,
+  AlertTriangle,
+  Bookmark,
+  Target,
+  Users,
+  LayoutGrid,
+  List,
 } from "lucide-react";
 import InfoPopover from "@/components/sound-intelligence/InfoPopover";
 import type {
   ContentArtist,
   ContentFilter,
   ContentSortKey,
+  TierGroup,
 } from "@/data/contentDashboardHelpers";
 import {
   CONTENT_FILTER_TABS,
@@ -27,6 +34,9 @@ import {
   sortContentArtists,
   fmtViews,
   fmtPct,
+  saveToReachColor,
+  saveToReachLabel,
+  getTierGroup,
 } from "@/data/contentDashboardHelpers";
 
 /* ─── Artist avatar with initials fallback ────────────────── */
@@ -69,6 +79,64 @@ function ArtistAvatar({
   );
 }
 
+/* ─── Momentum tier badge (Phase 2) ──────────────────────── */
+
+const TIER_BADGE_CONFIG: Record<
+  string,
+  { label: string; color: string; bg: string }
+> = {
+  viral: { label: "VIRAL", color: "#BF5AF2", bg: "rgba(191,90,242,0.12)" },
+  breakout: {
+    label: "BREAKOUT",
+    color: "#30D158",
+    bg: "rgba(48,209,88,0.12)",
+  },
+  momentum: {
+    label: "MOMENTUM",
+    color: "#0A84FF",
+    bg: "rgba(10,132,255,0.12)",
+  },
+  stalled: { label: "STALLED", color: "#FF453A", bg: "rgba(255,69,58,0.12)" },
+};
+
+function MomentumBadge({ tier }: { tier: string | null }) {
+  if (!tier || tier === "stable") return null;
+  const cfg = TIER_BADGE_CONFIG[tier];
+  if (!cfg) return null;
+
+  return (
+    <span
+      className="text-[9px] font-semibold tracking-wider uppercase px-1.5 py-0.5 rounded ml-1.5 shrink-0"
+      style={{ color: cfg.color, background: cfg.bg }}
+    >
+      {cfg.label}
+    </span>
+  );
+}
+
+/* ─── Risk indicator (Phase 2) ───────────────────────────── */
+
+function RiskIndicator({
+  flags,
+}: {
+  flags: Array<{ severity: string; message: string }> | null;
+}) {
+  if (!flags || flags.length === 0) return null;
+  const hasUrgent = flags.some(
+    (f) => f.severity === "critical" || f.severity === "warning",
+  );
+  if (!hasUrgent) return null;
+
+  const hasCritical = flags.some((f) => f.severity === "critical");
+  return (
+    <AlertTriangle
+      size={12}
+      className="shrink-0 ml-1"
+      style={{ color: hasCritical ? "#FF453A" : "#FF9F0A" }}
+    />
+  );
+}
+
 /* ─── Content Health pill ──────────────────────────────────── */
 
 const STATUS_COLORS: Record<string, { color: string; bg: string }> = {
@@ -76,8 +144,8 @@ const STATUS_COLORS: Record<string, { color: string; bg: string }> = {
   Healthy: { color: "#34C759", bg: "rgba(52,199,89,0.10)" },
   Stable: { color: "#A2C739", bg: "rgba(162,199,57,0.10)" },
   Inconsistent: { color: "#FF9F0A", bg: "rgba(255,159,10,0.10)" },
-  "At Risk": { color: "#FF453A", bg: "rgba(255,69,58,0.10)" },
-  Silent: { color: "#6B6B70", bg: "rgba(107,107,112,0.10)" },
+  "At Risk": { color: "#FF453A", bg: "rgba(255,69,58,0.12)" },
+  Silent: { color: "#6B6B70", bg: "rgba(107,107,112,0.12)" },
 };
 
 function deriveStatus(
@@ -85,7 +153,6 @@ function deriveStatus(
   dbtCadence: string | null,
   trend: string | null,
 ): string {
-  // Map dbt cadence + trend to status tiers
   if (dbtCadence) {
     const c = dbtCadence.toLowerCase();
     if (c === "daily") return trend === "improving" ? "Hot" : "Healthy";
@@ -94,7 +161,6 @@ function deriveStatus(
     if (c === "inactive") return "At Risk";
     if (c === "dormant") return "Silent";
   }
-  // Fallback to days since last post + trend
   if (daysSince != null) {
     if (daysSince <= 2) return trend === "improving" ? "Hot" : "Healthy";
     if (daysSince <= 5) return "Stable";
@@ -102,14 +168,14 @@ function deriveStatus(
     if (daysSince <= 21) return "At Risk";
     if (daysSince > 21) return "Silent";
   }
-  return "—";
+  return "\u2014";
 }
 
 const STATUS_ARROWS: Record<string, string> = {
-  Hot: "\u25B2", // ▲
-  Inconsistent: "\u25BC", // ▼
-  "At Risk": "\u25BC", // ▼
-  Silent: "\u25BC", // ▼
+  Hot: "\u25B2",
+  Inconsistent: "\u25BC",
+  "At Risk": "\u25BC",
+  Silent: "\u25BC",
 };
 
 function ContentHealthPill({
@@ -130,7 +196,7 @@ function ContentHealthPill({
 
   return (
     <span
-      className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold"
+      className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[12px] font-semibold"
       style={{ color, background: bg }}
     >
       {status}
@@ -139,45 +205,61 @@ function ContentHealthPill({
   );
 }
 
-/* ─── Performance cell ─────────────────────────────────────── */
+/* ─── Performance cell (Phase 2: hero flip — trend is PRIMARY) */
 
 function PerformanceCell({ artist }: { artist: ContentArtist }) {
   const views = artist.avg_views_30d;
   const trend = artist.plays_trend_pct ?? artist.delta_avg_views_pct;
-  const engagement = artist.avg_engagement_30d ?? artist.avg_engagement_rate;
+  const saveRate = artist.save_to_reach_pct;
 
   const trendColor =
     trend != null && trend > 10
       ? "#30D158"
       : trend != null && trend < -10
         ? "#FF453A"
-        : undefined;
+        : "rgba(255,255,255,0.55)";
 
-  const trendLabel =
-    trend != null && trend !== 0
-      ? ` (${trend > 0 ? "+" : ""}${trend.toFixed(0)}% last 7d)`
-      : trend != null
-        ? " (flat)"
-        : "";
+  // Hero: trend percentage (bold, colored, large)
+  // When no trend, fall back to view count as hero
+  if (trend != null && trend !== 0) {
+    return (
+      <div className="flex flex-col gap-0.5">
+        <p
+          className="text-[16px] font-bold tabular-nums leading-tight"
+          style={{ color: trendColor }}
+        >
+          {trend > 0 ? "+" : ""}
+          {trend.toFixed(0)}%
+        </p>
+        <p className="text-[11px] text-white/40 tabular-nums leading-tight">
+          {fmtViews(views)} avg views
+        </p>
+        {saveRate != null && (
+          <p
+            className="text-[10px] font-medium tabular-nums leading-tight"
+            style={{ color: saveToReachColor(saveRate) }}
+          >
+            {saveRate.toFixed(1)}% save rate
+          </p>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-0.5">
-      <p className="text-[13px] tabular-nums leading-tight">
-        <span className="font-semibold text-white/87">
-          {fmtViews(views)} views
-        </span>
-        {trendLabel && (
-          <span
-            className="font-normal text-white/50"
-            style={{ color: trendColor }}
-          >
-            {trendLabel}
-          </span>
-        )}
+      <p className="text-[14px] font-semibold text-white/87 tabular-nums leading-tight">
+        {fmtViews(views)} views
       </p>
-      {engagement != null && (
-        <p className="text-[11px] text-white/40 tabular-nums leading-tight">
-          {Math.round(engagement)}% eng
+      <p className="text-[11px] text-white/40 tabular-nums leading-tight">
+        flat
+      </p>
+      {saveRate != null && (
+        <p
+          className="text-[10px] font-medium tabular-nums leading-tight"
+          style={{ color: saveToReachColor(saveRate) }}
+        >
+          {saveRate.toFixed(1)}% save rate
         </p>
       )}
     </div>
@@ -208,12 +290,12 @@ function ActivityCell({ artist }: { artist: ContentArtist }) {
           : days === 1
             ? "1d ago"
             : `${days}d ago`
-        : "—"}
+        : "\u2014"}
     </span>
   );
 }
 
-/* ─── Expanded detail row ─────────────────────────────────── */
+/* ─── Expanded detail row (Phase 4: tier-adaptive tiles) ──── */
 
 function freqToLabel(freq: number): string {
   if (freq >= 14) return "Posting multiple times a day";
@@ -227,16 +309,20 @@ function freqToLabel(freq: number): string {
 }
 
 function derivePriorityAction(artist: ContentArtist): string {
+  // Layer 3: use AI-generated action when available
+  const focused = artist.weekly_pulse?.focused_sound;
+  if (focused?.action) return focused.action;
+
   const days = artist.days_since_last_post;
   if (days != null && days >= 7) {
-    return `Get ${artist.artist_name} posting again — ${days} days silent`;
+    return `Get ${artist.artist_name} posting again \u2014 ${days} days silent`;
   }
   const trend = artist.plays_trend_pct ?? artist.delta_avg_views_pct;
   if (trend != null && trend < -20 && artist.best_format) {
-    return `Review content strategy — views down ${Math.abs(trend).toFixed(0)}%, lean into ${artist.best_format}`;
+    return `Review content strategy \u2014 views down ${Math.abs(trend).toFixed(0)}%, lean into ${artist.best_format}`;
   }
   if (artist.best_format && trend != null && trend > 10) {
-    return `Double down on ${artist.best_format} — momentum is building`;
+    return `Double down on ${artist.best_format} \u2014 momentum is building`;
   }
   if (artist.best_format) {
     return `Keep pushing ${artist.best_format} content this week`;
@@ -244,7 +330,6 @@ function derivePriorityAction(artist: ContentArtist): string {
   return "Run a content DNA scan to unlock format insights";
 }
 
-/* ease-out-quart: snappy deceleration, not springy */
 const EASE_OUT: [number, number, number, number] = [0.25, 1, 0.5, 1];
 
 function MetricTile({
@@ -252,6 +337,7 @@ function MetricTile({
   label,
   value,
   sub,
+  valueColor,
   index,
   skipMotion,
 }: {
@@ -259,6 +345,7 @@ function MetricTile({
   label: string;
   value: string;
   sub?: string;
+  valueColor?: string;
   index: number;
   skipMotion?: boolean;
 }) {
@@ -280,7 +367,10 @@ function MetricTile({
         <span className="text-[10px] font-medium uppercase tracking-wider text-white/30">
           {label}
         </span>
-        <p className="text-[13px] font-medium text-white/80 leading-snug truncate">
+        <p
+          className="text-[13px] font-medium leading-snug"
+          style={{ color: valueColor || "rgba(255,255,255,0.80)" }}
+        >
           {value}
         </p>
         {sub && (
@@ -293,83 +383,168 @@ function MetricTile({
   );
 }
 
-function ExpandedRow({
-  artist,
-  colSpan,
-}: {
-  artist: ContentArtist;
-  colSpan: number;
-}) {
-  const reduced = useReducedMotion();
-  const freq = Math.max(
-    artist.posting_freq_7d ?? 0,
-    artist.posting_freq_30d ?? 0,
-  );
-  const trend = artist.plays_trend_pct ?? artist.delta_avg_views_pct;
-  const engagement = artist.avg_engagement_30d ?? artist.avg_engagement_rate;
-
-  const velocityValue =
-    artist.avg_views_30d != null
-      ? fmtViews(artist.avg_views_30d) + " avg"
-      : null;
-  const velocitySub =
-    trend != null && trend !== 0
-      ? `${trend > 0 ? "+" : ""}${trend.toFixed(0)}% vs last 7d`
-      : trend != null
-        ? "Flat vs last 7d"
-        : undefined;
-
+/** Build tier-adaptive tiles based on momentum_tier (Bible §10) */
+function buildTierAdaptiveTiles(
+  artist: ContentArtist,
+  tierGroup: TierGroup,
+): {
+  icon: React.ElementType;
+  label: string;
+  value: string;
+  sub?: string;
+  valueColor?: string;
+}[] {
   const tiles: {
     icon: React.ElementType;
     label: string;
     value: string;
     sub?: string;
+    valueColor?: string;
   }[] = [];
 
+  const trend = artist.plays_trend_pct ?? artist.delta_avg_views_pct;
+  const engagement = artist.avg_engagement_30d ?? artist.avg_engagement_rate;
+  const freq = Math.max(
+    artist.posting_freq_7d ?? 0,
+    artist.posting_freq_30d ?? 0,
+  );
+
+  // Common: cadence (always useful)
   if (freq > 0) {
     tiles.push({ icon: Clock, label: "Cadence", value: freqToLabel(freq) });
   }
-  if (velocityValue) {
-    tiles.push({
-      icon: TrendingUp,
-      label: "Velocity",
-      value: velocityValue,
-      sub: velocitySub,
-    });
+
+  switch (tierGroup) {
+    case "breakout": {
+      // Breakout artists: velocity growth, engagement, format alpha, follower delta
+      if (artist.avg_views_30d != null) {
+        const velocitySub =
+          trend != null && trend !== 0
+            ? `${trend > 0 ? "+" : ""}${trend.toFixed(0)}% vs last 7d`
+            : undefined;
+        tiles.push({
+          icon: TrendingUp,
+          label: "Velocity",
+          value: fmtViews(artist.avg_views_30d) + " avg",
+          sub: velocitySub,
+          valueColor: trend != null && trend > 10 ? "#30D158" : undefined,
+        });
+      }
+      if (engagement != null) {
+        tiles.push({
+          icon: Heart,
+          label: "Engagement",
+          value: `${engagement.toFixed(2)}%`,
+        });
+      }
+      if (artist.best_format) {
+        const mult = artist.best_format_vs_median;
+        tiles.push({
+          icon: Zap,
+          label: "Format Alpha",
+          value: artist.best_format,
+          sub:
+            mult != null && mult > 1
+              ? `${mult.toFixed(1)}x vs median`
+              : undefined,
+        });
+      }
+      if (artist.delta_followers_pct != null) {
+        tiles.push({
+          icon: Users,
+          label: "Follower Delta",
+          value: fmtPct(artist.delta_followers_pct),
+          valueColor: artist.delta_followers_pct > 0 ? "#30D158" : "#FF453A",
+        });
+      }
+      break;
+    }
+    case "momentum": {
+      // Momentum artists: save rate, hook score, viral score, format alpha
+      if (artist.save_to_reach_pct != null) {
+        tiles.push({
+          icon: Bookmark,
+          label: "Save Rate",
+          value: `${artist.save_to_reach_pct.toFixed(1)}%`,
+          sub: saveToReachLabel(artist.save_to_reach_pct),
+          valueColor: saveToReachColor(artist.save_to_reach_pct),
+        });
+      }
+      if (artist.avg_hook_score != null) {
+        tiles.push({
+          icon: Target,
+          label: "Hook Score",
+          value: `${Math.round(artist.avg_hook_score)}/100`,
+        });
+      }
+      if (artist.avg_viral_score != null) {
+        tiles.push({
+          icon: Zap,
+          label: "Viral Score",
+          value: `${Math.round(artist.avg_viral_score)}/100`,
+        });
+      }
+      if (artist.best_format) {
+        const mult = artist.best_format_vs_median;
+        tiles.push({
+          icon: BarChart3,
+          label: "Format Alpha",
+          value: artist.best_format,
+          sub:
+            mult != null && mult > 1
+              ? `${mult.toFixed(1)}x vs median`
+              : undefined,
+        });
+      }
+      break;
+    }
+    case "catalog":
+    default: {
+      // Catalog artists: top sound (emphasis on catalog spikes), velocity, save rate
+      if (artist.top_sound_title) {
+        const ugc = artist.top_sound_new_ugc;
+        const ugcSub =
+          ugc != null && ugc > 0
+            ? `+${fmtViews(ugc)} new UGC this week`
+            : artist.top_sound_total_ugc
+              ? `${fmtViews(artist.top_sound_total_ugc)} total UGC`
+              : undefined;
+        const isGaining =
+          artist.sound_velocity === "up" || artist.sound_velocity === "new";
+        tiles.push({
+          icon: Music2,
+          label: isGaining ? "Catalog Spike" : "Top Sound",
+          value: artist.top_sound_title,
+          sub: ugcSub,
+          valueColor: isGaining ? "#30D158" : undefined,
+        });
+      }
+      if (artist.avg_views_30d != null) {
+        const velocitySub =
+          trend != null && trend !== 0
+            ? `${trend > 0 ? "+" : ""}${trend.toFixed(0)}% vs last 7d`
+            : undefined;
+        tiles.push({
+          icon: TrendingUp,
+          label: "Velocity",
+          value: fmtViews(artist.avg_views_30d) + " avg",
+          sub: velocitySub,
+        });
+      }
+      if (artist.save_to_reach_pct != null) {
+        tiles.push({
+          icon: Bookmark,
+          label: "Save Rate",
+          value: `${artist.save_to_reach_pct.toFixed(1)}%`,
+          sub: saveToReachLabel(artist.save_to_reach_pct),
+          valueColor: saveToReachColor(artist.save_to_reach_pct),
+        });
+      }
+      break;
+    }
   }
-  if (engagement != null) {
-    tiles.push({
-      icon: Heart,
-      label: "Engagement",
-      value: `${engagement.toFixed(2)}%`,
-    });
-  }
-  if (artist.top_sound_title) {
-    const ugc = artist.top_sound_new_ugc;
-    const ugcSub =
-      ugc != null && ugc > 0
-        ? `+${fmtViews(ugc)} new this week`
-        : artist.top_sound_total_ugc
-          ? `${fmtViews(artist.top_sound_total_ugc)} total UGC`
-          : undefined;
-    tiles.push({
-      icon: Music2,
-      label: "Top Sound",
-      value: artist.top_sound_title,
-      sub: ugcSub,
-    });
-  }
-  if (artist.best_format) {
-    const mult = artist.best_format_vs_median;
-    const multSub =
-      mult != null && mult > 1 ? `${mult.toFixed(1)}x vs median` : undefined;
-    tiles.push({
-      icon: Zap,
-      label: "Format Alpha",
-      value: artist.best_format,
-      sub: multSub,
-    });
-  }
+
+  // Common: last post (always included)
   {
     const days = artist.days_since_last_post;
     const daysValue =
@@ -392,6 +567,20 @@ function ExpandedRow({
     });
   }
 
+  return tiles;
+}
+
+function ExpandedRow({
+  artist,
+  colSpan,
+}: {
+  artist: ContentArtist;
+  colSpan: number;
+}) {
+  const reduced = useReducedMotion();
+  const tierGroup = getTierGroup(artist.momentum_tier);
+  const tiles = buildTierAdaptiveTiles(artist, tierGroup);
+
   const hasTiles = tiles.length > 0;
   const skip = !!reduced;
 
@@ -413,6 +602,26 @@ function ExpandedRow({
           style={{ overflow: "hidden" }}
         >
           <div className="px-4 pt-1.5 pb-3">
+            {/* AI Focus alert (Phase 6: catalogue alert from weekly_pulse) */}
+            {artist.weekly_pulse?.catalogue_alert && (
+              <motion.div
+                initial={skip ? false : { opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={
+                  skip ? { duration: 0 } : { duration: 0.2, ease: EASE_OUT }
+                }
+                className="flex items-center gap-2 rounded-md bg-[#BF5AF2]/[0.08] px-3 py-2 mb-2"
+              >
+                <Music2 size={13} className="shrink-0 text-[#BF5AF2]/80" />
+                <p className="text-[11px] text-[#BF5AF2]/90 leading-tight">
+                  <span className="font-semibold">Catalog alert:</span> &quot;
+                  {artist.weekly_pulse.catalogue_alert.title}&quot;{" "}
+                  {artist.weekly_pulse.catalogue_alert.delta} &mdash;{" "}
+                  {artist.weekly_pulse.catalogue_alert.reason}
+                </p>
+              </motion.div>
+            )}
+
             {/* Metric tiles */}
             {hasTiles ? (
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 mb-2.5">
@@ -429,7 +638,7 @@ function ExpandedRow({
               <div className="flex items-center gap-2.5 rounded-lg bg-white/[0.02] px-4 py-4 mb-2.5">
                 <BarChart3 size={15} className="text-white/20" />
                 <p className="text-[12px] text-white/30">
-                  No detailed metrics yet — run a content scan to populate
+                  No detailed metrics yet \u2014 run a content scan to populate
                 </p>
               </div>
             )}
@@ -461,33 +670,43 @@ function ExpandedRow({
   );
 }
 
-/* ─── Format Alpha cell ───────────────────────────────────── */
-
-function FormatAlphaCell({ artist }: { artist: ContentArtist }) {
-  const format = artist.best_format;
-
-  if (!format) {
-    return <span className="text-[12px] text-white/30">—</span>;
-  }
-
-  return (
-    <span className="text-[12px] text-white/87 leading-tight truncate max-w-[120px]">
-      {format}
-    </span>
-  );
-}
-
-/* ─── Top Sound cell ──────────────────────────────────────── */
+/* ─── Top Sound cell (Phase 6: AI focused sound) ─────────── */
 
 function TopSoundCell({ artist }: { artist: ContentArtist }) {
+  // Layer 3: AI-picked focused sound takes priority
+  const focused = artist.weekly_pulse?.focused_sound;
+  if (focused) {
+    return (
+      <div className="flex flex-col gap-0.5">
+        <div className="flex items-center gap-1.5 min-w-0">
+          <span
+            className="text-[9px] font-semibold tracking-wider uppercase px-1.5 py-0.5 rounded shrink-0"
+            style={{ color: "#e8430a", background: "rgba(232,67,10,0.12)" }}
+          >
+            FOCUS
+          </span>
+          <span className="text-[12px] text-white/87 truncate max-w-[180px]">
+            {focused.title}
+          </span>
+        </div>
+        <p className="text-[11px] text-white/50 leading-tight line-clamp-1">
+          {focused.reason}
+        </p>
+      </div>
+    );
+  }
+
+  // Fallback: standard top sound display
   const title = artist.top_sound_title;
   const newUgc = artist.top_sound_new_ugc;
   const totalUgc = artist.top_sound_total_ugc;
   const velocity = artist.sound_velocity;
 
   if (!title) {
-    return <span className="text-[12px] text-white/30">—</span>;
+    return <span className="text-[12px] text-white/30">\u2014</span>;
   }
+
+  const tierGroup = getTierGroup(artist.momentum_tier);
 
   const velocityColor =
     velocity === "up" || velocity === "new"
@@ -503,15 +722,40 @@ function TopSoundCell({ artist }: { artist: ContentArtist }) {
         ? "\u25BC"
         : "";
 
+  // Catalog tier: emphasize traction language
+  if (tierGroup === "catalog" && (velocity === "up" || velocity === "new")) {
+    return (
+      <div className="flex flex-col gap-0.5">
+        <div className="flex items-center gap-1.5 min-w-0">
+          <span
+            className="text-[12px] font-medium truncate max-w-[180px]"
+            style={{ color: "#30D158" }}
+          >
+            {title}
+          </span>
+          <span className="text-[10px] font-bold" style={{ color: "#30D158" }}>
+            {arrow}
+          </span>
+        </div>
+        <p className="text-[11px] text-white/50 leading-tight">
+          Gaining traction{" "}
+          {newUgc != null && newUgc > 0
+            ? `\u2014 +${fmtViews(newUgc)} new UGC`
+            : ""}
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-0.5">
       <div className="flex items-center gap-1.5 min-w-0">
-        <span className="text-[12px] text-white/87 truncate max-w-[110px]">
+        <span className="text-[12px] text-white/87 truncate max-w-[180px]">
           {title}
         </span>
         {newUgc != null && newUgc > 0 && (
           <span
-            className="text-[11px] font-semibold tabular-nums whitespace-nowrap"
+            className="text-[11px] font-bold tabular-nums whitespace-nowrap"
             style={{ color: velocityColor }}
           >
             +{fmtViews(newUgc)} {arrow}
@@ -566,7 +810,164 @@ function SortHeader({
   );
 }
 
-/* ─── Table ────────────────────────────────────────────────── */
+/* ─── Card view (Phase 3) ────────────────────────────────── */
+
+function ArtistCard({
+  artist,
+  onNavigate,
+}: {
+  artist: ContentArtist;
+  onNavigate: () => void;
+}) {
+  const trend = artist.plays_trend_pct ?? artist.delta_avg_views_pct;
+  const saveRate = artist.save_to_reach_pct;
+  const focused = artist.weekly_pulse?.focused_sound;
+  const tierGroup = getTierGroup(artist.momentum_tier);
+  const hasRisk = artist.risk_flags?.some(
+    (f) => f.severity === "critical" || f.severity === "warning",
+  );
+
+  const trendColor =
+    trend != null && trend > 10
+      ? "#30D158"
+      : trend != null && trend < -10
+        ? "#FF453A"
+        : "rgba(255,255,255,0.55)";
+
+  return (
+    <div
+      onClick={onNavigate}
+      className="group cursor-pointer rounded-xl border border-white/[0.06] p-4 transition-colors hover:bg-white/[0.03]"
+      style={{ background: "#1C1C1E" }}
+    >
+      {/* Risk strip */}
+      {hasRisk && (
+        <div className="flex items-center gap-1.5 mb-3 px-2 py-1 rounded bg-[#FF453A]/[0.08]">
+          <AlertTriangle size={11} style={{ color: "#FF453A" }} />
+          <span
+            className="text-[10px] font-medium"
+            style={{ color: "#FF453A" }}
+          >
+            {artist.risk_flags?.find((f) => f.severity === "critical")
+              ?.message ||
+              artist.risk_flags?.find((f) => f.severity === "warning")
+                ?.message ||
+              "Needs attention"}
+          </span>
+        </div>
+      )}
+
+      {/* Header: avatar + name + badges */}
+      <div className="flex items-center gap-2.5 mb-3">
+        <ArtistAvatar
+          name={artist.artist_name}
+          url={artist.avatar_url}
+          size={36}
+        />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1 min-w-0">
+            <p className="text-[14px] font-semibold text-white/87 truncate leading-tight">
+              {artist.artist_name}
+            </p>
+            <MomentumBadge tier={artist.momentum_tier} />
+          </div>
+          <ContentHealthPill
+            cadence={artist.posting_cadence}
+            daysSince={artist.days_since_last_post}
+            trend={artist.performance_trend}
+          />
+        </div>
+      </div>
+
+      {/* Hero metric: trend % */}
+      <div className="flex items-baseline gap-3 mb-3">
+        {trend != null && trend !== 0 ? (
+          <>
+            <span
+              className="text-[28px] font-bold tabular-nums leading-none"
+              style={{ color: trendColor }}
+            >
+              {trend > 0 ? "+" : ""}
+              {trend.toFixed(0)}%
+            </span>
+            <span className="text-[11px] text-white/40">velocity</span>
+          </>
+        ) : (
+          <>
+            <span className="text-[22px] font-semibold text-white/87 tabular-nums leading-none">
+              {fmtViews(artist.avg_views_30d)}
+            </span>
+            <span className="text-[11px] text-white/40">avg views</span>
+          </>
+        )}
+      </div>
+
+      {/* Save-to-Reach ratio */}
+      {saveRate != null && (
+        <div className="flex items-center gap-2 mb-3">
+          <Bookmark size={12} style={{ color: saveToReachColor(saveRate) }} />
+          <span
+            className="text-[12px] font-medium tabular-nums"
+            style={{ color: saveToReachColor(saveRate) }}
+          >
+            {saveRate.toFixed(1)}% save rate
+          </span>
+          <span className="text-[10px] text-white/30">
+            {saveToReachLabel(saveRate)}
+          </span>
+        </div>
+      )}
+
+      {/* Top Sound / AI Focus */}
+      {focused ? (
+        <div className="flex items-center gap-1.5 px-2.5 py-2 rounded-lg bg-white/[0.03]">
+          <span
+            className="text-[9px] font-semibold tracking-wider uppercase px-1.5 py-0.5 rounded shrink-0"
+            style={{ color: "#e8430a", background: "rgba(232,67,10,0.12)" }}
+          >
+            FOCUS
+          </span>
+          <div className="min-w-0">
+            <p className="text-[12px] text-white/87 truncate">
+              {focused.title}
+            </p>
+            <p className="text-[10px] text-white/45 truncate">
+              {focused.reason}
+            </p>
+          </div>
+        </div>
+      ) : artist.top_sound_title ? (
+        <div className="flex items-center gap-2 px-2.5 py-2 rounded-lg bg-white/[0.03]">
+          <Music2 size={12} className="text-white/30 shrink-0" />
+          <div className="min-w-0">
+            <p className="text-[12px] text-white/87 truncate">
+              {artist.top_sound_title}
+            </p>
+            {artist.top_sound_new_ugc != null &&
+              artist.top_sound_new_ugc > 0 && (
+                <p
+                  className="text-[10px] tabular-nums"
+                  style={{
+                    color:
+                      artist.sound_velocity === "up" ||
+                      artist.sound_velocity === "new"
+                        ? "#30D158"
+                        : "#FFD60A",
+                  }}
+                >
+                  +{fmtViews(artist.top_sound_new_ugc)} new UGC
+                </p>
+              )}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/* ─── Table / Cards container ─────────────────────────────── */
+
+type ViewMode = "rows" | "cards";
 
 export default function ContentRosterTable({
   artists,
@@ -577,6 +978,7 @@ export default function ContentRosterTable({
   const [activeFilter, setActiveFilter] = useState<ContentFilter>("all");
   const [sortKey, setSortKey] = useState<ContentSortKey>("content_health");
   const [sortAsc, setSortAsc] = useState(false);
+  const [viewMode, setViewMode] = useState<ViewMode>("rows");
 
   const filterCounts = useMemo(() => getFilterCounts(artists), [artists]);
 
@@ -603,145 +1005,200 @@ export default function ContentRosterTable({
 
   return (
     <div className="space-y-3">
-      {/* Filter tabs */}
-      <div className="flex items-center gap-1 flex-wrap">
-        {CONTENT_FILTER_TABS.map((f) => (
+      {/* Filter tabs + view toggle */}
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-1 flex-wrap">
+          {CONTENT_FILTER_TABS.map((f) => (
+            <button
+              key={f.key}
+              onClick={() => setActiveFilter(f.key)}
+              className={`px-2.5 py-1 rounded-full text-[11px] font-medium transition-colors ${
+                activeFilter === f.key
+                  ? "bg-[#e8430a] text-white"
+                  : "text-white/45 hover:text-white/70 hover:bg-white/[0.04]"
+              }`}
+            >
+              {f.label}
+              <span className="ml-1 opacity-50 tabular-nums">
+                {filterCounts[f.key]}
+              </span>
+            </button>
+          ))}
+          <InfoPopover
+            text="Filters \u2014 Posting Gap: no posts in 5+ days. Top Performers: views up 15%+ or improving. Declining: views/engagement falling or stalled. Format Shift: changed primary format. Columns \u2014 Content Health: cadence + consistency (green < 3 days, yellow 3\u20137, red 7+). Content Velocity: 30-day avg views and trend %. Top Sound: best-performing sound this week. Expand a row for more: Format Alpha, Last Post, Engagement."
+            width={340}
+          />
+        </div>
+        {/* View toggle */}
+        <div className="flex items-center gap-0.5 bg-white/[0.04] rounded-lg p-0.5 shrink-0">
           <button
-            key={f.key}
-            onClick={() => setActiveFilter(f.key)}
-            className={`px-2.5 py-1 rounded-full text-[11px] font-medium transition-colors ${
-              activeFilter === f.key
-                ? "bg-[#e8430a] text-white"
-                : "text-white/45 hover:text-white/70 hover:bg-white/[0.04]"
+            onClick={() => setViewMode("rows")}
+            className={`p-1.5 rounded-md transition-colors ${
+              viewMode === "rows"
+                ? "bg-white/[0.08] text-white/70"
+                : "text-white/30 hover:text-white/50"
             }`}
+            title="Table view"
           >
-            {f.label}
-            <span className="ml-1 opacity-50 tabular-nums">
-              {filterCounts[f.key]}
-            </span>
+            <List size={14} />
           </button>
-        ))}
-        <InfoPopover
-          text="Filters — Posting Gap: no posts in 5+ days. Top Performers: views up 15%+ or improving. Declining: views/engagement falling or stalled. Format Shift: changed primary format. Columns — Content Health: cadence + consistency (green < 3 days, yellow 3–7, red 7+). Content Velocity: 30-day avg views and trend %. Top Sound: best-performing sound this week. Expand a row for more: Format Alpha, Last Post, Engagement."
-          width={340}
-        />
+          <button
+            onClick={() => setViewMode("cards")}
+            className={`p-1.5 rounded-md transition-colors ${
+              viewMode === "cards"
+                ? "bg-white/[0.08] text-white/70"
+                : "text-white/30 hover:text-white/50"
+            }`}
+            title="Card view"
+          >
+            <LayoutGrid size={14} />
+          </button>
+        </div>
       </div>
 
-      {/* Table */}
-      <div
-        className="rounded-xl border border-white/[0.06] overflow-hidden"
-        style={{ background: "#1C1C1E" }}
-      >
-        <table className="w-full border-collapse">
-          <thead>
-            <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-              <th className="text-left pl-4 pr-2 py-2.5 text-[10px] font-semibold tracking-wider uppercase text-white/30 w-[180px]">
-                Artist
-              </th>
-              <th className="px-2 py-2.5 text-left">
-                <SortHeader
-                  label="Content Health"
-                  sortKey="content_health"
-                  active={sortKey === "content_health"}
-                  asc={sortAsc}
-                  onSort={handleSort}
-                />
-              </th>
-              <th className="px-2 py-2.5 text-left hidden md:table-cell">
-                <SortHeader
-                  label="Content Velocity"
-                  sortKey="performance"
-                  active={sortKey === "performance"}
-                  asc={sortAsc}
-                  onSort={handleSort}
-                />
-              </th>
-              <th className="px-2 py-2.5 text-left hidden md:table-cell">
-                <SortHeader
-                  label="Top Sound"
-                  sortKey="top_sound"
-                  active={sortKey === "top_sound"}
-                  asc={sortAsc}
-                  onSort={handleSort}
-                />
-              </th>
-              <th className="w-8 pr-2" />
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map((artist) => {
-              const isExpanded = expandedHandle === artist.artist_handle;
-              return (
-                <React.Fragment key={artist.artist_handle}>
-                  <tr
-                    onClick={(e) => toggleExpand(artist.artist_handle, e)}
-                    className="group cursor-pointer transition-colors hover:bg-white/[0.025]"
-                    style={{
-                      borderBottom: isExpanded
-                        ? "none"
-                        : "1px solid rgba(255,255,255,0.03)",
-                    }}
-                  >
-                    {/* Artist */}
-                    <td className="pl-4 pr-2 py-2">
-                      <div className="flex items-center gap-2.5">
-                        <ArtistAvatar
-                          name={artist.artist_name}
-                          url={artist.avatar_url}
+      {/* Card view */}
+      {viewMode === "cards" && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {filtered.map((artist) => (
+            <ArtistCard
+              key={artist.artist_handle}
+              artist={artist}
+              onNavigate={() =>
+                navigate(`/label/artists/${artist.artist_handle}`)
+              }
+            />
+          ))}
+          {filtered.length === 0 && (
+            <div className="col-span-full py-10 text-center text-[13px] text-white/30">
+              No artists match this filter.
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Table view */}
+      {viewMode === "rows" && (
+        <div
+          className="rounded-xl border border-white/[0.06] overflow-hidden"
+          style={{ background: "#1C1C1E" }}
+        >
+          <table className="w-full border-collapse">
+            <thead>
+              <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+                <th className="text-left pl-4 pr-2 py-2.5 text-[10px] font-semibold tracking-wider uppercase text-white/30 w-[200px]">
+                  Artist
+                </th>
+                <th className="px-2 py-2.5 text-left">
+                  <SortHeader
+                    label="Content Health"
+                    sortKey="content_health"
+                    active={sortKey === "content_health"}
+                    asc={sortAsc}
+                    onSort={handleSort}
+                  />
+                </th>
+                <th className="px-2 py-2.5 text-left hidden md:table-cell">
+                  <SortHeader
+                    label="Content Velocity"
+                    sortKey="performance"
+                    active={sortKey === "performance"}
+                    asc={sortAsc}
+                    onSort={handleSort}
+                  />
+                </th>
+                <th className="px-2 py-2.5 text-left hidden md:table-cell">
+                  <SortHeader
+                    label="Top Sound"
+                    sortKey="top_sound"
+                    active={sortKey === "top_sound"}
+                    asc={sortAsc}
+                    onSort={handleSort}
+                  />
+                </th>
+                <th className="w-8 pr-2" />
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((artist) => {
+                const isExpanded = expandedHandle === artist.artist_handle;
+                return (
+                  <React.Fragment key={artist.artist_handle}>
+                    <tr
+                      onClick={(e) => toggleExpand(artist.artist_handle, e)}
+                      className="group cursor-pointer transition-colors hover:bg-white/[0.04]"
+                      style={{
+                        borderBottom: isExpanded
+                          ? "none"
+                          : "1px solid rgba(255,255,255,0.03)",
+                      }}
+                    >
+                      {/* Artist + momentum badge + risk indicator */}
+                      <td className="pl-4 pr-2 py-2">
+                        <div className="flex items-center gap-2.5">
+                          <ArtistAvatar
+                            name={artist.artist_name}
+                            url={artist.avatar_url}
+                          />
+                          <div className="flex items-center min-w-0">
+                            <p className="text-[13px] font-medium text-white/87 leading-tight truncate">
+                              {artist.artist_name}
+                            </p>
+                            <RiskIndicator flags={artist.risk_flags} />
+                            <MomentumBadge tier={artist.momentum_tier} />
+                          </div>
+                        </div>
+                      </td>
+
+                      {/* Content Health */}
+                      <td className="px-2 py-2">
+                        <ContentHealthPill
+                          cadence={artist.posting_cadence}
+                          daysSince={artist.days_since_last_post}
+                          trend={artist.performance_trend}
                         />
-                        <p className="text-[13px] font-medium text-white/87 leading-tight">
-                          {artist.artist_name}
-                        </p>
-                      </div>
-                    </td>
+                      </td>
 
-                    {/* Content Health */}
-                    <td className="px-2 py-2">
-                      <ContentHealthPill
-                        cadence={artist.posting_cadence}
-                        daysSince={artist.days_since_last_post}
-                        trend={artist.performance_trend}
-                      />
-                    </td>
+                      {/* Performance (hero: trend %) */}
+                      <td className="px-2 py-2 hidden md:table-cell">
+                        <PerformanceCell artist={artist} />
+                      </td>
 
-                    {/* Performance */}
-                    <td className="px-2 py-2 hidden md:table-cell">
-                      <PerformanceCell artist={artist} />
-                    </td>
+                      {/* Top Sound / AI Focus */}
+                      <td className="px-2 py-2 hidden md:table-cell">
+                        <TopSoundCell artist={artist} />
+                      </td>
 
-                    {/* Top Sound */}
-                    <td className="px-2 py-2 hidden md:table-cell">
-                      <TopSoundCell artist={artist} />
-                    </td>
+                      {/* Navigate chevron */}
+                      <td className="pr-3 py-2 text-center">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigate(`/label/artists/${artist.artist_handle}`);
+                          }}
+                          className="p-2.5 -m-1.5 rounded-lg text-white/20 hover:text-white/55 hover:bg-white/[0.05] transition-colors"
+                        >
+                          <ChevronRight size={16} />
+                        </button>
+                      </td>
+                    </tr>
+                    <AnimatePresence>
+                      {isExpanded && (
+                        <ExpandedRow artist={artist} colSpan={5} />
+                      )}
+                    </AnimatePresence>
+                  </React.Fragment>
+                );
+              })}
+            </tbody>
+          </table>
 
-                    {/* Navigate chevron */}
-                    <td className="pr-3 py-2 text-center">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          navigate(`/label/artists/${artist.artist_handle}`);
-                        }}
-                        className="p-2.5 -m-1.5 rounded-lg text-white/20 hover:text-white/55 hover:bg-white/[0.05] transition-colors"
-                      >
-                        <ChevronRight size={16} />
-                      </button>
-                    </td>
-                  </tr>
-                  <AnimatePresence>
-                    {isExpanded && <ExpandedRow artist={artist} colSpan={5} />}
-                  </AnimatePresence>
-                </React.Fragment>
-              );
-            })}
-          </tbody>
-        </table>
-
-        {filtered.length === 0 && (
-          <div className="py-10 text-center text-[13px] text-white/30">
-            No artists match this filter.
-          </div>
-        )}
-      </div>
+          {filtered.length === 0 && (
+            <div className="py-10 text-center text-[13px] text-white/30">
+              No artists match this filter.
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
