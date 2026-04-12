@@ -9,6 +9,7 @@ import ToolStatusCard, {
 import VideoCardStrip from "./VideoCardStrip";
 import { extractTikTokVideos } from "@/utils/extractTikTokVideos";
 import TikTokLinkReplacer from "./TikTokLinkReplacer";
+import BlobLoader from "./BlobLoader";
 import { toast } from "sonner";
 
 interface Message {
@@ -147,32 +148,8 @@ const SourceTags = React.memo(function SourceTags({
   );
 });
 
-// ── Skeleton shimmer (pre-first-token) ──
-const StreamingSkeleton = React.memo(function StreamingSkeleton() {
-  return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      transition={{ duration: 0.2 }}
-      className="space-y-2.5 py-2"
-    >
-      {[0.65, 0.85, 0.45].map((w, i) => (
-        <div
-          key={i}
-          className="h-3.5 rounded animate-pulse"
-          style={{
-            width: `${w * 100}%`,
-            background:
-              "linear-gradient(90deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.04) 100%)",
-            backgroundSize: "200% 100%",
-            animation: "shimmer 1.5s ease-in-out infinite",
-          }}
-        />
-      ))}
-    </motion.div>
-  );
-});
+// ── Thinking indicator (pre-first-token) ──
+// Morphing blob replaces the old shimmer skeleton for a calmer, more organic feel.
 
 // ── Error card ──
 const ErrorCard = React.memo(function ErrorCard({
@@ -318,7 +295,7 @@ const MessageItem = React.memo(function MessageItem({
       {/* Markdown content */}
       <div
         ref={streamdownRef}
-        className={`streamdown-container${isStreaming ? " is-streaming" : ""}`}
+        className={`streamdown-container${isStreaming && msg.content.length > 0 ? " is-streaming" : ""}`}
         style={msg.content.length === 0 ? { minHeight: "2rem" } : undefined}
       >
         <Streamdown mode={isStreaming ? "streaming" : "static"}>
@@ -495,11 +472,11 @@ const MessageList = React.memo(function MessageList({
         <FollowUpPills content={lastMsg.content} onSubmit={onFollowUpSubmit!} />
       )}
 
-      {/* Skeleton shimmer — before any tool status or text arrives */}
+      {/* Blob thinking indicator — before any tool status or text arrives */}
       <AnimatePresence>
         {showStatusIndicator &&
           toolStatuses.size === 0 &&
-          !hasStreamingText && <StreamingSkeleton />}
+          !hasStreamingText && <BlobLoader />}
       </AnimatePresence>
 
       {/* Error card */}

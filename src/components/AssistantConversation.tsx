@@ -5,6 +5,7 @@ import InlineTikTokPill from './chat/InlineTikTokPill';
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from './ui/tooltip';
 import { useAISidebar } from '@/contexts/AISidebarContext';
 import { motion, AnimatePresence } from 'framer-motion';
+import BlobLoader from './chat/BlobLoader';
 import { matchGenreConfig } from '@/config/genreWelcomeConfig';
 import { getUserPreferences } from '@/components/discover/DiscoverOnboardingModal';
 import { useDiscover } from '@/contexts/DiscoverContext';
@@ -989,15 +990,8 @@ export function AssistantConversation({ onMessage, className, sessionId, initial
                     <span className="inline-block w-0.5 h-4 bg-foreground/60 animate-pulse ml-0.5 align-text-bottom" />
                   </>
                 ) : (
-                  /* Pre-stream loading dots */
-                  <div className="flex items-center gap-2">
-                    <div className="flex gap-1">
-                      <span className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                      <span className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                      <span className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-                    </div>
-                    <span className="text-sm text-muted-foreground">{loadingMessage}</span>
-                  </div>
+                  /* Pre-stream blob loader */
+                  <BlobLoader label={loadingMessage} />
                 )}
 
                 {/* Tool status indicator */}

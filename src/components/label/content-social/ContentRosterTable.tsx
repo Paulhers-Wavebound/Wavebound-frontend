@@ -13,7 +13,6 @@ import {
   Music2,
   Zap,
   CalendarClock,
-  AlertTriangle,
   Bookmark,
   Target,
   Users,
@@ -96,7 +95,7 @@ const TIER_BADGE_CONFIG: Record<
     color: "#0A84FF",
     bg: "rgba(10,132,255,0.12)",
   },
-  stalled: { label: "STALLED", color: "#FF453A", bg: "rgba(255,69,58,0.12)" },
+  stalled: { label: "STALLED", color: "rgba(255,255,255,0.40)", bg: "rgba(255,255,255,0.06)" },
 };
 
 function MomentumBadge({ tier }: { tier: string | null }) {
@@ -129,10 +128,13 @@ function RiskIndicator({
 
   const hasCritical = flags.some((f) => f.severity === "critical");
   return (
-    <AlertTriangle
-      size={12}
-      className="shrink-0 ml-1"
-      style={{ color: hasCritical ? "#FF453A" : "#FF9F0A" }}
+    <span
+      className="shrink-0 ml-1.5 inline-block h-1.5 w-1.5 rounded-full"
+      style={{
+        background: hasCritical
+          ? "rgba(255,69,58,0.65)"
+          : "rgba(255,159,10,0.50)",
+      }}
     />
   );
 }
@@ -188,6 +190,7 @@ function ContentHealthPill({
   trend: string | null;
 }) {
   const status = deriveStatus(daysSince, cadence, trend);
+  if (status === "\u2014") return null;
   const { color, bg } = STATUS_COLORS[status] ?? {
     color: "rgba(255,255,255,0.30)",
     bg: "rgba(255,255,255,0.04)",
@@ -880,21 +883,15 @@ function ArtistCard({
       className="group cursor-pointer rounded-xl border border-white/[0.06] p-4 transition-colors hover:bg-white/[0.03]"
       style={{ background: "#1C1C1E" }}
     >
-      {/* Risk strip */}
+      {/* Risk note */}
       {hasRisk && (
-        <div className="flex items-center gap-1.5 mb-3 px-2 py-1 rounded bg-[#FF453A]/[0.08]">
-          <AlertTriangle size={11} style={{ color: "#FF453A" }} />
-          <span
-            className="text-[10px] font-medium"
-            style={{ color: "#FF453A" }}
-          >
-            {artist.risk_flags?.find((f) => f.severity === "critical")
+        <p className="text-[11px] mb-3 px-1" style={{ color: "rgba(255,255,255,0.40)" }}>
+          {artist.risk_flags?.find((f) => f.severity === "critical")
+            ?.message ||
+            artist.risk_flags?.find((f) => f.severity === "warning")
               ?.message ||
-              artist.risk_flags?.find((f) => f.severity === "warning")
-                ?.message ||
-              "Needs attention"}
-          </span>
-        </div>
+            "Needs attention"}
+        </p>
       )}
 
       {/* Header: avatar + name + badges */}

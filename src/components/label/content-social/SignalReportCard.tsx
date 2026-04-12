@@ -10,14 +10,13 @@
  *  3. Risk Alerts — critical/warning flags (if any)
  *  4. Today's TODO — actionable checklist derived from decisions
  */
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   MessageCircle,
   Check,
   ChevronDown,
   ChevronUp,
-  AlertTriangle,
   TrendingUp,
   TrendingDown,
   Zap,
@@ -201,6 +200,90 @@ function DecisionPointRow({ dp, index }: { dp: DecisionPoint; index: number }) {
   );
 }
 
+/* ─── Collapsible Decision Points ────────────────────────── */
+
+const PEEK_HEIGHT = 120;
+
+function DecisionPointsSection({
+  decisionPoints,
+  isOpen,
+  onToggle,
+}: {
+  decisionPoints: DecisionPoint[];
+  isOpen: boolean;
+  onToggle: () => void;
+}) {
+  const contentRef = useRef<HTMLDivElement>(null);
+
+  return (
+    <div className="px-7 pb-2">
+      {/* Header — clickable toggle */}
+      <button
+        onClick={onToggle}
+        className="flex items-center justify-between w-full pt-3 pb-2 border-t border-white/[0.06]"
+      >
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] font-semibold tracking-wider uppercase text-white/30">
+            Decision Points
+          </span>
+          <span className="text-[10px] text-white/20 tabular-nums">
+            {decisionPoints.length}
+          </span>
+        </div>
+        <motion.div
+          animate={{ rotate: isOpen ? 180 : 0 }}
+          transition={{ type: "spring", stiffness: 300, damping: 25 }}
+        >
+          <ChevronDown
+            size={14}
+            style={{ color: "rgba(255,255,255,0.30)" }}
+          />
+        </motion.div>
+      </button>
+
+      {decisionPoints.length === 0 && (
+        <p className="text-[13px] text-white/30 py-4">
+          No critical decisions needed today. Roster is stable.
+        </p>
+      )}
+
+      {decisionPoints.length > 0 && (
+        <motion.div
+          animate={{
+            height: isOpen
+              ? contentRef.current?.scrollHeight ?? "auto"
+              : PEEK_HEIGHT,
+          }}
+          transition={{ type: "spring", stiffness: 280, damping: 30 }}
+          style={{ overflow: "hidden", position: "relative" }}
+          onClick={!isOpen ? onToggle : undefined}
+          className={!isOpen ? "cursor-pointer" : undefined}
+        >
+          {/* Fade-out mask — visible only when collapsed */}
+          <motion.div
+            animate={{ opacity: isOpen ? 0 : 1 }}
+            transition={{ duration: 0.2 }}
+            style={{
+              position: "absolute",
+              inset: 0,
+              pointerEvents: "none",
+              zIndex: 1,
+              background:
+                "linear-gradient(to bottom, transparent 15%, var(--L1, #1C1C1E) 95%)",
+            }}
+          />
+
+          <div ref={contentRef}>
+            {decisionPoints.map((dp, i) => (
+              <DecisionPointRow key={i} dp={dp} index={i} />
+            ))}
+          </div>
+        </motion.div>
+      )}
+    </div>
+  );
+}
+
 /* ─── Main Signal Report Card ─────────────────────────────── */
 
 export default function SignalReportCard({
@@ -216,6 +299,7 @@ export default function SignalReportCard({
 }) {
   const navigate = useNavigate();
   const [dismissed, setDismissed] = useState(false);
+  const [decisionsOpen, setDecisionsOpen] = useState(false);
   const [todoChecked, setTodoChecked] = useState<Set<number>>(new Set());
   const [showAllTodos, setShowAllTodos] = useState(false);
 
@@ -347,7 +431,7 @@ export default function SignalReportCard({
               className="text-[15px] leading-[1.85] mb-1"
               style={{
                 fontFamily: '"Tiempos Text", Georgia, serif',
-                color: "rgba(255,255,255,0.60)",
+                color: "rgba(255,255,255,0.87)",
               }}
             >
               {report.rosterPulse}
@@ -367,72 +451,32 @@ export default function SignalReportCard({
             )}
           </div>
 
-          {/* ── Risk Alerts ────────────────────────────────── */}
+          {/* ── Risk Alerts (subtle inline) ─────────────────── */}
           {report.riskAlerts.length > 0 && (
-            <div className="px-7 py-3">
-              <div className="flex flex-col gap-1.5">
-                {report.riskAlerts.slice(0, 3).map((alert, i) => (
-                  <div
-                    key={i}
-                    className="flex items-center gap-2 px-3 py-1.5 rounded-lg"
-                    style={{
-                      background:
-                        alert.severity === "critical"
-                          ? "rgba(255,69,58,0.08)"
-                          : "rgba(255,159,10,0.06)",
-                    }}
-                  >
-                    {alert.avatar_url && (
-                      <img
-                        src={alert.avatar_url}
-                        alt={alert.artist_name}
-                        className="h-4 w-4 shrink-0 rounded-full object-cover"
-                      />
-                    )}
-                    <AlertTriangle
-                      size={12}
-                      className="shrink-0"
-                      style={{
-                        color:
-                          alert.severity === "critical" ? "#FF453A" : "#FF9F0A",
-                      }}
-                    />
-                    <span
-                      className="text-[11px] font-medium"
-                      style={{
-                        color:
-                          alert.severity === "critical" ? "#FF453A" : "#FF9F0A",
-                      }}
-                    >
-                      {alert.artist_name}: {alert.message}
-                    </span>
-                  </div>
+            <div className="px-7 pt-1 pb-2">
+              <p
+                className="text-[12px] leading-relaxed"
+                style={{ color: "rgba(255,255,255,0.35)" }}
+              >
+                <span className="font-medium" style={{ color: "rgba(255,255,255,0.45)" }}>
+                  Heads up:
+                </span>{" "}
+                {report.riskAlerts.slice(0, 3).map((alert, i, arr) => (
+                  <span key={i}>
+                    {alert.message}
+                    {i < arr.length - 1 ? (i === arr.length - 2 ? ", and " : ", ") : "."}
+                  </span>
                 ))}
-              </div>
+              </p>
             </div>
           )}
 
-          {/* ── Decision Points ────────────────────────────── */}
-          <div className="px-7 pb-2">
-            <div className="flex items-center gap-2 mb-2 pt-3 border-t border-white/[0.06]">
-              <span className="text-[10px] font-semibold tracking-wider uppercase text-white/30">
-                Decision Points
-              </span>
-              <span className="text-[10px] text-white/20 tabular-nums">
-                {report.decisionPoints.length}
-              </span>
-            </div>
-
-            {report.decisionPoints.map((dp, i) => (
-              <DecisionPointRow key={i} dp={dp} index={i} />
-            ))}
-
-            {report.decisionPoints.length === 0 && (
-              <p className="text-[13px] text-white/30 py-4">
-                No critical decisions needed today. Roster is stable.
-              </p>
-            )}
-          </div>
+          {/* ── Decision Points (collapsible) ─────────────── */}
+          <DecisionPointsSection
+            decisionPoints={report.decisionPoints}
+            isOpen={decisionsOpen}
+            onToggle={() => setDecisionsOpen((o) => !o)}
+          />
 
           {/* ── TODO Checklist ─────────────────────────────── */}
           {report.todos.length > 0 && (

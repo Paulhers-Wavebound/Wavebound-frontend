@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { ExternalLink } from "lucide-react";
 import {
   useContentIntelligence,
   type ContentIntelData,
@@ -916,60 +917,80 @@ function FormatPerformanceSection({ data }: { data: ContentIntelData }) {
                   className="ml-4 mr-1 mb-2 rounded-lg border border-white/[0.04] overflow-hidden"
                   style={{ background: "rgba(255,255,255,0.015)" }}
                 >
-                  {formatVideos.map((v, vi) => (
-                    <div
-                      key={vi}
-                      className="flex items-start gap-3 px-3 py-2.5"
-                      style={{
-                        borderBottom:
-                          vi < formatVideos.length - 1
-                            ? "1px solid rgba(255,255,255,0.03)"
-                            : undefined,
-                      }}
-                    >
-                      <span className="text-[10px] font-mono text-white/20 tabular-nums shrink-0 mt-0.5 w-4 text-right">
-                        {vi + 1}
-                      </span>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-[12px] text-white/60 leading-snug line-clamp-2">
-                          {v.caption || "No caption"}
-                        </p>
-                        <div className="flex items-center gap-3 mt-1">
-                          <span className="text-[10px] font-mono text-white/40 tabular-nums">
-                            {fmtNum(v.views)} views
-                          </span>
-                          {v.hookScore != null && (
-                            <span className="text-[10px] font-mono text-white/30">
-                              Hook {v.hookScore.toFixed(1)}
+                  {formatVideos.map((v, vi) => {
+                    const Wrapper = v.videoUrl ? "a" : "div";
+                    const linkProps = v.videoUrl
+                      ? {
+                          href: v.videoUrl,
+                          target: "_blank" as const,
+                          rel: "noopener noreferrer",
+                        }
+                      : {};
+                    return (
+                      <Wrapper
+                        key={vi}
+                        {...linkProps}
+                        className={`flex items-start gap-3 px-3 py-2.5 no-underline${v.videoUrl ? " group cursor-pointer transition-colors hover:bg-white/[0.04]" : ""}`}
+                        style={{
+                          borderBottom:
+                            vi < formatVideos.length - 1
+                              ? "1px solid rgba(255,255,255,0.03)"
+                              : undefined,
+                          textDecoration: "none",
+                        }}
+                      >
+                        <span className="text-[10px] font-mono text-white/20 tabular-nums shrink-0 mt-0.5 w-4 text-right">
+                          {vi + 1}
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <p
+                            className={`text-[12px] leading-snug line-clamp-2${v.videoUrl ? " text-white/60 group-hover:text-white/80 transition-colors" : " text-white/60"}`}
+                          >
+                            {v.caption || "No caption"}
+                          </p>
+                          <div className="flex items-center gap-3 mt-1">
+                            <span className="text-[10px] font-mono text-white/40 tabular-nums">
+                              {fmtNum(v.views)} views
                             </span>
-                          )}
-                          {v.viralScore != null && (
-                            <span className="text-[10px] font-mono text-white/30">
-                              Viral {v.viralScore.toFixed(1)}
-                            </span>
-                          )}
-                          {v.mood && (
-                            <span className="text-[10px] text-white/25">
-                              {v.mood}
-                            </span>
-                          )}
-                          {v.isAd && (
-                            <span className="text-[9px] font-semibold uppercase tracking-wider text-[#FF9F0A] px-1 py-0.5 rounded bg-[rgba(255,159,10,0.1)]">
-                              Ad
-                            </span>
-                          )}
-                          {v.datePosted && (
-                            <span className="text-[10px] text-white/20 ml-auto">
-                              {new Date(v.datePosted).toLocaleDateString(
-                                "en-US",
-                                { month: "short", day: "numeric" },
-                              )}
-                            </span>
-                          )}
+                            {v.hookScore != null && (
+                              <span className="text-[10px] font-mono text-white/30">
+                                Hook {v.hookScore.toFixed(1)}
+                              </span>
+                            )}
+                            {v.viralScore != null && (
+                              <span className="text-[10px] font-mono text-white/30">
+                                Viral {v.viralScore.toFixed(1)}
+                              </span>
+                            )}
+                            {v.mood && (
+                              <span className="text-[10px] text-white/25">
+                                {v.mood}
+                              </span>
+                            )}
+                            {v.isAd && (
+                              <span className="text-[9px] font-semibold uppercase tracking-wider text-[#FF9F0A] px-1 py-0.5 rounded bg-[rgba(255,159,10,0.1)]">
+                                Ad
+                              </span>
+                            )}
+                            {v.datePosted && (
+                              <span className="text-[10px] text-white/20 ml-auto">
+                                {new Date(v.datePosted).toLocaleDateString(
+                                  "en-US",
+                                  { month: "short", day: "numeric" },
+                                )}
+                              </span>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    </div>
-                  ))}
+                        {v.videoUrl && (
+                          <ExternalLink
+                            size={12}
+                            className="shrink-0 mt-1 text-white/0 group-hover:text-white/30 transition-colors"
+                          />
+                        )}
+                      </Wrapper>
+                    );
+                  })}
                 </div>
               )}
             </div>

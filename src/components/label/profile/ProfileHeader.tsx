@@ -1,30 +1,13 @@
-import { Card } from "@/components/ui/card";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
-import { Button } from "@/components/ui/button";
 import { BadgeCheck, Copy } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
-const tierConfig: Record<string, { label: string; color: string }> = {
-  viral: {
-    label: "Viral",
-    color: "bg-purple-500/20 text-purple-400 border-purple-500/30",
-  },
-  breakout: {
-    label: "Breakout",
-    color: "bg-green-500/20 text-green-400 border-green-500/30",
-  },
-  momentum: {
-    label: "Momentum",
-    color: "bg-orange-500/20 text-orange-400 border-orange-500/30",
-  },
-  stable: {
-    label: "Stable",
-    color: "bg-gray-500/20 text-gray-400 border-gray-500/30",
-  },
-  stalled: {
-    label: "Stalled",
-    color: "bg-red-500/20 text-red-400 border-red-500/30",
-  },
+const tierConfig: Record<string, { label: string; color: string; bg: string }> = {
+  viral: { label: "Viral", color: "#FF453A", bg: "rgba(255,69,58,0.12)" },
+  breakout: { label: "Breakout", color: "#30D158", bg: "rgba(48,209,88,0.12)" },
+  momentum: { label: "Momentum", color: "#FF9F0A", bg: "rgba(255,159,10,0.12)" },
+  stable: { label: "Stable", color: "#8E8E93", bg: "rgba(142,142,147,0.12)" },
+  stalled: { label: "Stalled", color: "#FF453A", bg: "rgba(255,69,58,0.12)" },
 };
 
 function fmtNum(n: number | null | undefined): string {
@@ -34,11 +17,12 @@ function fmtNum(n: number | null | undefined): string {
   return n.toLocaleString();
 }
 
-function postAgeColor(days: number | null): string {
-  if (days == null) return "text-muted-foreground";
-  if (days <= 3) return "text-green-400";
-  if (days <= 7) return "text-amber-400";
-  return "text-red-400";
+function postAgeLabel(days: number | null): { text: string; color: string } {
+  if (days == null) return { text: "No recent posts", color: "rgba(255,255,255,0.30)" };
+  if (days === 0) return { text: "Posted today", color: "#30D158" };
+  if (days <= 3) return { text: `Posted ${days}d ago`, color: "#30D158" };
+  if (days <= 7) return { text: `Posted ${days}d ago`, color: "#FFD60A" };
+  return { text: `Posted ${days}d ago`, color: "#FF453A" };
 }
 
 interface ProfileHeaderProps {
@@ -66,108 +50,238 @@ export default function ProfileHeader({
 }: ProfileHeaderProps) {
   const { toast } = useToast();
   const tier = tierConfig[momentumTier] || tierConfig.stable;
+  const postAge = postAgeLabel(daysSinceLastPost);
 
   return (
-    <>
-      {/* Header Card */}
-      <Card className="p-6 bg-card border-border">
-        <div className="flex items-start gap-4">
-          <Avatar className="w-16 h-16">
+    <div
+      style={{
+        display: "flex",
+        gap: 12,
+        flexWrap: "wrap",
+      }}
+    >
+      {/* Profile card */}
+      <div
+        style={{
+          flex: "1 1 400px",
+          background: "#1C1C1E",
+          borderRadius: 16,
+          borderTop: "0.5px solid rgba(255,255,255,0.04)",
+          padding: "24px 24px",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 16 }}>
+          <Avatar className="w-14 h-14" style={{ flexShrink: 0 }}>
             {avatarUrl && <AvatarImage src={avatarUrl} />}
-            <AvatarFallback className="text-xl">
+            <AvatarFallback
+              style={{
+                fontSize: 20,
+                background: "#2C2C2E",
+                color: "rgba(255,255,255,0.55)",
+              }}
+            >
               {artistName?.[0] ?? "?"}
             </AvatarFallback>
           </Avatar>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="text-xl font-bold text-foreground">
+
+          <div style={{ flex: 1, minWidth: 0 }}>
+            {/* Name + badges */}
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <h1
+                style={{
+                  fontFamily: '"Playfair Display", serif',
+                  fontSize: 22,
+                  fontWeight: 700,
+                  color: "rgba(255,255,255,0.87)",
+                  margin: 0,
+                  lineHeight: 1.2,
+                  letterSpacing: "-0.3px",
+                }}
+              >
                 {artistName}
               </h1>
-              <BadgeCheck className="w-4 h-4 text-blue-400 shrink-0" />
+              <BadgeCheck
+                size={16}
+                style={{ color: "#0A84FF", flexShrink: 0 }}
+              />
               <span
-                className={`text-xs px-2 py-0.5 rounded-full border ${tier.color}`}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  padding: "2px 10px",
+                  borderRadius: 12,
+                  background: tier.bg,
+                  color: tier.color,
+                  fontFamily: '"DM Sans", sans-serif',
+                  fontSize: 11,
+                  fontWeight: 600,
+                }}
               >
                 {tier.label}
               </span>
             </div>
-            <p className="text-sm text-muted-foreground">
+
+            {/* Handle */}
+            <div
+              style={{
+                fontFamily: '"JetBrains Mono", monospace',
+                fontSize: 13,
+                color: "rgba(255,255,255,0.35)",
+                marginTop: 3,
+              }}
+            >
               @{artistHandle?.replace(/^@+/, "")}
-            </p>
+            </div>
 
             {/* Platform stats */}
-            <div className="flex items-center gap-4 mt-3 text-xs text-muted-foreground flex-wrap">
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 16,
+                marginTop: 12,
+                flexWrap: "wrap",
+              }}
+            >
               {tiktokFollowers != null && (
-                <span>
+                <span
+                  style={{
+                    fontFamily: '"DM Sans", sans-serif',
+                    fontSize: 13,
+                    color: "rgba(255,255,255,0.40)",
+                  }}
+                >
                   TikTok:{" "}
-                  <b className="text-foreground">{fmtNum(tiktokFollowers)}</b>
+                  <span style={{ fontWeight: 600, color: "rgba(255,255,255,0.87)" }}>
+                    {fmtNum(tiktokFollowers)}
+                  </span>
                 </span>
               )}
               {instagramFollowers != null && (
-                <span>
+                <span
+                  style={{
+                    fontFamily: '"DM Sans", sans-serif',
+                    fontSize: 13,
+                    color: "rgba(255,255,255,0.40)",
+                  }}
+                >
                   IG:{" "}
-                  <b className="text-foreground">
+                  <span style={{ fontWeight: 600, color: "rgba(255,255,255,0.87)" }}>
                     {fmtNum(instagramFollowers)}
-                  </b>
+                  </span>
                 </span>
               )}
               {monthlyListeners != null && (
-                <span>
+                <span
+                  style={{
+                    fontFamily: '"DM Sans", sans-serif',
+                    fontSize: 13,
+                    color: "rgba(255,255,255,0.40)",
+                  }}
+                >
                   Spotify:{" "}
-                  <b className="text-foreground">
+                  <span style={{ fontWeight: 600, color: "rgba(255,255,255,0.87)" }}>
                     {fmtNum(monthlyListeners)} listeners
-                  </b>
+                  </span>
                 </span>
               )}
             </div>
 
             {/* Last posted */}
-            <p className={`text-xs mt-2 ${postAgeColor(daysSinceLastPost)}`}>
-              {daysSinceLastPost != null
-                ? daysSinceLastPost === 0
-                  ? "Posted today"
-                  : `Posted ${daysSinceLastPost}d ago`
-                : "No recent posts"}
-            </p>
+            <div
+              style={{
+                fontFamily: '"DM Sans", sans-serif',
+                fontSize: 12,
+                color: postAge.color,
+                marginTop: 8,
+              }}
+            >
+              {postAge.text}
+            </div>
           </div>
         </div>
-      </Card>
+      </div>
 
-      {/* Artist Invite Code */}
-      <Card className="p-4 bg-card border-border">
-        <div className="flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Artist Invite Code
-            </p>
-            {inviteCode ? (
-              <p className="font-mono text-lg font-semibold text-foreground truncate">
+      {/* Invite code */}
+      {inviteCode && (
+        <div
+          style={{
+            flex: "0 1 auto",
+            minWidth: 240,
+            background: "#1C1C1E",
+            borderRadius: 16,
+            borderTop: "0.5px solid rgba(255,255,255,0.04)",
+            padding: "24px 24px",
+            display: "flex",
+            flexDirection: "column",
+            justifyContent: "center",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+            <div>
+              <div
+                style={{
+                  fontFamily: '"JetBrains Mono", monospace',
+                  fontSize: 10,
+                  fontWeight: 600,
+                  color: "rgba(255,255,255,0.30)",
+                  textTransform: "uppercase",
+                  letterSpacing: "1.5px",
+                  marginBottom: 6,
+                }}
+              >
+                INVITE CODE
+              </div>
+              <div
+                style={{
+                  fontFamily: '"JetBrains Mono", monospace',
+                  fontSize: 18,
+                  fontWeight: 700,
+                  color: "rgba(255,255,255,0.87)",
+                  letterSpacing: "0.5px",
+                }}
+              >
                 {inviteCode}
-              </p>
-            ) : (
-              <p className="text-sm text-muted-foreground italic">
-                No invite code generated
-              </p>
-            )}
-          </div>
-          {inviteCode && (
-            <Button
-              variant="outline"
-              size="icon"
-              className="shrink-0"
+              </div>
+            </div>
+            <button
               onClick={() => {
                 navigator.clipboard.writeText(inviteCode);
                 toast({ title: "Copied to clipboard" });
               }}
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: 10,
+                background: "rgba(255,255,255,0.04)",
+                border: "none",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                color: "rgba(255,255,255,0.45)",
+                transition: "background 150ms",
+                flexShrink: 0,
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.08)")}
+              onMouseLeave={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.04)")}
             >
-              <Copy className="h-4 w-4" />
-            </Button>
-          )}
+              <Copy size={15} />
+            </button>
+          </div>
+          <div
+            style={{
+              fontFamily: '"DM Sans", sans-serif',
+              fontSize: 11,
+              color: "rgba(255,255,255,0.20)",
+              marginTop: 8,
+              lineHeight: 1.4,
+            }}
+          >
+            Share with the artist for Wavebound app access
+          </div>
         </div>
-        <p className="text-xs text-muted-foreground mt-2">
-          Share this code with the artist to give them access to their Wavebound
-          app.
-        </p>
-      </Card>
-    </>
+      )}
+    </div>
   );
 }

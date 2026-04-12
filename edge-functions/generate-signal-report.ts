@@ -272,8 +272,8 @@ async function callOpus(
     },
     body: JSON.stringify({
       model: "claude-opus-4-6",
-      max_tokens: 16000,
-      thinking: { type: "enabled", budget_tokens: 10000 },
+      max_tokens: 32000,
+      thinking: { type: "enabled", budget_tokens: 16000 },
       system: SYSTEM_PROMPT,
       messages: [{ role: "user", content: userMessage }],
     }),
@@ -448,9 +448,8 @@ async function buildSignalReportContext(
 }
 
 // ── Main ───────────────────────────────────────────────
-// Synchronous approach — Opus 4.6 without thinking fits within 60s gateway timeout.
-// The per-artist agents already did the deep thinking with tools.
-// This synthesizer just needs to be fast and sharp.
+// Uses EdgeRuntime.waitUntil() to run Opus 4.6 + extended thinking
+// in the background (up to 400s on Pro), returning 202 immediately.
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
@@ -465,7 +464,6 @@ Deno.serve(async (req: Request) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const anthropicApiKey = Deno.env.get("ANTHROPIC_API_KEY");
-    const supabase = createClient(supabaseUrl, serviceKey);
 
     if (!anthropicApiKey) {
       return jsonResponse({ error: "ANTHROPIC_API_KEY not configured" }, 500);
@@ -483,37 +481,119 @@ Deno.serve(async (req: Request) => {
       return jsonResponse({ error: "label_id required" }, 400);
     }
 
-    console.log("\n═══ Generating Signal Report ═══");
+    // ── Background task with loud logging ──
+    const backgroundTask = (async () => {
+      const supabase = createClient(supabaseUrl, serviceKey);
+      const startTime = Date.now();
 
-    const { context, labelName } = await buildSignalReportContext(supabase, label_id);
-    console.log(`  Context built for ${labelName} (${context.length} chars)`);
+      try {
+        console.log("=== [Signal Report BG] STARTED ===");
+        console.log(`  label_id: ${label_id}`);
+        console.log(`  timestamp: ${new Date().toISOString()}`);
 
-    const report = await callOpus(context, anthropicApiKey);
+        // Write processing marker to DB (upsert to handle existing row for today)
+        const briefDate = new Date().toISOString().split("T")[0];
+        const { error: markerErr } = await supabase
+          .from("president_briefs")
+          .upsert(
+            {
+              label_id,
+              role: "content",
+              brief_date: briefDate,
+              brief_text: "__PROCESSING__",
+              brief_json: { status: "processing", started_at: new Date().toISOString() },
+              generated_at: new Date().toISOString(),
+            },
+            { onConflict: "label_id,role,brief_date" },
+          );
+        console.log(`  Processing marker: ${markerErr ? "FAILED " + markerErr.message : "written"}`);
 
-    if (!report.generated_at) {
-      report.generated_at = new Date().toISOString();
-    }
+        // Build context
+        console.log("  Building context...");
+        const { context, labelName } = await buildSignalReportContext(supabase, label_id);
+        console.log(`  Context built for ${labelName} (${context.length} chars, ${((Date.now() - startTime) / 1000).toFixed(1)}s elapsed)`);
 
-    const { error: storeError } = await supabase
-      .from("president_briefs")
-      .insert({
-        label_id,
-        role: "content",
-        brief_date: new Date().toISOString().split("T")[0],
-        brief_text: (report.headline as string) || "",
-        brief_json: report,
-        generated_at: report.generated_at || new Date().toISOString(),
-      });
+        // Call Opus with extended thinking
+        console.log("  Calling Opus 4.6 with 10K thinking budget...");
+        const report = await callOpus(context, anthropicApiKey);
+        console.log(`  Opus responded (${((Date.now() - startTime) / 1000).toFixed(1)}s elapsed)`);
 
-    if (storeError) {
-      console.error(`  Failed to store report: ${storeError.message}`);
+        if (!report.generated_at) {
+          report.generated_at = new Date().toISOString();
+        }
+
+        // Store final report (upsert overwrites processing marker)
+        const { error: storeError } = await supabase
+          .from("president_briefs")
+          .upsert(
+            {
+              label_id,
+              role: "content",
+              brief_date: briefDate,
+              brief_text: (report.headline as string) || "",
+              brief_json: report,
+              generated_at: report.generated_at || new Date().toISOString(),
+            },
+            { onConflict: "label_id,role,brief_date" },
+          );
+
+        if (storeError) {
+          console.error(`  Store FAILED: ${storeError.message}`);
+        } else {
+          console.log(`  Report STORED successfully`);
+        }
+
+        const totalSec = ((Date.now() - startTime) / 1000).toFixed(1);
+        console.log(`=== [Signal Report BG] COMPLETED in ${totalSec}s ===`);
+      } catch (err: unknown) {
+        const totalSec = ((Date.now() - startTime) / 1000).toFixed(1);
+        const errMsg = err instanceof Error ? err.message : String(err);
+        const errStack = err instanceof Error ? err.stack : "no stack";
+        console.error(`=== [Signal Report BG] CRASHED after ${totalSec}s ===`);
+        console.error(`  Error: ${errMsg}`);
+        console.error(`  Stack: ${errStack}`);
+
+        // Write error to DB so we can see it from the frontend
+        const errDate = new Date().toISOString().split("T")[0];
+        await supabase
+          .from("president_briefs")
+          .upsert(
+            {
+              label_id,
+              role: "content",
+              brief_date: errDate,
+              brief_text: `__ERROR__: ${errMsg.slice(0, 200)}`,
+              brief_json: { error: true, message: errMsg, elapsed_sec: totalSec },
+              generated_at: new Date().toISOString(),
+            },
+            { onConflict: "label_id,role,brief_date" },
+          )
+          .then(() => console.log("  Error state written to DB"))
+          .catch((e: unknown) => console.error("  Failed to write error state:", e));
+      }
+    })();
+
+    // Keep the worker alive after response using EdgeRuntime.waitUntil
+    // deno-lint-ignore no-explicit-any
+    const runtime = (globalThis as any).EdgeRuntime;
+    if (runtime?.waitUntil) {
+      console.log("[Signal Report] EdgeRuntime.waitUntil IS available — using it");
+      runtime.waitUntil(backgroundTask);
     } else {
-      console.log("  Report stored in president_briefs");
+      console.warn("[Signal Report] EdgeRuntime.waitUntil NOT available — task may be killed after response");
+      // Still fire the promise — Deno might keep the isolate alive for pending promises
+      backgroundTask.catch((e: unknown) => console.error("Unhandled bg error:", e));
     }
 
-    console.log("═══ Signal Report complete ═══");
-
-    return jsonResponse({ label_id, report });
+    // Return 202 immediately
+    return jsonResponse(
+      {
+        status: "processing",
+        label_id,
+        message: "Signal Report generating with extended thinking. Results stored in president_briefs.",
+      },
+      202,
+    );
   } catch (err) {
     console.error("generate-signal-report error:", err);
     return jsonResponse(

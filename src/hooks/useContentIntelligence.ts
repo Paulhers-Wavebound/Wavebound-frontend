@@ -173,6 +173,7 @@ export interface FormatVideoEntry {
   mood: string | null;
   isAd: boolean;
   durationSeconds: number | null;
+  videoUrl: string | null;
 }
 
 export interface ContentDnaData {
@@ -379,7 +380,7 @@ async function fetchContentIntelligence(
     handle
       ? supabase
           .from("deep_research_jobs" as any)
-          .select("content_analysis_data")
+          .select("content_analysis_data,tiktok_data,artist_handle")
           .eq("artist_handle", handle)
           .not("content_analysis_data", "is", null)
           .order("created_at", { ascending: false })
@@ -400,8 +401,19 @@ async function fetchContentIntelligence(
   const formatVideos: Record<string, FormatVideoEntry[]> = {};
   try {
     const analyses = drjData?.content_analysis_data?.individual_analyses ?? [];
+    const rawVideos = drjData?.tiktok_data?.raw_videos ?? [];
+    const drjHandle = drjData?.artist_handle ?? "";
     for (const v of analyses) {
       const fmt = (v.categories?.[0] ?? "Unknown") as string;
+      // Resolve video URL from raw_videos via video_index
+      let videoUrl: string | null = null;
+      if (v.video_index != null && rawVideos[v.video_index]) {
+        const rv = rawVideos[v.video_index];
+        videoUrl = rv.video_url || null;
+        if (!videoUrl && rv.id && drjHandle) {
+          videoUrl = `https://www.tiktok.com/@${drjHandle}/video/${rv.id}`;
+        }
+      }
       const entry: FormatVideoEntry = {
         caption: v.desc ?? v.caption ?? "",
         datePosted: v.date_posted ?? null,
@@ -413,6 +425,7 @@ async function fetchContentIntelligence(
         isAd: v.is_ad === true,
         durationSeconds:
           v.duration_seconds != null ? parseFloat(v.duration_seconds) : null,
+        videoUrl,
       };
       if (!formatVideos[fmt]) formatVideos[fmt] = [];
       formatVideos[fmt].push(entry);

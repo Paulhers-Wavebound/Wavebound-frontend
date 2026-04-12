@@ -6,16 +6,25 @@ import SEOHead from "@/components/SEOHead";
 import { useSetPageTitle } from "@/contexts/PageTitleContext";
 import { useUserProfile } from "@/contexts/UserProfileContext";
 import { useArtistBriefing } from "@/hooks/useArtistBriefing";
+import { useDashboardRole } from "@/contexts/DashboardRoleContext";
+import RoleSelector from "@/components/label/RoleSelector";
+import ContentIntelligenceView from "@/components/label/intelligence/ContentIntelligenceView";
+
+// New briefing components
+import ArtistHeader from "@/components/label/briefing/ArtistHeader";
+import AIFocus from "@/components/label/briefing/AIFocus";
+import type { WeeklyPulse } from "@/components/label/briefing/AIFocus";
+import CatalogPulse from "@/components/label/briefing/CatalogPulse";
+import TopOpportunities from "@/components/label/briefing/TopOpportunities";
+import ContextPanel from "@/components/label/briefing/ContextPanel";
+import BottomBar from "@/components/label/briefing/BottomBar";
+
+// Legacy components (classic view)
 import BriefingHero from "@/components/label/briefing/BriefingHero";
 import SignalMap from "@/components/label/briefing/SignalMap";
 import OpportunityEngine from "@/components/label/briefing/OpportunityEngine";
 import CompetitiveLens from "@/components/label/briefing/CompetitiveLens";
 import Outlook from "@/components/label/briefing/Outlook";
-import RoleSelector from "@/components/label/RoleSelector";
-import { useDashboardRole } from "@/contexts/DashboardRoleContext";
-import ContentIntelligenceView from "@/components/label/intelligence/ContentIntelligenceView";
-
-// Also keep legacy tabs available via a toggle
 import IntelligenceTab from "@/components/label/intelligence/IntelligenceTab";
 
 interface ArtistMeta {
@@ -23,6 +32,8 @@ interface ArtistMeta {
   artist_name: string;
   artist_handle: string | null;
   avatar_url: string | null;
+  weekly_pulse: WeeklyPulse | null;
+  weekly_pulse_generated_at: string | null;
 }
 
 export default function ArtistIntelligencePage() {
@@ -31,7 +42,7 @@ export default function ArtistIntelligencePage() {
   const { labelId } = useUserProfile();
   const { role } = useDashboardRole();
 
-  // Fetch basic artist metadata from artist_intelligence table
+  // Fetch artist metadata + weekly_pulse from artist_intelligence table
   const [meta, setMeta] = useState<ArtistMeta | null>(null);
   const [metaLoading, setMetaLoading] = useState(true);
   useSetPageTitle(meta?.artist_name ?? null);
@@ -41,11 +52,20 @@ export default function ArtistIntelligencePage() {
     (async () => {
       const { data } = await supabase
         .from("artist_intelligence")
-        .select("id, artist_name, artist_handle, avatar_url")
+        .select(
+          "id, artist_name, artist_handle, avatar_url, weekly_pulse, weekly_pulse_generated_at",
+        )
         .eq("id", id)
         .eq("label_id", labelId)
         .single();
-      setMeta(data as ArtistMeta | null);
+      setMeta(
+        data
+          ? {
+              ...(data as Omit<ArtistMeta, "weekly_pulse">),
+              weekly_pulse: data.weekly_pulse as WeeklyPulse | null,
+            }
+          : null,
+      );
       setMetaLoading(false);
     })();
   }, [id, labelId]);
@@ -60,33 +80,31 @@ export default function ArtistIntelligencePage() {
     noEntity,
   } = useArtistBriefing(meta?.artist_name ?? null, labelId);
 
-  // View toggle: briefing (new V2) vs classic (old intelligence tab)
+  // View toggle: briefing (new) vs classic (old)
   const [view, setView] = useState<"briefing" | "classic">("briefing");
 
   // ─── Loading ─────────────────────────────────────────────────────
   if (metaLoading) {
     return (
-      <>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          height: "80vh",
+        }}
+      >
         <div
           style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            height: "80vh",
+            width: 24,
+            height: 24,
+            border: "2.5px solid rgba(255,255,255,0.06)",
+            borderTopColor: "var(--accent)",
+            borderRadius: "50%",
+            animation: "labelSpin 0.8s linear infinite",
           }}
-        >
-          <div
-            style={{
-              width: 24,
-              height: 24,
-              border: "2.5px solid rgba(255,255,255,0.06)",
-              borderTopColor: "var(--accent)",
-              borderRadius: "50%",
-              animation: "labelSpin 0.8s linear infinite",
-            }}
-          />
-        </div>
-      </>
+        />
+      </div>
     );
   }
 
@@ -133,11 +151,11 @@ export default function ArtistIntelligencePage() {
   return (
     <>
       <SEOHead
-        title={`${meta.artist_name} — Intelligence Briefing`}
+        title={`${meta.artist_name} — Intelligence`}
         description={`Intelligence briefing for ${meta.artist_name}`}
       />
       <div
-        style={{ padding: "28px 32px 64px", maxWidth: 1100, margin: "0 auto" }}
+        style={{ padding: "24px 32px 64px", maxWidth: 1100, margin: "0 auto" }}
       >
         {/* ─── Top bar: back + view toggle ─── */}
         <div
@@ -145,7 +163,7 @@ export default function ArtistIntelligencePage() {
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
-            marginBottom: 24,
+            marginBottom: 20,
           }}
         >
           <button
@@ -177,7 +195,6 @@ export default function ArtistIntelligencePage() {
 
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <RoleSelector />
-            {/* View toggle — only shown for marketing role */}
             {role === "marketing" && (
               <div
                 style={{
@@ -207,12 +224,9 @@ export default function ArtistIntelligencePage() {
                       padding: "5px 14px",
                       cursor: "pointer",
                       transition: "all 150ms",
-                      textTransform: "capitalize",
                     }}
                   >
-                    {v === "briefing"
-                      ? "Intelligence Briefing"
-                      : "Classic View"}
+                    {v === "briefing" ? "Intelligence" : "Classic"}
                   </button>
                 ))}
               </div>
@@ -220,7 +234,7 @@ export default function ArtistIntelligencePage() {
           </div>
         </div>
 
-        {/* ─── Content role: Content Intelligence View ─── */}
+        {/* ─── Content role ─── */}
         {role === "content" && (
           <ContentIntelligenceView
             entityId={entityId ?? null}
@@ -228,15 +242,60 @@ export default function ArtistIntelligencePage() {
           />
         )}
 
-        {/* ─── Marketing role: Classic view (legacy) ─── */}
+        {/* ─── Marketing: Classic view (legacy) ─── */}
         {role === "marketing" && view === "classic" && (
-          <IntelligenceTab artistName={meta.artist_name} />
+          <>
+            {briefingLoading && (
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  padding: "80px 0",
+                  gap: 12,
+                }}
+              >
+                <div
+                  style={{
+                    width: 24,
+                    height: 24,
+                    border: "2.5px solid rgba(255,255,255,0.06)",
+                    borderTopColor: "var(--accent)",
+                    borderRadius: "50%",
+                    animation: "labelSpin 0.8s linear infinite",
+                  }}
+                />
+              </div>
+            )}
+            {briefing && (
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 20,
+                }}
+              >
+                <BriefingHero data={briefing} />
+                <SignalMap data={briefing} />
+                <OpportunityEngine data={briefing} />
+                <CompetitiveLens
+                  card={briefing.artistCard}
+                  rosterScores={rosterScores}
+                />
+                <Outlook data={briefing} />
+              </div>
+            )}
+            {noEntity && !briefingLoading && (
+              <IntelligenceTab artistName={meta.artist_name} />
+            )}
+          </>
         )}
 
-        {/* ─── Marketing role: Briefing view (V2) ─── */}
+        {/* ─── Marketing: New Intelligence View ─── */}
         {role === "marketing" && view === "briefing" && (
           <>
-            {/* Loading state for briefing */}
+            {/* Loading */}
             {briefingLoading && (
               <div
                 style={{
@@ -265,12 +324,12 @@ export default function ArtistIntelligencePage() {
                     color: "rgba(255,255,255,0.35)",
                   }}
                 >
-                  Assembling intelligence briefing...
+                  Loading intelligence...
                 </div>
               </div>
             )}
 
-            {/* No entity in intelligence pipeline */}
+            {/* No entity */}
             {noEntity && !briefingLoading && (
               <div
                 style={{
@@ -287,7 +346,7 @@ export default function ArtistIntelligencePage() {
                     color: "rgba(255,255,255,0.55)",
                   }}
                 >
-                  Intelligence briefing not yet available
+                  Intelligence not yet available
                 </div>
                 <div
                   style={{
@@ -297,13 +356,13 @@ export default function ArtistIntelligencePage() {
                     marginTop: 8,
                   }}
                 >
-                  This artist hasn't been linked in the intelligence pipeline
-                  yet. Try the Classic View for available data.
+                  This artist hasn't been linked in the pipeline yet. Try
+                  Classic view.
                 </div>
               </div>
             )}
 
-            {/* Error state */}
+            {/* Error */}
             {briefingError && !briefingLoading && (
               <div
                 style={{
@@ -320,7 +379,7 @@ export default function ArtistIntelligencePage() {
                     color: "#FF453A",
                   }}
                 >
-                  Failed to load briefing
+                  Failed to load intelligence
                 </div>
                 <div
                   style={{
@@ -337,37 +396,73 @@ export default function ArtistIntelligencePage() {
               </div>
             )}
 
-            {/* ─── THE BRIEFING ─── */}
+            {/* ─── THE NEW LAYOUT ─── */}
             {briefing && (
               <div
                 style={{
                   display: "flex",
                   flexDirection: "column",
-                  gap: 20,
+                  gap: 16,
                 }}
               >
-                {/* Section 1: The Briefing Hero */}
-                <BriefingHero data={briefing} />
-
-                {/* Section 2: Signal Map */}
-                <SignalMap data={briefing} />
-
-                {/* Section 3: Opportunity Engine */}
-                <OpportunityEngine data={briefing} />
-
-                {/* Section 4: Competitive Lens */}
-                <CompetitiveLens
+                {/* 1. Compact Artist Header */}
+                <ArtistHeader
                   card={briefing.artistCard}
-                  rosterScores={rosterScores}
+                  songsCount={briefing.songs.length}
                 />
 
-                {/* Section 5: Outlook + Bottom Line */}
-                <Outlook data={briefing} />
+                {/* 2. AI Focus (the star of the show) */}
+                <AIFocus
+                  pulse={meta.weekly_pulse}
+                  generatedAt={meta.weekly_pulse_generated_at}
+                />
+
+                {/* 3. Two-column layout */}
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr 340px",
+                    gap: 16,
+                    alignItems: "start",
+                  }}
+                >
+                  {/* Left: What's Happening */}
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 12,
+                      minWidth: 0,
+                    }}
+                  >
+                    <CatalogPulse songs={briefing.songs} />
+                    <TopOpportunities data={briefing} />
+                  </div>
+
+                  {/* Right: Context */}
+                  <ContextPanel
+                    card={briefing.artistCard}
+                    data={briefing}
+                    rosterScores={rosterScores}
+                  />
+                </div>
+
+                {/* 4. Bottom Bar */}
+                <BottomBar data={briefing} />
               </div>
             )}
           </>
         )}
       </div>
+
+      {/* Responsive override: stack columns on narrow screens */}
+      <style>{`
+        @media (max-width: 800px) {
+          [style*="gridTemplateColumns: 1fr 340px"] {
+            grid-template-columns: 1fr !important;
+          }
+        }
+      `}</style>
     </>
   );
 }
