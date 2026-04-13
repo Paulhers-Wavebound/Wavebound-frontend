@@ -25,3 +25,10 @@ dist-ssr
 scripts/fan-briefs/node_modules/
 .vercel
 supabase/.temp/
+
+# Local tooling / QA artifacts
+.claude/launch.json
+.playwright-mcp/
+qa-screenshots/
+qa-report-*.md
+/*.png

@@ -249,6 +249,8 @@ function platformTrendCell(value: unknown): React.ReactNode {
     return <span style={{ color: "rgba(255,255,255,0.20)" }}>—</span>;
   const n = Number(value);
   const arrow = n > 0 ? "▲" : n < 0 ? "▼" : "•";
+  // Backend clamps artist_score trends to ±500 to keep onboarding spikes sane
+  const display = Math.abs(n) >= 500 ? "≥500%" : `${Math.abs(n).toFixed(1)}%`;
   return (
     <span
       style={{
@@ -257,7 +259,7 @@ function platformTrendCell(value: unknown): React.ReactNode {
         fontWeight: 500,
       }}
     >
-      {arrow} {Math.abs(n).toFixed(1)}%
+      {arrow} {display}
     </span>
   );
 }

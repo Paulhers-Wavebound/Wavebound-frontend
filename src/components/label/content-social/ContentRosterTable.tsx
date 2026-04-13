@@ -18,6 +18,7 @@ import {
   Users,
   LayoutGrid,
   List,
+  Activity,
 } from "lucide-react";
 import InfoPopover from "@/components/sound-intelligence/InfoPopover";
 import type {
@@ -464,6 +465,16 @@ function buildTierAdaptiveTiles(
           valueColor: artist.delta_followers_pct > 0 ? "#30D158" : "#FF453A",
         });
       }
+      if (artist.velocity_posting_freq_pct != null) {
+        const v = artist.velocity_posting_freq_pct;
+        tiles.push({
+          icon: Activity,
+          label: "Cadence Momentum",
+          value: `${v > 0 ? "+" : ""}${v.toFixed(0)}%`,
+          sub: "posts/week vs last 30d",
+          valueColor: v > 5 ? "#30D158" : v < -5 ? "#FF453A" : undefined,
+        });
+      }
       break;
     }
     case "momentum": {
@@ -501,6 +512,16 @@ function buildTierAdaptiveTiles(
             mult != null && mult > 1
               ? `${mult.toFixed(1)}x vs median`
               : undefined,
+        });
+      }
+      if (artist.velocity_posting_freq_pct != null) {
+        const v = artist.velocity_posting_freq_pct;
+        tiles.push({
+          icon: Activity,
+          label: "Cadence Momentum",
+          value: `${v > 0 ? "+" : ""}${v.toFixed(0)}%`,
+          sub: "posts/week vs last 30d",
+          valueColor: v > 5 ? "#30D158" : v < -5 ? "#FF453A" : undefined,
         });
       }
       break;

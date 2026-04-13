@@ -148,13 +148,13 @@ export default function ProfileSidebar({
             <DeltaCard label="Followers" value={deltaFollowers} />
           </div>
           {(() => {
-            const allZero = [
+            const allNull = [
               deltaAvgViews,
               deltaEngagement,
               deltaPostingFreq,
               deltaFollowers,
-            ].every((v) => v === 0);
-            if (allZero) {
+            ].every((v) => v == null);
+            if (allNull) {
               return (
                 <p className="text-xs text-muted-foreground mt-3 text-center italic">
                   Impact tracking begins after next data refresh

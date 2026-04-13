@@ -184,11 +184,22 @@ While adding a region filter to `ARPipelineTable` the frontend hit a blocker: **
 
 ---
 
-## Frontend follow-up owed by backend commit `a99e0cd`
+## Add `velocity_followers_pct` to `roster_dashboard_metrics`
 
-Switch `src/data/contentDashboardHelpers.ts` / `src/hooks/useContentDashboardData.ts` / `src/components/label/content-social/ContentSocialDashboard.tsx` from `delta_avg_views_pct` / `delta_engagement_pct` / `delta_posting_freq_pct` → the new `velocity_views_pct` / `velocity_engagement_pct` / `velocity_posting_freq_pct` columns on `roster_dashboard_metrics`, then drop the client-side 7d-vs-30d workaround.
+**Priority: Low (cosmetic — closes the last inconsistency in the Velocity column group)**
+**Requested:** 2026-04-13 frontend session
 
-The existing `delta_*` columns keep carrying Wavebound Impact Delta semantics (onboarding-baseline, gated on `has_baseline`) — used by `ProfileSidebar`'s "Wavebound Impact Delta" card — so don't delete them, just stop reading them for velocity signals. Both paths work today; this is cleanup, not a blocker.
+`HealthRosterCoverage` still ships a legacy `Δ Foll %` column (reads `delta_followers_pct`, which carries Wavebound Impact Delta semantics) alongside the renamed `velocity_views_pct` / `velocity_engagement_pct` / `velocity_posting_freq_pct` columns. The group reads inconsistently.
+
+Now that `daily_summaries.pct_change_7d` is populated for `platform='tiktok' AND metric='tiktok_followers'` (backend commit `a99e0cd`), we can compute a real 7-day follower velocity and clamp it the same way as the other platform trends.
+
+**Fix:**
+
+1. Add column: `ALTER TABLE roster_dashboard_metrics ADD COLUMN velocity_followers_pct double precision;`
+2. In `refresh_roster_metrics()`, left-join `daily_summaries` on `entity_id`, `platform='tiktok'`, `metric='tiktok_followers'`, `date=CURRENT_DATE` and store `LEAST(500, GREATEST(-500, pct_change_7d))` (wrapped in `CASE ... IS NOT NULL`) into the new column.
+3. Frontend then swaps the `Δ Foll %` column in `HealthRosterCoverage` from `delta_followers_pct` → `velocity_followers_pct` and the Velocity group becomes consistent.
+
+**Note:** `artist_intelligence` rows link to `wb_entities` via name match — verify the join path works for all roster artists; some may need `LOWER(canonical_name)` matching. Sample Columbia first, then confirm row coverage before shipping.
 
 ---
 
