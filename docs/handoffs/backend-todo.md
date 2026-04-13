@@ -1,5 +1,69 @@
 # Backend TODO — From Frontend Sessions
 
+Last cleaned: 2026-04-13 — removed all items shipped through commit `a99e0cd`
+(dbt pct_change pipeline + roster velocity columns) and the earlier batch
+(decision point actions, A&R pipeline, Culture Genome, Simulation Lab,
+catalog_tiktok_performance backfill, get_table_sizes fix).
+
+---
+
+## NEW (2026-04-12): TikTok Avatar URLs Expire — Always Cache to Storage
+
+**Priority: Medium (frontend mitigation already shipped)**
+**Found:** 2026-04-12 while debugging Signal Report decision points showing category icons instead of artist photos.
+
+### The bug
+
+`artist_intelligence.avatar_url` (which feeds `roster_dashboard_metrics.avatar_url` via `refresh_roster_metrics()`) sometimes contains raw TikTok CDN signed URLs:
+
+```
+https://p16-common-sign.tiktokcdn-us.com/tos-useast5-avt-0068-tx/<hash>?...
+```
+
+These signed URLs **expire** (return 403 from Cloudflare/origin), and they may also be region-locked. When they expire, the frontend `<img>` `onError` fires and the avatar slot disappears.
+
+For Columbia (`8cd63eb7-7837-4530-9291-482ea25ef365`) on 2026-04-12, four roster artists were affected: `addisonre`, `malcolmtodddd`, `hshq`, `presleylynhaile` — all four had working JPGs already in the `avatars` Supabase Storage bucket but `artist_intelligence.avatar_url` was still pointing at the original (now expired) TikTok CDN URL.
+
+### Hot-patch already applied
+
+I ran this from the frontend session and verified all four resolve to 200:
+
+```sql
+UPDATE artist_intelligence ai
+SET avatar_url = 'https://kxvgbowrkmowuyezoeke.supabase.co/storage/v1/object/public/avatars/'
+                 || ai.artist_handle || '.jpg'
+WHERE ai.artist_handle IN ('addisonre','malcolmtodddd','hshq','presleylynhaile')
+  AND EXISTS (
+    SELECT 1 FROM storage.objects
+    WHERE bucket_id = 'avatars' AND name = ai.artist_handle || '.jpg'
+  );
+SELECT refresh_roster_metrics();
+```
+
+### Frontend mitigation also shipped
+
+`SignalReportCard.tsx` now ships an `ArtistAvatar` component with a chained fallback:
+
+1. Try the URL on the row
+2. If it errors, try `https://kxvgbowrkmowuyezoeke.supabase.co/storage/v1/object/public/avatars/<artist_handle>.jpg`
+3. If that errors too, render initials inside a category-colored circle (no longer falls back to the lucide category icon)
+
+This means even if the next pipeline run overwrites `avatar_url` back to a stale CDN URL, the row will still display the storage-cached photo.
+
+### What backend should fix
+
+The pipeline that writes `artist_intelligence.avatar_url` (likely n8n `WF2 - TikTok Scrape & Content Analysis`) should:
+
+1. **Always download** the TikTok avatar bytes after scraping the profile.
+2. **Upload to** `storage.objects` bucket `avatars` with key `<artist_handle>.jpg` (overwrite if exists).
+3. **Write** `https://kxvgbowrkmowuyezoeke.supabase.co/storage/v1/object/public/avatars/<artist_handle>.jpg` into `artist_intelligence.avatar_url` — never the raw `tiktokcdn-us.com` URL.
+
+That guarantees the URL never expires and `refresh_roster_metrics()` keeps populating clean URLs into `roster_dashboard_metrics`.
+
+Bonus: do the same for any other table that stores avatar URLs (`profile_tiktok`, `artist_profiles_tiktok`, `culture_genome_nodes`, `ar_prospects`) — same expiry problem, same fix.
+
+---
+
 ## 1. TikTok Scraper: Resolve `music_id` → `sound_title`
 
 **Priority: High**
@@ -44,45 +108,7 @@ The TikTok handle for Bb Trickz was `belize.kazi` — a **fan account** that rep
 - Re-run the `generate-artist-focus` edge function for Bb Trickz after data is refreshed
 - **Audit other artists**: Check if any other handles in `artist_intelligence` point to fan accounts instead of official artist accounts (look for accounts where every caption tags another user)
 
-## 4. Populate `catalog_tiktok_performance` for ALL Roster Artists (Currently Only Harry Styles)
-
-**Priority: CRITICAL — this is the #1 data gap in the AI pipeline**
-**Found:** 2026-04-11
-
-`catalog_tiktok_performance` only has data for Harry Styles (179 sounds). The other 12 Columbia artists have **zero rows**. This table provides the detailed per-sound UGC breakdown that the AI focus picker needs: `videos_last_7d`, `videos_last_30d`, `fan_to_artist_ratio`, `unique_creators`, `tiktok_status`.
-
-Without this data, the AI is making sound-level decisions based on the velocity RPC summary only (which gives just the top sound) instead of seeing the full catalog picture.
-
-**What the SC scraper needs to do:**
-
-- For each artist on the roster, discover all their TikTok sounds (via the artist's posts or Spotify catalog → TikTok sound search)
-- For each sound, scrape the TikTok sound page to get: total video count, total plays, videos in last 7d/30d, unique creators, fan videos vs artist videos
-- Calculate `fan_to_artist_ratio` (fan_videos / artist_videos)
-- Set `tiktok_status` based on velocity (viral / trending / active / established / flat)
-- Run daily to keep `videos_last_7d` and `videos_last_30d` current
-
-**Scale:** ~200 sounds across 13 artists. Daily SC cost estimate: ~$6-30/month at current rates.
-
-**Current state per artist** (from sound velocity RPC — these sounds exist but lack detailed breakdown):
-| Artist | Sounds Tracked | Top Sound | Weekly UGC |
-|--------|---------------|-----------|------------|
-| The Chainsmokers | 28 | Don't Let Me Down | 290 |
-| Presley Haile | 26 | Sunny Day | 0 |
-| Harry Styles | 24 | American Girls | 4,838 |
-| The Kid LAROI | 21 | PRIVATE | 27 |
-| Malcolm Todd | 13 | Earrings | 20,037 |
-| Meg Moroney | 13 | Bells & Whistles | 654 |
-| Miles Caton | 13 | Don't Hate Me | 15 |
-| Addison Rae | 12 | Fame is a Gun | 864 |
-| Chance Peña | 10 | In My Room | 0 |
-| Max McNown | 10 | A Lot More Free | 0 |
-| Alina | 10 | original sound | 0 |
-| Henry Moodie | 6 | drunk text | 0 |
-| Bb Trickz | 4 | Soy la Más Mala | 0 |
-
-**Impact:** Once this is populated, the AI Signal Report and per-artist focus picks will have dramatically richer data — seeing full catalog UGC curves instead of just the top sound summary. This is the single highest-ROI scraper improvement we can make.
-
-## 5. `artist_sounds` Table Staleness
+## 6. `artist_sounds` Table Staleness
 
 **Priority: Medium**
 **Found:** 2026-04-11
@@ -91,18 +117,84 @@ Without this data, the AI is making sound-level decisions based on the velocity 
 
 **Fix:** The daily scraper should upsert new sounds into `artist_sounds` whenever it encounters a new `music_id` on an artist's post.
 
-## 6. `get_table_sizes` RPC: Exclude System Tables
+## 8b. TikTok Scraper: Always Populate `author_avatar_url`
 
-**Priority: Low**
-**Found:** 2026-04-11
+**Priority: Medium**
+**Found:** 2026-04-12
 
-The `get_table_sizes()` RPC returns all tables from `pg_class` where `relkind = 'r'` in the `public` schema. Postgres can include system-internal or partitioned tables with null `relname` values, which crashed the frontend Database health page.
+242 of 1,075 ar_prospects have no avatar because `hitl_tiktok.author_avatar_url` is null for those rows. The scraper fetches the video data but doesn't always include the author's profile picture.
 
-The frontend now filters these out client-side, but the RPC should also exclude them at the SQL level for defense in depth:
+**Backfill already done:** 833 prospects now have avatars (up from 2) by copying from hitl_tiktok where available. The remaining 242 have null avatars at the source.
 
-```sql
-WHERE n.nspname = 'public'
-  AND c.relkind = 'r'
-  AND c.relname IS NOT NULL
-  AND c.relname NOT LIKE 'pg_%'
-```
+**Fix:** Ensure the TikTok scraper always populates `author_avatar_url` when inserting/updating `hitl_tiktok` rows. The avatar URL is available in the TikTok API response at `author.avatar_thumb` or `author.avatar_medium`. Run a one-time backfill for existing rows missing avatars.
+
+## 10. A&R Pipeline: Social Handles Already in DB — Verify Populated
+
+**Priority: Medium**
+**Found:** 2026-04-12
+
+The `ar_prospects` table already has `source_platform`, `source_handle`, `tiktok_handle`, `instagram_handle`, and `spotify_url` columns, and `get-ar-prospects` uses `SELECT *` so they're returned to the frontend.
+
+The frontend now constructs clickable social links from these fields:
+
+- TikTok: `https://www.tiktok.com/@{tiktok_handle || source_handle}`
+- Instagram: `https://www.instagram.com/{instagram_handle}`
+- Spotify: direct URL from `spotify_url`
+- SoundCloud: from `wb_platform_ids` (detail view only)
+
+**Backend actions needed:**
+
+1. **Verify `source_handle` is populated for all prospects.** The frontend falls back to `source_handle` when `tiktok_handle` is null, so as long as `source_handle` is set, at minimum the discovery platform link will always show.
+
+2. **Backfill `instagram_handle`:** For TikTok-sourced prospects, cross-reference against `wb_platform_ids` or parse from TikTok bio links to populate `instagram_handle`. Without this, IG links only show for Instagram-sourced prospects.
+
+3. **Backfill `spotify_url`:** Attempt Spotify search by artist name for prospects missing this field. The frontend displays this prominently on the dossier page.
+
+4. **Add `soundcloud_url` column to `ar_prospects`** (optional): Currently SoundCloud links only show on the dossier page via `wb_platform_ids`. For pipeline row visibility, add to `ar_prospects` schema.
+
+5. **Ensure the ingestion pipeline populates these fields** when creating new prospects — not just for existing backfill.
+
+**Frontend type reference:** `src/types/arTypes.ts` — `ARProspect.source_platform`, `.source_handle`, `.tiktok_handle`, `.instagram_handle`, `.spotify_url`
+
+---
+
+## NEW (2026-04-13): A&R region filter — data gaps + server-side param
+
+**Priority: Medium**
+
+While adding a region filter to `ARPipelineTable` the frontend hit a blocker: **`ar_prospects.origin_country` was empty for all 1075 rows**. Root cause + partial fix landed today, but two follow-ups remain.
+
+### What already shipped (frontend session)
+
+- **Backfilled `ar_prospects.origin_country`** from `wb_entities.metadata->>'country'` via direct SQL (186 rows populated, 889 rows still empty because `wb_entities` has no `country` value for those entities).
+- Frontend region filter is live at `/label/ar` — client-side only, groups ISO‑2 codes into US/UK/DACH/Nordics/Europe/LatAm/SEA/Asia/Oceania/Africa/MENA/Other (see `src/components/label/ar/ARPipelineTable.tsx`).
+- Filter state now persists in URL via `useSearchParams` (`stage`, `region`, `sort`, `order`, `mf_*` params).
+
+### Backend follow-ups
+
+1. **Populate `wb_entities.metadata.country` for the other 889 prospects.** The enrichment pipeline fills this from TikTok's `region` field, but it's empty for most. Need a secondary signal — TikTok bio parsing, Spotify artist profile country, or Chartmetric lookup — so the region filter is useful on the majority of the roster. Owning file: `edge-functions/enrich-ar-prospect.ts` (sets `origin_country` at line 191 from `region.toUpperCase().substring(0,2)`).
+
+2. **Also write to `ar_prospects.origin_country` directly on insert/enrich**, not just via `wb_entities.metadata`. Today the only code path that populates `ar_prospects.origin_country` is `enrich-ar-prospect.ts:191` (conditional on the TikTok `region` field). Prospects created by other flows (HITL drops, manual inserts) never get a country. Add a fallback: `coalesce(tiktok_region, wb_entities.metadata->>'country', null)` at insert time.
+
+3. **Add `region` query param to `get-ar-prospects`** so client-side filtering (currently limited to the ≤200 prospects in the loaded page) can be pushed to the server. Frontend would pass `?region=Africa`, backend translates to a country-code `IN (...)` predicate using the same map below. This unlocks filtering across the full dataset once the roster grows.
+
+**Canonical region → ISO‑2 mapping used by the frontend** (keep these in sync when implementing the server-side param — eventually extract into a shared helper): see `COUNTRY_TO_REGION` in `src/components/label/ar/ARPipelineTable.tsx`.
+
+**Context:** session diary `docs/session-diaries/2026-04-13_ar-region-filter.md`.
+
+---
+
+## Frontend follow-up owed by backend commit `a99e0cd`
+
+Switch `src/data/contentDashboardHelpers.ts` / `src/hooks/useContentDashboardData.ts` / `src/components/label/content-social/ContentSocialDashboard.tsx` from `delta_avg_views_pct` / `delta_engagement_pct` / `delta_posting_freq_pct` → the new `velocity_views_pct` / `velocity_engagement_pct` / `velocity_posting_freq_pct` columns on `roster_dashboard_metrics`, then drop the client-side 7d-vs-30d workaround.
+
+The existing `delta_*` columns keep carrying Wavebound Impact Delta semantics (onboarding-baseline, gated on `has_baseline`) — used by `ProfileSidebar`'s "Wavebound Impact Delta" card — so don't delete them, just stop reading them for velocity signals. Both paths work today; this is cleanup, not a blocker.
+
+---
+
+## Deferred / not-blocking
+
+- **Decision Point Actions `SLACK_WEBHOOK_URL` secret.** Slack forwarding is implemented in `edge-functions/forward-decision-point.ts` but intentionally gated on the `SLACK_WEBHOOK_URL` secret. Paul deferred setting it on 2026-04-12 — the Slack tab in the Forward dialog currently returns a clean "not configured" toast, which is the desired behavior until the label-level Slack integration is wired up. When ready to enable:
+  ```bash
+  supabase secrets set SLACK_WEBHOOK_URL=https://hooks.slack.com/services/... --project-ref kxvgbowrkmowuyezoeke
+  ```

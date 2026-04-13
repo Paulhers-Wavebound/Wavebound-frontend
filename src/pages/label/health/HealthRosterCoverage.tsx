@@ -15,9 +15,9 @@ interface RosterRow {
   days_since_last_post: number | null;
   avg_views_7d: number | null;
   avg_views_30d: number | null;
-  delta_avg_views_pct: number | null;
+  velocity_views_pct: number | null;
   avg_engagement_30d: number | null;
-  delta_engagement_pct: number | null;
+  velocity_engagement_pct: number | null;
   tiktok_followers: number | null;
   instagram_followers: number | null;
   delta_followers_pct: number | null;
@@ -81,8 +81,8 @@ const FIELDS: FieldDef[] = [
     format: fmtCompact,
   },
   {
-    key: "delta_avg_views_pct",
-    label: "Δ Views %",
+    key: "velocity_views_pct",
+    label: "Velocity Views %",
     group: "Velocity",
     format: fmtPct,
   },
@@ -93,8 +93,8 @@ const FIELDS: FieldDef[] = [
     format: (v) => v.toFixed(2),
   },
   {
-    key: "delta_engagement_pct",
-    label: "Δ Eng %",
+    key: "velocity_engagement_pct",
+    label: "Velocity Eng %",
     group: "Velocity",
     format: fmtPct,
   },
@@ -188,9 +188,9 @@ interface RosterRaw {
   days_since_last_post: number | null;
   avg_views_7d: number | null;
   avg_views_30d: number | null;
-  delta_avg_views_pct: number | null;
+  velocity_views_pct: number | null;
   avg_engagement_30d: number | null;
-  delta_engagement_pct: number | null;
+  velocity_engagement_pct: number | null;
   tiktok_followers: number | null;
   instagram_followers: number | null;
   delta_followers_pct: number | null;
@@ -219,7 +219,7 @@ async function fetchRosterCoverage(labelId: string): Promise<RosterRow[]> {
   const rosterRes = await supabase
     .from("roster_dashboard_metrics")
     .select(
-      "artist_name,artist_handle,total_videos,days_since_last_post,avg_views_7d,avg_views_30d,delta_avg_views_pct,avg_engagement_30d,delta_engagement_pct,tiktok_followers,instagram_followers,delta_followers_pct,momentum_tier,risk_level",
+      "artist_name,artist_handle,total_videos,days_since_last_post,avg_views_7d,avg_views_30d,velocity_views_pct,avg_engagement_30d,velocity_engagement_pct,tiktok_followers,instagram_followers,delta_followers_pct,momentum_tier,risk_level",
     )
     .eq("label_id", labelId)
     .order("artist_name", { ascending: true });

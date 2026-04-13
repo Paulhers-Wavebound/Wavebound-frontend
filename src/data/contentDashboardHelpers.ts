@@ -16,8 +16,9 @@ export interface ContentArtist {
   avg_views_7d: number | null;
   avg_engagement_30d: number | null;
   avg_engagement_7d: number | null;
-  delta_avg_views_pct: number | null;
-  delta_engagement_pct: number | null;
+  velocity_views_pct: number | null;
+  velocity_engagement_pct: number | null;
+  velocity_posting_freq_pct: number | null;
   delta_followers_pct: number | null;
   total_videos: number | null;
   risk_flags: Array<{ severity: string; message: string }> | null;
@@ -252,9 +253,9 @@ export function buildPriorityItems(
           { label: "Usual Freq", value: freq },
           {
             label: "Views Trend",
-            value: fmtPct(a.delta_avg_views_pct),
+            value: fmtPct(a.velocity_views_pct),
             color:
-              a.delta_avg_views_pct != null && a.delta_avg_views_pct < 0
+              a.velocity_views_pct != null && a.velocity_views_pct < 0
                 ? "#FF453A"
                 : undefined,
           },
@@ -441,28 +442,28 @@ export function generateContentBriefing(
 
   // Performance highlights
   const improving = artists.filter(
-    (a) => a.delta_avg_views_pct != null && a.delta_avg_views_pct > 20,
+    (a) => a.velocity_views_pct != null && a.velocity_views_pct > 20,
   );
   const declining = artists.filter(
-    (a) => a.delta_avg_views_pct != null && a.delta_avg_views_pct < -20,
+    (a) => a.velocity_views_pct != null && a.velocity_views_pct < -20,
   );
 
   if (improving.length > 0 || declining.length > 0) {
     const parts: string[] = [];
     if (improving.length > 0) {
       const best = improving.sort(
-        (a, b) => (b.delta_avg_views_pct || 0) - (a.delta_avg_views_pct || 0),
+        (a, b) => (b.velocity_views_pct || 0) - (a.velocity_views_pct || 0),
       )[0];
       parts.push(
-        `${best.artist_name}'s content is surging — views up ${best.delta_avg_views_pct?.toFixed(0)}% this month${best.best_format ? `, led by ${best.best_format} format` : ""}`,
+        `${best.artist_name}'s content is surging — views up ${best.velocity_views_pct?.toFixed(0)}% this month${best.best_format ? `, led by ${best.best_format} format` : ""}`,
       );
     }
     if (declining.length > 0) {
       const worst = declining.sort(
-        (a, b) => (a.delta_avg_views_pct || 0) - (b.delta_avg_views_pct || 0),
+        (a, b) => (a.velocity_views_pct || 0) - (b.velocity_views_pct || 0),
       )[0];
       parts.push(
-        `${worst.artist_name}'s views are down ${Math.abs(worst.delta_avg_views_pct || 0).toFixed(0)}% — may need a format refresh`,
+        `${worst.artist_name}'s views are down ${Math.abs(worst.velocity_views_pct || 0).toFixed(0)}% — may need a format refresh`,
       );
     }
     paragraphs.push(parts.join(". Meanwhile, ") + ".");
@@ -497,12 +498,12 @@ export function generateContentBriefing(
   if (improving.length > 0) {
     const best = improving[0];
     actions.push(
-      `Double down on ${best.artist_name}'s momentum \u2014 views up ${best.delta_avg_views_pct?.toFixed(0)}%${best.best_format ? `, ${best.best_format} format` : ""}.`,
+      `Double down on ${best.artist_name}'s momentum \u2014 views up ${best.velocity_views_pct?.toFixed(0)}%${best.best_format ? `, ${best.best_format} format` : ""}.`,
     );
   }
   if (declining.length > 0) {
     const worst = declining.sort(
-      (a, b) => (a.delta_avg_views_pct || 0) - (b.delta_avg_views_pct || 0),
+      (a, b) => (a.velocity_views_pct || 0) - (b.velocity_views_pct || 0),
     )[0];
     actions.push(
       `Review ${worst.artist_name}'s content strategy \u2014 engagement declining.`,
@@ -642,15 +643,8 @@ export function generateSignalReport(
 
   // ── Compute roster-level metrics ──────────────────────
 
-  // delta_avg_views_pct is null/0 for the entire roster — backend pipeline
-  // never populates it. Derive from avg_views_7d vs avg_views_30d instead,
-  // which are populated. Tracked in backend-todo.md.
   const velocityDeltas = artists
-    .map((a) =>
-      a.avg_views_7d != null && a.avg_views_30d != null && a.avg_views_30d > 0
-        ? ((a.avg_views_7d - a.avg_views_30d) / a.avg_views_30d) * 100
-        : null,
-    )
+    .map((a) => a.velocity_views_pct)
     .filter((v): v is number => v != null);
   const avgVelocityDelta =
     velocityDeltas.length > 0
@@ -707,16 +701,14 @@ export function generateSignalReport(
   // Artists with breakout velocity — scale immediately
 
   const surging = artists
-    .filter((a) => a.delta_avg_views_pct != null && a.delta_avg_views_pct > 25)
-    .sort(
-      (a, b) => (b.delta_avg_views_pct || 0) - (a.delta_avg_views_pct || 0),
-    );
+    .filter((a) => a.velocity_views_pct != null && a.velocity_views_pct > 25)
+    .sort((a, b) => (b.velocity_views_pct || 0) - (a.velocity_views_pct || 0));
 
   for (const a of surging.slice(0, 2)) {
     const evidence: DecisionPoint["evidence"] = [
       {
         label: "Views",
-        value: fmtPct(a.delta_avg_views_pct),
+        value: fmtPct(a.velocity_views_pct),
         color: "#30D158",
       },
     ];
@@ -746,7 +738,7 @@ export function generateSignalReport(
       artist_name: a.artist_name,
       artist_handle: a.artist_handle,
       avatar_url: a.avatar_url,
-      signal: `Content velocity up ${a.delta_avg_views_pct?.toFixed(0)}%${a.best_format ? ` — ${a.best_format} format is driving it` : ""}`,
+      signal: `Content velocity up ${a.velocity_views_pct?.toFixed(0)}%${a.best_format ? ` — ${a.best_format} format is driving it` : ""}`,
       decision: a.best_format
         ? `${a.best_format} content outperforming${a.best_format_vs_median != null && a.best_format_vs_median > 1 ? ` at ${a.best_format_vs_median.toFixed(1)}x median` : ""} — evaluate scaling this format.`
         : `Velocity spike detected — review which content is driving it.`,
@@ -815,19 +807,17 @@ export function generateSignalReport(
   const declining = artists
     .filter(
       (a) =>
-        a.delta_avg_views_pct != null &&
-        a.delta_avg_views_pct < -15 &&
+        a.velocity_views_pct != null &&
+        a.velocity_views_pct < -15 &&
         a.best_format != null,
     )
-    .sort(
-      (a, b) => (a.delta_avg_views_pct || 0) - (b.delta_avg_views_pct || 0),
-    );
+    .sort((a, b) => (a.velocity_views_pct || 0) - (b.velocity_views_pct || 0));
 
   for (const a of declining.slice(0, 1)) {
     const evidence: DecisionPoint["evidence"] = [
       {
         label: "Views",
-        value: fmtPct(a.delta_avg_views_pct),
+        value: fmtPct(a.velocity_views_pct),
         color: "#FF453A",
       },
     ];
@@ -854,7 +844,7 @@ export function generateSignalReport(
       artist_name: a.artist_name,
       artist_handle: a.artist_handle,
       avatar_url: a.avatar_url,
-      signal: `Views down ${Math.abs(a.delta_avg_views_pct || 0).toFixed(0)}%.${hasFormatShift ? ` Recently shifted from ${a.prior_top_format} to ${a.recent_top_format}.` : ""}`,
+      signal: `Views down ${Math.abs(a.velocity_views_pct || 0).toFixed(0)}%.${hasFormatShift ? ` Recently shifted from ${a.prior_top_format} to ${a.recent_top_format}.` : ""}`,
       decision: `${a.best_format} format performing at ${a.best_format_vs_median != null && a.best_format_vs_median > 1 ? `${a.best_format_vs_median.toFixed(1)}x median` : "above average"} while ${a.worst_format || "other formats"} underperforming — review format mix.`,
       urgency: "today",
       evidence,
@@ -1139,17 +1129,17 @@ export function generateContentInsight(
   ).length;
 
   const bestPerformer = artists
-    .filter((a) => a.delta_avg_views_pct != null)
+    .filter((a) => a.velocity_views_pct != null)
     .sort(
-      (a, b) => (b.delta_avg_views_pct || 0) - (a.delta_avg_views_pct || 0),
+      (a, b) => (b.velocity_views_pct || 0) - (a.velocity_views_pct || 0),
     )[0];
 
   if (
     bestPerformer &&
-    bestPerformer.delta_avg_views_pct != null &&
-    bestPerformer.delta_avg_views_pct > 10
+    bestPerformer.velocity_views_pct != null &&
+    bestPerformer.velocity_views_pct > 10
   ) {
-    return `${daily + regular} of your ${artists.length} artists are posting consistently. ${bestPerformer.artist_name} leads with views up ${bestPerformer.delta_avg_views_pct.toFixed(0)}% this month${bestPerformer.best_format ? ` — driven by ${bestPerformer.best_format} format` : ""}. ${dormant > 0 ? `${dormant} ${dormant === 1 ? "artist is" : "artists are"} dormant.` : ""}`;
+    return `${daily + regular} of your ${artists.length} artists are posting consistently. ${bestPerformer.artist_name} leads with views up ${bestPerformer.velocity_views_pct.toFixed(0)}% this month${bestPerformer.best_format ? ` — driven by ${bestPerformer.best_format} format` : ""}. ${dormant > 0 ? `${dormant} ${dormant === 1 ? "artist is" : "artists are"} dormant.` : ""}`;
   }
 
   if (spikeCount > 0) {
@@ -1182,14 +1172,15 @@ export function filterContentArtists(
     case "top_performers":
       return artists.filter(
         (a) =>
-          (a.delta_avg_views_pct != null && a.delta_avg_views_pct > 15) ||
+          (a.velocity_views_pct != null && a.velocity_views_pct > 15) ||
           a.performance_trend === "improving",
       );
     case "declining":
       return artists.filter(
         (a) =>
-          (a.delta_avg_views_pct != null && a.delta_avg_views_pct < -15) ||
-          (a.delta_engagement_pct != null && a.delta_engagement_pct < -20) ||
+          (a.velocity_views_pct != null && a.velocity_views_pct < -15) ||
+          (a.velocity_engagement_pct != null &&
+            a.velocity_engagement_pct < -20) ||
           a.performance_trend === "declining" ||
           a.momentum_tier === "stalled",
       );

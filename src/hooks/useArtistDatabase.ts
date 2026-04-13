@@ -180,9 +180,8 @@ export function useArtistDatabase({
   });
 
   // ---- Absolute TikTok followers + YouTube subscribers from daily_summaries ----
-  // artist_score.tiktok_trend / youtube_trend are NULL as of 2026-04-13 (upstream
-  // dbt gap — see docs/handoffs/backend-todo.md). daily_summaries has the raw
-  // latest_value, so we pull it directly and merge it in.
+  // artist_score carries trend percentages; daily_summaries has the raw
+  // latest_value for absolute counts, which we merge in here.
   const socialQuery = useQuery({
     queryKey: ["artist-database-social", entityIds],
     queryFn: async () => {

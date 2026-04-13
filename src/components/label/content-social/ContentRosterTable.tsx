@@ -216,7 +216,7 @@ function ContentHealthPill({
 
 function PerformanceCell({ artist }: { artist: ContentArtist }) {
   const views = artist.avg_views_30d;
-  const trend = artist.plays_trend_pct ?? artist.delta_avg_views_pct;
+  const trend = artist.plays_trend_pct ?? artist.velocity_views_pct;
   const saveRate = artist.save_to_reach_pct;
 
   const trendColor =
@@ -324,7 +324,7 @@ function derivePriorityAction(artist: ContentArtist): string {
   if (days != null && days >= 7) {
     return `Get ${artist.artist_name} posting again \u2014 ${days} days silent`;
   }
-  const trend = artist.plays_trend_pct ?? artist.delta_avg_views_pct;
+  const trend = artist.plays_trend_pct ?? artist.velocity_views_pct;
   if (trend != null && trend < -20 && artist.best_format) {
     return `Review content strategy \u2014 views down ${Math.abs(trend).toFixed(0)}%, lean into ${artist.best_format}`;
   }
@@ -409,7 +409,7 @@ function buildTierAdaptiveTiles(
     valueColor?: string;
   }[] = [];
 
-  const trend = artist.plays_trend_pct ?? artist.delta_avg_views_pct;
+  const trend = artist.plays_trend_pct ?? artist.velocity_views_pct;
   const engagement = artist.avg_engagement_30d ?? artist.avg_engagement_rate;
   const freq = Math.max(
     artist.posting_freq_7d ?? 0,
@@ -866,7 +866,7 @@ function ArtistCard({
   artist: ContentArtist;
   onNavigate: () => void;
 }) {
-  const trend = artist.plays_trend_pct ?? artist.delta_avg_views_pct;
+  const trend = artist.plays_trend_pct ?? artist.velocity_views_pct;
   const saveRate = artist.save_to_reach_pct;
   const focused = artist.weekly_pulse?.focused_sound;
   const tierGroup = getTierGroup(artist.momentum_tier);

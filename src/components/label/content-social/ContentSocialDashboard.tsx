@@ -106,15 +106,11 @@ export default function ContentSocialDashboard() {
       });
 
       // Compute roster-level metrics from live data (always fresh)
-      const withViewDelta = artists.filter(
-        (a) => a.delta_avg_views_pct != null,
-      );
+      const withViewDelta = artists.filter((a) => a.velocity_views_pct != null);
       const avgVelocityDelta =
         withViewDelta.length > 0
-          ? withViewDelta.reduce(
-              (s, a) => s + (a.delta_avg_views_pct ?? 0),
-              0,
-            ) / withViewDelta.length
+          ? withViewDelta.reduce((s, a) => s + (a.velocity_views_pct ?? 0), 0) /
+            withViewDelta.length
           : 0;
       const withSaveRate = artists.filter((a) => a.save_to_reach_pct != null);
       const avgSaveRate =

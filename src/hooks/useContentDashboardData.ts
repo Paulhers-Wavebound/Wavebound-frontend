@@ -108,7 +108,9 @@ export function useContentDashboardData(): ContentDashboardData {
 
       if (handles.length > 0) {
         // Also fetch artist_handle list for weekly_pulse query
-        const rosterHandles = roster.map((r: any) => r.artist_handle).filter(Boolean);
+        const rosterHandles = roster
+          .map((r: any) => r.artist_handle)
+          .filter(Boolean);
 
         const [dnaRes, evoRes, pulseRes] = await Promise.all([
           supabase
@@ -257,8 +259,9 @@ export function useContentDashboardData(): ContentDashboardData {
         avg_views_7d: r.avg_views_7d,
         avg_engagement_30d: r.avg_engagement_30d,
         avg_engagement_7d: r.avg_engagement_7d,
-        delta_avg_views_pct: r.delta_avg_views_pct,
-        delta_engagement_pct: r.delta_engagement_pct,
+        velocity_views_pct: r.velocity_views_pct,
+        velocity_engagement_pct: r.velocity_engagement_pct,
+        velocity_posting_freq_pct: r.velocity_posting_freq_pct,
         delta_followers_pct: r.delta_followers_pct,
         total_videos: r.total_videos,
         risk_flags: r.risk_flags,
