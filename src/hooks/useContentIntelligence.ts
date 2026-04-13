@@ -134,6 +134,13 @@ export interface TouringSignalData {
   newEventsAnnounced7d: number;
 }
 
+export interface SongHealthEntry {
+  songName: string;
+  healthScore: number;
+  countriesCharting: number | null;
+  dailyStreams: number | null;
+}
+
 export interface SongVelocityEntry {
   songName: string;
   dailyStreams: number;
@@ -319,6 +326,9 @@ export interface ContentIntelData {
   // ── artist_touring_signal ──
   touringSignal: TouringSignalData | null;
 
+  // ── song_health (array) ──
+  songHealth: SongHealthEntry[];
+
   // ── song_velocity (array) ──
   songVelocity: SongVelocityEntry[];
 
@@ -343,7 +353,29 @@ export interface ContentIntelData {
     uniqueCreators: number;
     status: string | null;
     crossPlatformGap: string | null;
+    fanToArtistRatio: number | null;
+    videosLast7d: number | null;
+    videosLast30d: number | null;
+    avgTiktokPlays: number | null;
+    tiktokEngagementRate: number | null;
   }>;
+}
+
+/* ─── Helpers ─────────────────────────────────────────────── */
+
+/** Clean up song names from catalog_tiktok_performance.
+ *  The scraper stores them as: `"Song Title" by Artist Name` or `Song by Artist`.
+ *  We strip the quotes and the ` by Artist` suffix since the artist is already known.  */
+function cleanSongName(raw: string): string {
+  if (!raw) return raw;
+  // Pattern 1: "Song Title" by Artist
+  const quoted = raw.match(/^"(.+?)"\s+by\s+.+$/i);
+  if (quoted) return quoted[1];
+  // Pattern 2: Song Title by Artist (only if "by" appears after the first word)
+  const unquoted = raw.match(/^(.+?)\s+by\s+[A-Z].+$/);
+  if (unquoted && unquoted[1].length > 2) return unquoted[1];
+  // Pattern 3: already clean — return as-is but strip any wrapping quotes
+  return raw.replace(/^"+|"+$/g, "");
 }
 
 /* ─── Fetcher ──────────────────────────────────────────────── */
@@ -438,7 +470,24 @@ async function fetchContentIntelligence(
     // non-critical parse error
   }
 
-  // Phase 2: entity_id-based queries (parallel)
+  // Phase 2a: look up this artist's song entity IDs for catalog_tiktok_performance
+  // The table's artist_entity_id is null for ~97% of rows, but song_entity_id is
+  // reliably populated. We join through wb_entities (type=song, metadata->>artist_entity_id).
+  let artistSongEntityIds: string[] = [];
+  if (eid) {
+    try {
+      const { data: songEntities } = await supabase
+        .from("wb_entities" as any)
+        .select("id")
+        .eq("entity_type", "song")
+        .eq("metadata->>artist_entity_id", eid);
+      artistSongEntityIds = (songEntities || []).map((s: any) => s.id);
+    } catch {
+      // non-critical — catalog section will just be empty
+    }
+  }
+
+  // Phase 2b: entity_id-based queries (parallel)
   const [
     summaryRes,
     commentPulseRes,
@@ -454,6 +503,7 @@ async function fetchContentIntelligence(
     touringRes,
     velocityRes,
     marketRes,
+    songHealthRes,
   ] = await Promise.all([
     eid
       ? supabase
@@ -488,16 +538,35 @@ async function fetchContentIntelligence(
           .limit(1)
           .maybeSingle()
       : Promise.resolve({ data: null }),
+    // catalog_tiktok_performance: try artist_entity_id first, fall back to song_entity_id join
     eid
-      ? supabase
-          .from("catalog_tiktok_performance" as any)
-          .select(
-            "song_name, tiktok_video_count, total_tiktok_plays, unique_creators, tiktok_status, cross_platform_gap",
-          )
-          .eq("artist_entity_id", eid)
-          .gt("tiktok_video_count", 0)
-          .order("tiktok_video_count", { ascending: false })
-          .limit(5)
+      ? (async () => {
+          // Fast path: use artist_entity_id if populated
+          const directRes = await supabase
+            .from("catalog_tiktok_performance" as any)
+            .select(
+              "song_name, tiktok_video_count, total_tiktok_plays, unique_creators, tiktok_status, cross_platform_gap, fan_to_artist_ratio, videos_last_7d, videos_last_30d, avg_tiktok_plays, tiktok_engagement_rate",
+            )
+            .eq("artist_entity_id", eid)
+            .gt("tiktok_video_count", 0)
+            .order("tiktok_video_count", { ascending: false })
+            .limit(5);
+          if (directRes.data && directRes.data.length > 0) return directRes;
+
+          // Slow path: join through wb_entities song IDs
+          if (artistSongEntityIds.length > 0) {
+            return supabase
+              .from("catalog_tiktok_performance" as any)
+              .select(
+                "song_name, tiktok_video_count, total_tiktok_plays, unique_creators, tiktok_status, cross_platform_gap, fan_to_artist_ratio, videos_last_7d, videos_last_30d, avg_tiktok_plays, tiktok_engagement_rate",
+              )
+              .in("song_entity_id", artistSongEntityIds)
+              .gt("tiktok_video_count", 0)
+              .order("tiktok_video_count", { ascending: false })
+              .limit(5);
+          }
+          return { data: [] };
+        })()
       : Promise.resolve({ data: [] }),
     eid
       ? supabase
@@ -585,6 +654,18 @@ async function fetchContentIntelligence(
           .then((r) => r)
           .catch(() => ({ data: [] }))
       : Promise.resolve({ data: [] }),
+    // song_health: uses song entity IDs (same join pattern as catalog_tiktok_performance)
+    artistSongEntityIds.length > 0
+      ? supabase
+          .from("song_health" as any)
+          .select("canonical_name, health_score, countries_charting, daily_streams")
+          .in("entity_id", artistSongEntityIds.slice(0, 50))
+          .gt("health_score", 0)
+          .order("health_score", { ascending: false })
+          .limit(10)
+          .then((r) => r)
+          .catch(() => ({ data: [] }))
+      : Promise.resolve({ data: [] }),
   ]);
 
   const summary = summaryRes.data as any;
@@ -601,6 +682,7 @@ async function fetchContentIntelligence(
   const touring = touringRes.data as any;
   const velocityRows = (velocityRes.data || []) as any[];
   const marketRows = (marketRes.data || []) as any[];
+  const songHealthRows = (songHealthRes.data || []) as any[];
 
   // Parse brief_json
   let briefJson: any = null;
@@ -867,6 +949,14 @@ async function fetchContentIntelligence(
         }
       : null,
 
+    // ── song_health ──
+    songHealth: songHealthRows.map((h: any) => ({
+      songName: h.canonical_name ?? "Unknown",
+      healthScore: h.health_score ?? 0,
+      countriesCharting: h.countries_charting ?? null,
+      dailyStreams: h.daily_streams ?? null,
+    })),
+
     // ── song_velocity ──
     songVelocity: velocityRows.map((v: any) => ({
       songName: v.song_name ?? "Unknown",
@@ -920,12 +1010,17 @@ async function fetchContentIntelligence(
       ? briefJson.action_items
       : null,
     topSongs: catalog.map((c: any) => ({
-      songName: c.song_name,
+      songName: cleanSongName(c.song_name ?? ""),
       videoCount: c.tiktok_video_count,
       totalPlays: c.total_tiktok_plays,
       uniqueCreators: c.unique_creators,
       status: c.tiktok_status,
       crossPlatformGap: c.cross_platform_gap,
+      fanToArtistRatio: c.fan_to_artist_ratio ?? null,
+      videosLast7d: c.videos_last_7d ?? null,
+      videosLast30d: c.videos_last_30d ?? null,
+      avgTiktokPlays: c.avg_tiktok_plays ?? null,
+      tiktokEngagementRate: c.tiktok_engagement_rate ?? null,
     })),
   };
 }

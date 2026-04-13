@@ -95,7 +95,11 @@ const TIER_BADGE_CONFIG: Record<
     color: "#0A84FF",
     bg: "rgba(10,132,255,0.12)",
   },
-  stalled: { label: "STALLED", color: "rgba(255,255,255,0.40)", bg: "rgba(255,255,255,0.06)" },
+  stalled: {
+    label: "STALLED",
+    color: "rgba(255,255,255,0.40)",
+    bg: "rgba(255,255,255,0.06)",
+  },
 };
 
 function MomentumBadge({ tier }: { tier: string | null }) {
@@ -885,11 +889,12 @@ function ArtistCard({
     >
       {/* Risk note */}
       {hasRisk && (
-        <p className="text-[11px] mb-3 px-1" style={{ color: "rgba(255,255,255,0.40)" }}>
-          {artist.risk_flags?.find((f) => f.severity === "critical")
-            ?.message ||
-            artist.risk_flags?.find((f) => f.severity === "warning")
-              ?.message ||
+        <p
+          className="text-[11px] mb-3 px-1"
+          style={{ color: "rgba(255,255,255,0.40)" }}
+        >
+          {artist.risk_flags?.find((f) => f.severity === "critical")?.message ||
+            artist.risk_flags?.find((f) => f.severity === "warning")?.message ||
             "Needs attention"}
         </p>
       )}

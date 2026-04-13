@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { MessageCircle, Check } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { formatDistanceToNow } from "date-fns";
 import InfoPopover from "@/components/sound-intelligence/InfoPopover";
 
 function getGreeting(): string {
@@ -83,9 +84,17 @@ export default function PresidentBriefCard({
     `\nWhat would you like to dig into?`,
   ].join("\n");
 
+  const isStale = generatedAt
+    ? Date.now() - new Date(generatedAt).getTime() > 24 * 60 * 60 * 1000
+    : false;
   const updatedLabel = generatedAt
-    ? `Updated ${new Date(generatedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}`
+    ? `Generated ${formatDistanceToNow(new Date(generatedAt), { addSuffix: true })}`
     : "Updated just now";
+  const updatedTitle = generatedAt
+    ? isStale
+      ? `Brief is over 24 hours old — the president_briefs job may not have run.\n\nGenerated: ${new Date(generatedAt).toLocaleString()}`
+      : new Date(generatedAt).toLocaleString()
+    : undefined;
 
   return (
     <AnimatePresence>
@@ -131,8 +140,11 @@ export default function PresidentBriefCard({
               />
             </div>
             <span
-              className="text-[11px]"
-              style={{ color: "rgba(255,255,255,0.22)" }}
+              className="text-[11px] tabular-nums whitespace-nowrap"
+              style={{
+                color: isStale ? "#FF9F0A" : "rgba(255,255,255,0.35)",
+              }}
+              title={updatedTitle}
             >
               {updatedLabel}
             </span>

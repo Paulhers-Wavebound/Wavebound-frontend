@@ -6,6 +6,12 @@ import { useUserProfile } from "@/contexts/UserProfileContext";
 export interface AISignalReport {
   headline: string;
   decision_points: Array<{
+    /**
+     * Deterministic UUIDv5 assigned by generate-signal-report.ts (backend commit d6033ff).
+     * Optional because briefs generated before 2026-04-12 don't have it — frontend
+     * falls back to a synthesized key in `decisionPointKey()`.
+     */
+    id?: string;
     priority: number;
     category: string;
     title: string;
@@ -22,6 +28,8 @@ export interface AISignalReport {
 export interface PresidentBrief {
   text: string | null;
   generatedAt: string | null;
+  /** ISO date (YYYY-MM-DD) — the brief_date column on president_briefs */
+  briefDate: string | null;
   /** Structured AI Signal Report (from generate-signal-report edge function) */
   aiReport: AISignalReport | null;
   loading: boolean;
@@ -37,7 +45,7 @@ export function usePresidentBrief(role: string = "content"): PresidentBrief {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("president_briefs" as any)
-        .select("brief_text, brief_json, generated_at")
+        .select("brief_text, brief_json, generated_at, brief_date")
         .eq("label_id", labelId!)
         .eq("role", role)
         .order("brief_date", { ascending: false })
@@ -56,6 +64,7 @@ export function usePresidentBrief(role: string = "content"): PresidentBrief {
       return {
         text: row.brief_text as string,
         generatedAt: row.generated_at as string,
+        briefDate: row.brief_date as string,
         aiReport,
       };
     },
@@ -67,6 +76,7 @@ export function usePresidentBrief(role: string = "content"): PresidentBrief {
   return {
     text: query.data?.text ?? null,
     generatedAt: query.data?.generatedAt ?? null,
+    briefDate: query.data?.briefDate ?? null,
     aiReport: query.data?.aiReport ?? null,
     loading: query.isLoading,
   };

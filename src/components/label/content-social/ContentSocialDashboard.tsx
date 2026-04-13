@@ -150,6 +150,7 @@ export default function ContentSocialDashboard() {
             : "MOMENTUM_CAPTURE";
 
           return {
+            id: dp.id,
             category,
             artist_name: displayName,
             artist_handle: matchedArtist?.artist_handle || "",
@@ -320,8 +321,14 @@ export default function ContentSocialDashboard() {
               <SignalReportCard
                 report={signalReport}
                 userName={userName}
-                aiBriefText={presidentBrief.aiReport?.headline || presidentBrief.text}
+                aiBriefText={
+                  presidentBrief.aiReport?.headline || presidentBrief.text
+                }
                 aiBriefGeneratedAt={presidentBrief.generatedAt}
+                briefDate={
+                  presidentBrief.briefDate ??
+                  new Date().toISOString().slice(0, 10)
+                }
               />
             ) : (
               <ContentBriefingCard

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { MessageCircle, Check } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { formatDistanceToNow } from "date-fns";
 import type { ContentBriefing } from "@/data/contentDashboardHelpers";
 import type { BriefSection } from "@/hooks/useIntelligenceBriefs";
 import InfoPopover from "@/components/sound-intelligence/InfoPopover";
@@ -95,14 +96,39 @@ export default function ContentBriefingCard({
                 width={280}
               />
             </div>
-            <span
-              className="text-[11px]"
-              style={{ color: "rgba(255,255,255,0.22)" }}
-            >
-              {aiGeneratedAt
-                ? `Updated ${new Date(aiGeneratedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}`
-                : "Updated just now"}
-            </span>
+            {(() => {
+              if (!aiGeneratedAt) {
+                return (
+                  <span
+                    className="text-[11px]"
+                    style={{ color: "rgba(255,255,255,0.35)" }}
+                  >
+                    Updated just now
+                  </span>
+                );
+              }
+              const isStale =
+                Date.now() - new Date(aiGeneratedAt).getTime() >
+                24 * 60 * 60 * 1000;
+              return (
+                <span
+                  className="text-[11px] tabular-nums whitespace-nowrap"
+                  style={{
+                    color: isStale ? "#FF9F0A" : "rgba(255,255,255,0.35)",
+                  }}
+                  title={
+                    isStale
+                      ? `Brief is over 24 hours old — the president_briefs job may not have run.\n\nGenerated: ${new Date(aiGeneratedAt).toLocaleString()}`
+                      : new Date(aiGeneratedAt).toLocaleString()
+                  }
+                >
+                  Generated{" "}
+                  {formatDistanceToNow(new Date(aiGeneratedAt), {
+                    addSuffix: true,
+                  })}
+                </span>
+              );
+            })()}
           </div>
 
           {/* Greeting */}

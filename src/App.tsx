@@ -26,6 +26,10 @@ const LabelFanBriefs = lazy(() => import("./pages/label/LabelFanBriefs"));
 const ContentAssistant = lazy(() => import("./pages/ContentAssistant"));
 const TikTokAudit = lazy(() => import("./pages/TikTokAudit"));
 const ThePulse = lazy(() => import("./pages/label/ThePulse"));
+const ARProspect = lazy(() => import("./pages/label/ARProspect"));
+const ARSimulationLab = lazy(() => import("./pages/label/ARSimulationLab"));
+const CultureGenome = lazy(() => import("./pages/label/CultureGenome"));
+const ArtistDatabase = lazy(() => import("./pages/label/ArtistDatabase"));
 import ErrorBoundary from "@/components/ErrorBoundary";
 import { AISidebarProvider } from "@/contexts/AISidebarContext";
 import { AnalysisProvider } from "@/contexts/AnalysisContext";
@@ -110,6 +114,9 @@ const HealthHandles = lazy(() => import("./pages/label/health/HealthHandles"));
 const HealthN8n = lazy(() => import("./pages/label/health/HealthN8n"));
 const HealthDatabase = lazy(
   () => import("./pages/label/health/HealthDatabase"),
+);
+const HealthRosterCoverage = lazy(
+  () => import("./pages/label/health/HealthRosterCoverage"),
 );
 import PreviewGate from "./components/coming-soon/PreviewGate";
 import SoundIntelligencePreview from "./pages/label/previews/SoundIntelligencePreview";
@@ -354,6 +361,22 @@ const App = () => {
                                       element={<LabelExpansionRadar />}
                                     />
                                     <Route
+                                      path="ar/prospect/:id"
+                                      element={<ARProspect />}
+                                    />
+                                    <Route
+                                      path="ar/simulation"
+                                      element={<ARSimulationLab />}
+                                    />
+                                    <Route
+                                      path="culture-genome"
+                                      element={<CultureGenome />}
+                                    />
+                                    <Route
+                                      path="database"
+                                      element={<ArtistDatabase />}
+                                    />
+                                    <Route
                                       path="fan-briefs"
                                       element={
                                         <PreviewGate
@@ -435,6 +458,10 @@ const App = () => {
                                       <Route
                                         path="database"
                                         element={<HealthDatabase />}
+                                      />
+                                      <Route
+                                        path="roster-coverage"
+                                        element={<HealthRosterCoverage />}
                                       />
                                     </Route>
                                   </Route>

@@ -17,6 +17,7 @@ import {
   Link2,
   Zap,
   HardDrive,
+  Users,
 } from "lucide-react";
 
 interface NavItem {
@@ -115,6 +116,11 @@ const NAV_GROUPS: NavGroup[] = [
         path: "/label/admin/health/data",
         label: "Data",
         icon: Database,
+      },
+      {
+        path: "/label/admin/health/roster-coverage",
+        label: "Roster Coverage",
+        icon: Users,
       },
       {
         path: "/label/admin/health/identity",

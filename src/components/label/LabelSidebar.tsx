@@ -18,6 +18,7 @@ import {
   Brain,
   HeartPulse,
   Globe,
+  Database,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useUserProfile } from "@/contexts/UserProfileContext";
@@ -104,6 +105,13 @@ const getMainNav = (isAdmin: boolean, labelId: string | null) => {
       isNew: true,
       badgeLabel: "V2",
       ...tag("expansion-radar"),
+    },
+    {
+      id: "database",
+      label: "The Vault",
+      icon: Database,
+      path: "/label/database",
+      isNew: true as const,
     },
     {
       id: "fan-briefs",

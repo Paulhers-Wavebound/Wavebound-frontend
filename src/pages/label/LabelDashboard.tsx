@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import SEOHead from "@/components/SEOHead";
 import MarketingDashboard from "@/components/label/marketing/MarketingDashboard";
 import ContentSocialDashboard from "@/components/label/content-social/ContentSocialDashboard";
+import ARCommandCenter from "@/components/label/ar/ARCommandCenter";
 import { supabase } from "@/integrations/supabase/client";
 import { useUserProfile } from "@/contexts/UserProfileContext";
 import { useDashboardRole } from "@/contexts/DashboardRoleContext";
@@ -14,6 +15,9 @@ import {
   Flame,
   Clock,
   X,
+  ShieldAlert,
+  CheckCircle2,
+  FlaskConical,
 } from "lucide-react";
 
 interface Notification {
@@ -67,6 +71,99 @@ const MOCK_NOTIFICATIONS: Notification[] = [
     title: "Ice Spice — Momentum Declining",
     body: "Down to 35. TikTok US #88 (-24). $35K/month at 0.6x ROI.",
     time: "3h ago",
+  },
+];
+
+const AR_MOCK_NOTIFICATIONS: Notification[] = [
+  {
+    id: "ar-luna-scale",
+    icon: TrendingUp,
+    iconColor: "#30D158",
+    iconBg: "rgba(48,209,88,0.12)",
+    avatarUrl: null,
+    title: "Luna Voss — Ghost Curve 91% Match",
+    body: "Rise Probability hit 9.7. Tracking Tyla wk-4. Fast-track to ear test recommended.",
+    time: "8m ago",
+  },
+  {
+    id: "ar-felix-bot",
+    icon: ShieldAlert,
+    iconColor: "#FF453A",
+    iconBg: "rgba(255,69,58,0.12)",
+    avatarUrl: null,
+    title: "Felix Adler — Bot Anomaly Detected",
+    body: "22% of Spotify listeners from suspicious IP clusters in Frankfurt. Metrics quarantined.",
+    time: "42m ago",
+  },
+  {
+    id: "ar-eloise-signoff",
+    icon: CheckCircle2,
+    iconColor: "#BF5AF2",
+    iconBg: "rgba(191,90,242,0.12)",
+    avatarUrl: null,
+    title: "Eloise Park — A&R Council Approved",
+    body: "Shadow P&L: 12.8% IRR on $425K. Awaiting Business Affairs sign-off.",
+    time: "1h ago",
+  },
+  {
+    id: "ar-camille-studio",
+    icon: FlaskConical,
+    iconColor: "#0A84FF",
+    iconBg: "rgba(10,132,255,0.12)",
+    avatarUrl: null,
+    title: "Camille Duval — Studio Window Opening",
+    body: "Unreleased test passed (68%). Paris studio available May 5-7. Producer match: Disclosure.",
+    time: "2h ago",
+  },
+  {
+    id: "ar-dex-legal",
+    icon: Clock,
+    iconColor: "#FFD60A",
+    iconBg: "rgba(255,214,10,0.12)",
+    avatarUrl: null,
+    title: "Dex Monroe — Clearance Delay",
+    body: "Prior publishing deal: estimated 6-8 weeks clearance. Business Affairs escalated.",
+    time: "3h ago",
+  },
+  {
+    id: "ar-sea-signal",
+    icon: Flame,
+    iconColor: "#FF9F0A",
+    iconBg: "rgba(255,159,10,0.12)",
+    avatarUrl: null,
+    title: "SEA Trigger Markets — 4x Signal Density",
+    body: "Manila + Jakarta showing 4x early-adopter signals vs DACH. Scout redeployment recommended.",
+    time: "4h ago",
+  },
+  {
+    id: "ar-noa-stall",
+    icon: TrendingDown,
+    iconColor: "#FF453A",
+    iconBg: "rgba(255,69,58,0.12)",
+    avatarUrl: null,
+    title: "Noa Reyes — Growth Stalling",
+    body: "Vg negative 4 weeks. Conversion Alpha 0.4%. Recommend removing from active pipeline.",
+    time: "5h ago",
+  },
+  {
+    id: "ar-priya-trigger",
+    icon: TrendingUp,
+    iconColor: "#30D158",
+    iconBg: "rgba(48,209,88,0.12)",
+    avatarUrl: null,
+    title: "Priya Sharma — UK Diaspora Signal",
+    body: "Mumbai→Dubai→Birmingham corridor detected. Event intent 14% from UK comments.",
+    time: "6h ago",
+  },
+  {
+    id: "ar-zara-purchase",
+    icon: Flame,
+    iconColor: "#e8430a",
+    iconBg: "rgba(232,67,10,0.12)",
+    avatarUrl: null,
+    title: "Zara Ndiaye — Highest Purchase Intent",
+    body: "12% purchase intent in comments — top of pipeline. Francophone corridor accelerating.",
+    time: "7h ago",
   },
 ];
 
@@ -200,7 +297,11 @@ function NotificationBell() {
   const contentNotifications = useContentNotifications();
 
   const allNotifications =
-    role === "content" ? contentNotifications : MOCK_NOTIFICATIONS;
+    role === "content"
+      ? contentNotifications
+      : role === "ar"
+        ? AR_MOCK_NOTIFICATIONS
+        : MOCK_NOTIFICATIONS;
   const visible = allNotifications.filter((n) => !dismissed.has(n.id));
   const count = visible.length;
 
@@ -322,6 +423,8 @@ export default function LabelDashboard() {
       {/* Render the active role view */}
       {role === "marketing" ? (
         <MarketingDashboard />
+      ) : role === "ar" ? (
+        <ARCommandCenter />
       ) : (
         <ContentSocialDashboard />
       )}

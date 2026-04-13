@@ -557,6 +557,12 @@ export type DecisionCategory =
   | "CONVERSION_ALERT"; // High views but low save rate (Viral Mirage)
 
 export interface DecisionPoint {
+  /**
+   * Deterministic UUIDv5 from the backend generator (generate-signal-report.ts).
+   * Optional because briefs generated before 2026-04-12 don't have it. When
+   * present, `decisionPointKey()` prefers it over the synthesized fallback.
+   */
+  id?: string;
   /** Which decision category from the Bible taxonomy */
   category: DecisionCategory;
   /** The artist this decision concerns */
@@ -636,11 +642,19 @@ export function generateSignalReport(
 
   // ── Compute roster-level metrics ──────────────────────
 
-  const withViewDelta = artists.filter((a) => a.delta_avg_views_pct != null);
+  // delta_avg_views_pct is null/0 for the entire roster — backend pipeline
+  // never populates it. Derive from avg_views_7d vs avg_views_30d instead,
+  // which are populated. Tracked in backend-todo.md.
+  const velocityDeltas = artists
+    .map((a) =>
+      a.avg_views_7d != null && a.avg_views_30d != null && a.avg_views_30d > 0
+        ? ((a.avg_views_7d - a.avg_views_30d) / a.avg_views_30d) * 100
+        : null,
+    )
+    .filter((v): v is number => v != null);
   const avgVelocityDelta =
-    withViewDelta.length > 0
-      ? withViewDelta.reduce((s, a) => s + (a.delta_avg_views_pct ?? 0), 0) /
-        withViewDelta.length
+    velocityDeltas.length > 0
+      ? velocityDeltas.reduce((s, v) => s + v, 0) / velocityDeltas.length
       : 0;
 
   const withSaveRate = artists.filter((a) => a.save_to_reach_pct != null);

@@ -10,8 +10,9 @@
  *  3. Risk Alerts — critical/warning flags (if any)
  *  4. Today's TODO — actionable checklist derived from decisions
  */
-import { useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { formatDistanceToNow } from "date-fns";
 import {
   MessageCircle,
   Check,
@@ -35,6 +36,14 @@ import type {
   DecisionPoint,
 } from "@/data/contentDashboardHelpers";
 import { fmtPct } from "@/data/contentDashboardHelpers";
+import {
+  useDecisionPointActions,
+  useLabelTeammates,
+} from "@/hooks/useDecisionPointActions";
+import { useSignalReportTodos, todoKey } from "@/hooks/useSignalReportTodos";
+import { useUserProfile } from "@/contexts/UserProfileContext";
+import { decisionPointKey } from "@/utils/decisionPointKey";
+import DecisionPointActions from "./DecisionPointActions";
 
 /* ─── Category config ─────────────────────────────────────── */
 
@@ -92,14 +101,109 @@ const URGENCY_CONFIG: Record<
   },
 };
 
+/* ─── Artist Avatar with chained fallback ────────────────────
+ * Tries the provided URL first, then a deterministic Supabase Storage
+ * URL derived from the handle, then falls back to artist initials.
+ * This makes the row resilient to expired TikTok CDN signed URLs.
+ */
+const AVATAR_BUCKET_BASE =
+  "https://kxvgbowrkmowuyezoeke.supabase.co/storage/v1/object/public/avatars";
+
+function ArtistAvatar({
+  name,
+  handle,
+  url,
+  color,
+  size = 36,
+}: {
+  name: string;
+  handle?: string | null;
+  url?: string | null;
+  color: string;
+  size?: number;
+}) {
+  const sources = useMemo(() => {
+    const arr: string[] = [];
+    if (url) arr.push(url);
+    if (handle) {
+      const h = handle.replace(/^@/, "").trim();
+      if (h) {
+        const storageUrl = `${AVATAR_BUCKET_BASE}/${h}.jpg`;
+        if (!arr.includes(storageUrl)) arr.push(storageUrl);
+      }
+    }
+    return arr;
+  }, [url, handle]);
+
+  const [idx, setIdx] = useState(0);
+  useEffect(() => {
+    setIdx(0);
+  }, [sources]);
+
+  const currentSrc = idx < sources.length ? sources[idx] : null;
+  const initials =
+    (name || "?")
+      .split(/[\s,]+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((w) => w[0]?.toUpperCase() ?? "")
+      .join("") || "?";
+
+  const boxStyle = {
+    height: size,
+    width: size,
+    border: `2px solid ${color}40`,
+  } as const;
+
+  if (!currentSrc) {
+    return (
+      <div
+        className="shrink-0 mt-0.5 flex items-center justify-center rounded-full font-semibold"
+        style={{
+          ...boxStyle,
+          background: `${color}25`,
+          color,
+          fontSize: Math.round(size * 0.36),
+        }}
+      >
+        {initials}
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="shrink-0 mt-0.5 rounded-full overflow-hidden"
+      style={{ ...boxStyle, background: `${color}15` }}
+    >
+      <img
+        key={currentSrc}
+        src={currentSrc}
+        alt={name}
+        className="h-full w-full object-cover"
+        onError={() => setIdx((i) => i + 1)}
+      />
+    </div>
+  );
+}
+
 /* ─── Decision Point Row ──────────────────────────────────── */
 
-function DecisionPointRow({ dp, index }: { dp: DecisionPoint; index: number }) {
-  const [imgFailed, setImgFailed] = useState(false);
+function DecisionPointRow({
+  dp,
+  index,
+  briefDate,
+  revisitingNote,
+  senderLabel,
+}: {
+  dp: DecisionPoint;
+  index: number;
+  briefDate: string;
+  revisitingNote?: string | null;
+  senderLabel?: string | null;
+}) {
   const cat = CATEGORY_CONFIG[dp.category];
   const urg = URGENCY_CONFIG[dp.urgency];
-  const Icon = cat.icon;
-  const showAvatar = dp.avatar_url && !imgFailed;
 
   return (
     <motion.div
@@ -111,27 +215,12 @@ function DecisionPointRow({ dp, index }: { dp: DecisionPoint; index: number }) {
         borderBottom: "1px solid rgba(255,255,255,0.04)",
       }}
     >
-      {/* Artist avatar or category icon fallback */}
-      {showAvatar ? (
-        <div
-          className="mt-0.5 h-8 w-8 shrink-0 rounded-full overflow-hidden"
-          style={{ border: `2px solid ${cat.color}40` }}
-        >
-          <img
-            src={dp.avatar_url!}
-            alt={dp.artist_name}
-            className="h-full w-full object-cover"
-            onError={() => setImgFailed(true)}
-          />
-        </div>
-      ) : (
-        <div
-          className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
-          style={{ background: `${cat.color}15` }}
-        >
-          <Icon size={15} style={{ color: cat.color }} />
-        </div>
-      )}
+      <ArtistAvatar
+        name={dp.artist_name}
+        handle={dp.artist_handle}
+        url={dp.avatar_url}
+        color={cat.color}
+      />
 
       {/* Content */}
       <div className="flex-1 min-w-0">
@@ -152,6 +241,17 @@ function DecisionPointRow({ dp, index }: { dp: DecisionPoint; index: number }) {
           <span className="text-[11px] text-white/40 truncate">
             {dp.artist_name}
           </span>
+          {senderLabel && (
+            <span
+              className="text-[9px] font-medium tracking-wide uppercase px-1.5 py-0.5 rounded shrink-0"
+              style={{
+                color: "#e8430a",
+                background: "rgba(232,67,10,0.10)",
+              }}
+            >
+              from {senderLabel}
+            </span>
+          )}
         </div>
 
         {/* Signal */}
@@ -195,6 +295,14 @@ function DecisionPointRow({ dp, index }: { dp: DecisionPoint; index: number }) {
             ))}
           </div>
         )}
+
+        {revisitingNote && (
+          <div className="mt-2 text-[11px] text-white/55 italic border-l-2 border-[#e8430a]/40 pl-2">
+            “{revisitingNote}”
+          </div>
+        )}
+
+        <DecisionPointActions decisionPoint={dp} briefDate={briefDate} />
       </div>
     </motion.div>
   );
@@ -206,10 +314,12 @@ const PEEK_HEIGHT = 120;
 
 function DecisionPointsSection({
   decisionPoints,
+  briefDate,
   isOpen,
   onToggle,
 }: {
   decisionPoints: DecisionPoint[];
+  briefDate: string;
   isOpen: boolean;
   onToggle: () => void;
 }) {
@@ -234,10 +344,7 @@ function DecisionPointsSection({
           animate={{ rotate: isOpen ? 180 : 0 }}
           transition={{ type: "spring", stiffness: 300, damping: 25 }}
         >
-          <ChevronDown
-            size={14}
-            style={{ color: "rgba(255,255,255,0.30)" }}
-          />
+          <ChevronDown size={14} style={{ color: "rgba(255,255,255,0.30)" }} />
         </motion.div>
       </button>
 
@@ -251,7 +358,7 @@ function DecisionPointsSection({
         <motion.div
           animate={{
             height: isOpen
-              ? contentRef.current?.scrollHeight ?? "auto"
+              ? (contentRef.current?.scrollHeight ?? "auto")
               : PEEK_HEIGHT,
           }}
           transition={{ type: "spring", stiffness: 280, damping: 30 }}
@@ -275,11 +382,75 @@ function DecisionPointsSection({
 
           <div ref={contentRef}>
             {decisionPoints.map((dp, i) => (
-              <DecisionPointRow key={i} dp={dp} index={i} />
+              <DecisionPointRow
+                key={`${dp.artist_handle}-${dp.category}-${i}`}
+                dp={dp}
+                index={i}
+                briefDate={briefDate}
+              />
             ))}
           </div>
         </motion.div>
       )}
+    </div>
+  );
+}
+
+/* ─── Revisiting Section (snoozed back to today + forwarded to me) ─── */
+
+function RevisitingSection({
+  entries,
+  briefDate,
+}: {
+  entries: ReturnType<typeof useDecisionPointActions>["revisiting"];
+  briefDate: string;
+}) {
+  const { labelId } = useUserProfile();
+  const teammates = useLabelTeammates(labelId);
+
+  const senderLookup = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const t of teammates.data ?? []) {
+      const display = t.artist_handle || t.email?.split("@")[0] || null;
+      if (display) map.set(t.user_id, display);
+    }
+    return map;
+  }, [teammates.data]);
+
+  if (entries.length === 0) return null;
+  return (
+    <div className="px-7 pb-2">
+      <div className="flex items-center gap-2 pt-3 pb-2 border-t border-white/[0.06]">
+        <span className="text-[10px] font-semibold tracking-wider uppercase text-[#e8430a]">
+          Revisiting
+        </span>
+        <span className="text-[10px] text-white/20 tabular-nums">
+          {entries.length}
+        </span>
+        <span className="text-[10px] text-white/30 ml-1">
+          snoozed back to today or forwarded to you
+        </span>
+      </div>
+      <div>
+        {entries.map((entry, i) => {
+          const senderLabel =
+            entry.reason === "forwarded_to_me" && entry.senderUserId
+              ? (senderLookup.get(entry.senderUserId) ?? "teammate")
+              : null;
+          return (
+            <DecisionPointRow
+              key={entry.key}
+              dp={entry.decisionPoint}
+              index={i}
+              briefDate={briefDate}
+              revisitingNote={
+                entry.reason === "forwarded_to_me" ? entry.note : null
+              }
+              senderLabel={senderLabel}
+            />
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -291,17 +462,28 @@ export default function SignalReportCard({
   userName,
   aiBriefText,
   aiBriefGeneratedAt,
+  briefDate,
 }: {
   report: SignalReport;
   userName?: string | null;
   aiBriefText?: string | null;
   aiBriefGeneratedAt?: string | null;
+  briefDate: string;
 }) {
   const navigate = useNavigate();
   const [dismissed, setDismissed] = useState(false);
   const [decisionsOpen, setDecisionsOpen] = useState(false);
-  const [todoChecked, setTodoChecked] = useState<Set<number>>(new Set());
   const [showAllTodos, setShowAllTodos] = useState(false);
+
+  const { acknowledgedKeys, futureSnoozedKeys, revisiting } =
+    useDecisionPointActions(briefDate);
+  const { checkedKeys: checkedTodoKeys, toggle: toggleTodoPersisted } =
+    useSignalReportTodos(briefDate);
+
+  const visibleDecisionPoints = report.decisionPoints.filter((dp) => {
+    const key = decisionPointKey(dp, briefDate);
+    return !acknowledgedKeys.has(key) && !futureSnoozedKeys.has(key);
+  });
 
   const displayName = userName || "there";
   const greeting =
@@ -311,16 +493,10 @@ export default function SignalReportCard({
         ? "Good afternoon"
         : "Good evening";
 
-  const toggleTodo = (idx: number) => {
-    setTodoChecked((prev) => {
-      const next = new Set(prev);
-      if (next.has(idx)) next.delete(idx);
-      else next.add(idx);
-      return next;
-    });
-  };
-
   const visibleTodos = showAllTodos ? report.todos : report.todos.slice(0, 4);
+  const checkedTodoCount = report.todos.filter((t) =>
+    checkedTodoKeys.has(todoKey(t, briefDate)),
+  ).length;
 
   // Build prefill for chat
   const assistantPrefill = [
@@ -412,6 +588,30 @@ export default function SignalReportCard({
                     </span>
                   </span>
                 </div>
+                {aiBriefGeneratedAt &&
+                  (() => {
+                    const isStale =
+                      Date.now() - new Date(aiBriefGeneratedAt).getTime() >
+                      24 * 60 * 60 * 1000;
+                    return (
+                      <span
+                        className="text-[11px] tabular-nums whitespace-nowrap"
+                        style={{
+                          color: isStale ? "#FF9F0A" : "rgba(255,255,255,0.35)",
+                        }}
+                        title={
+                          isStale
+                            ? `Brief is over 24 hours old — the president_briefs job may not have run.\n\nGenerated: ${new Date(aiBriefGeneratedAt).toLocaleString()}`
+                            : new Date(aiBriefGeneratedAt).toLocaleString()
+                        }
+                      >
+                        Generated{" "}
+                        {formatDistanceToNow(new Date(aiBriefGeneratedAt), {
+                          addSuffix: true,
+                        })}
+                      </span>
+                    );
+                  })()}
               </div>
             </div>
 
@@ -458,22 +658,33 @@ export default function SignalReportCard({
                 className="text-[12px] leading-relaxed"
                 style={{ color: "rgba(255,255,255,0.35)" }}
               >
-                <span className="font-medium" style={{ color: "rgba(255,255,255,0.45)" }}>
+                <span
+                  className="font-medium"
+                  style={{ color: "rgba(255,255,255,0.45)" }}
+                >
                   Heads up:
                 </span>{" "}
                 {report.riskAlerts.slice(0, 3).map((alert, i, arr) => (
                   <span key={i}>
                     {alert.message}
-                    {i < arr.length - 1 ? (i === arr.length - 2 ? ", and " : ", ") : "."}
+                    {i < arr.length - 1
+                      ? i === arr.length - 2
+                        ? ", and "
+                        : ", "
+                      : "."}
                   </span>
                 ))}
               </p>
             </div>
           )}
 
+          {/* ── Revisiting (snoozed back to today + forwarded to me) ── */}
+          <RevisitingSection entries={revisiting} briefDate={briefDate} />
+
           {/* ── Decision Points (collapsible) ─────────────── */}
           <DecisionPointsSection
-            decisionPoints={report.decisionPoints}
+            decisionPoints={visibleDecisionPoints}
+            briefDate={briefDate}
             isOpen={decisionsOpen}
             onToggle={() => setDecisionsOpen((o) => !o)}
           />
@@ -486,21 +697,22 @@ export default function SignalReportCard({
                   Today&apos;s Actions
                 </span>
                 <span className="text-[10px] text-white/20 tabular-nums">
-                  {todoChecked.size}/{report.todos.length}
+                  {checkedTodoCount}/{report.todos.length}
                 </span>
               </div>
 
               <div className="flex flex-col gap-1">
                 {visibleTodos.map((todo, i) => {
-                  const checked = todoChecked.has(i);
+                  const key = todoKey(todo, briefDate);
+                  const checked = checkedTodoKeys.has(key);
                   const urg = URGENCY_CONFIG[todo.urgency];
                   return (
                     <motion.button
-                      key={i}
+                      key={key}
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
                       transition={{ delay: i * 0.04 }}
-                      onClick={() => toggleTodo(i)}
+                      onClick={() => toggleTodoPersisted(todo)}
                       className="flex items-start gap-2.5 text-left px-3 py-2 rounded-lg hover:bg-white/[0.03] transition-colors group"
                     >
                       {/* Checkbox */}

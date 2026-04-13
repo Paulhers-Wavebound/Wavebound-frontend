@@ -8,6 +8,7 @@ import {
 const ROLES: { value: DashboardRole; label: string }[] = [
   { value: "marketing", label: "Digital Marketing" },
   { value: "content", label: "Content & Social" },
+  { value: "ar", label: "A&R" },
 ];
 
 export default function RoleSelector() {

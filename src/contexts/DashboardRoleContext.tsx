@@ -6,7 +6,7 @@ import {
   type ReactNode,
 } from "react";
 
-export type DashboardRole = "marketing" | "content";
+export type DashboardRole = "marketing" | "content" | "ar";
 
 interface DashboardRoleContextValue {
   role: DashboardRole;
@@ -31,7 +31,11 @@ export function DashboardRoleProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const roleLabel =
-    role === "marketing" ? "Digital Marketing" : "Content & Social";
+    role === "marketing"
+      ? "Digital Marketing"
+      : role === "ar"
+        ? "A&R"
+        : "Content & Social";
 
   return (
     <DashboardRoleContext.Provider value={{ role, setRole, roleLabel }}>

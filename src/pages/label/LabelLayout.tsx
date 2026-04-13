@@ -30,6 +30,10 @@ import {
   ChevronRightIcon,
   Clock,
   Globe,
+  FlaskConical,
+  Crosshair,
+  Dna,
+  Database,
 } from "lucide-react";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import LabelContentSkeleton from "@/components/label/LabelContentSkeleton";
@@ -140,22 +144,30 @@ const ROUTE_MAP: Record<string, string> = {
   "/label/admin/health/cron": "Cron Jobs",
   "/label/admin/health/quotas": "API Quotas",
   "/label/admin/health/data": "Data",
+  "/label/admin/health/roster-coverage": "Roster Coverage",
   "/label/admin/health/identity": "Identity",
   "/label/admin/health/inventory": "Inventory",
   "/label/admin/health/pipeline": "Pipeline",
+  "/label/ar/simulation": "Simulation Lab",
+  "/label/culture-genome": "Culture Genome",
+  "/label/database": "The Vault",
 };
 
 const PARENT_MAP: Record<string, string> = {
   "/label/sound-intelligence/compare": "/label/sound-intelligence",
+  "/label/ar/simulation": "/label",
+  "/label/culture-genome": "/label",
   "/label/admin/health": "/label",
   "/label/admin/health/servers": "/label/admin/health",
   "/label/admin/health/scrapers": "/label/admin/health",
   "/label/admin/health/cron": "/label/admin/health",
   "/label/admin/health/quotas": "/label/admin/health",
   "/label/admin/health/data": "/label/admin/health",
+  "/label/admin/health/roster-coverage": "/label/admin/health",
   "/label/admin/health/identity": "/label/admin/health",
   "/label/admin/health/inventory": "/label/admin/health",
   "/label/admin/health/pipeline": "/label/admin/health",
+  "/label/database": "/label",
 };
 
 function useBreadcrumbs(): Crumb[] {
@@ -184,6 +196,14 @@ function useBreadcrumbs(): Crumb[] {
       return [
         { label: "Sound Intelligence", path: "/label/sound-intelligence" },
         { label: pageTitle || "Analysis", path: pathname },
+      ];
+    }
+
+    // Dynamic: /label/ar/prospect/:id
+    if (pathname.startsWith("/label/ar/prospect/")) {
+      return [
+        { label: "A&R Pipeline", path: "/label" },
+        { label: pageTitle || "Prospect", path: pathname },
       ];
     }
 
@@ -299,6 +319,17 @@ const NAV_COMMANDS: NavCommand[] = [
     icon: HeartPulse,
     adminOnly: true,
   },
+  {
+    label: "A&R Simulation Lab",
+    path: "/label/ar/simulation",
+    icon: FlaskConical,
+  },
+  {
+    label: "Culture Genome",
+    path: "/label/culture-genome",
+    icon: Dna,
+  },
+  { label: "The Vault", path: "/label/database", icon: Database },
   { label: "Help", path: "/label/help", icon: HelpCircle },
   { label: "Settings", path: "/label/settings", icon: Settings },
 ];
