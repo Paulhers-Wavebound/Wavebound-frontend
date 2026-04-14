@@ -566,11 +566,13 @@ export interface DecisionPoint {
   id?: string;
   /** Which decision category from the Bible taxonomy */
   category: DecisionCategory;
-  /** The artist this decision concerns */
+  /** The artist(s) this decision concerns */
   artist_name: string;
   artist_handle: string;
   /** Artist avatar for visual identification */
   avatar_url: string | null;
+  /** All artists involved (for multi-artist decision points) */
+  all_artists?: { name: string; handle: string; avatar_url: string | null }[];
   /** The signal: what happened / what was detected */
   signal: string;
   /** The decision: what the strategist needs to do — specific and actionable */

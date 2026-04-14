@@ -131,11 +131,16 @@ export default function ContentSocialDashboard() {
 
       const decisionPoints: DecisionPoint[] = aiReport.decision_points.map(
         (dp) => {
-          // Find the first matching artist for avatar/handle
-          const matchedArtist =
-            dp.artist_names?.length > 0
-              ? artistMap.get(dp.artist_names[0].toLowerCase()) || null
-              : null;
+          // Resolve ALL matching artists for avatar/handle
+          const allArtists = (dp.artist_names || []).map((name: string) => {
+            const matched = artistMap.get(name.toLowerCase()) || null;
+            return {
+              name,
+              handle: matched?.artist_handle || "",
+              avatar_url: matched?.avatar_url || null,
+            };
+          });
+          const firstArtist = allArtists[0] || null;
           const displayName =
             dp.artist_names?.length > 1
               ? dp.artist_names.join(", ")
@@ -149,8 +154,9 @@ export default function ContentSocialDashboard() {
             id: dp.id,
             category,
             artist_name: displayName,
-            artist_handle: matchedArtist?.artist_handle || "",
-            avatar_url: matchedArtist?.avatar_url || null,
+            artist_handle: firstArtist?.handle || "",
+            avatar_url: firstArtist?.avatar_url || null,
+            all_artists: allArtists,
             signal: dp.signal,
             decision: dp.decision,
             urgency: dp.urgency,

@@ -19,7 +19,14 @@ import {
   LayoutGrid,
   List,
   Activity,
+  HelpCircle,
 } from "lucide-react";
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+  TooltipProvider,
+} from "@/components/ui/tooltip";
 import InfoPopover from "@/components/sound-intelligence/InfoPopover";
 import type {
   ContentArtist,
@@ -841,6 +848,26 @@ function TopSoundCell({ artist }: { artist: ContentArtist }) {
 
 /* ─── Sortable header ──────────────────────────────────────── */
 
+function ColumnTooltip({ text }: { text: string }) {
+  return (
+    <TooltipProvider delayDuration={200}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            className="inline-flex items-center justify-center shrink-0 cursor-help text-white/20 hover:text-white/40 transition-colors"
+          >
+            <HelpCircle size={11} />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="top" className="max-w-[220px] text-xs leading-relaxed">
+          {text}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
 function SortHeader({
   label,
   sortKey: sk,
@@ -848,6 +875,7 @@ function SortHeader({
   asc,
   onSort,
   align,
+  tooltip,
 }: {
   label: string;
   sortKey: ContentSortKey;
@@ -855,26 +883,30 @@ function SortHeader({
   asc: boolean;
   onSort: (k: ContentSortKey) => void;
   align?: "left" | "right";
+  tooltip?: string;
 }) {
   return (
-    <button
-      onClick={() => onSort(sk)}
-      className={`flex items-center gap-0.5 text-[10px] font-semibold tracking-wider uppercase transition-colors ${
-        active ? "text-white/60" : "text-white/30 hover:text-white/50"
-      } ${align === "right" ? "ml-auto" : ""}`}
-    >
-      {label}
-      <span className="flex flex-col -space-y-1">
-        <ChevronUp
-          size={8}
-          className={active && asc ? "text-white/70" : "text-white/15"}
-        />
-        <ChevronDown
-          size={8}
-          className={active && !asc ? "text-white/70" : "text-white/15"}
-        />
-      </span>
-    </button>
+    <span className={`flex items-center gap-1 ${align === "right" ? "ml-auto" : ""}`}>
+      <button
+        onClick={() => onSort(sk)}
+        className={`flex items-center gap-0.5 text-[10px] font-semibold tracking-wider uppercase transition-colors ${
+          active ? "text-white/60" : "text-white/30 hover:text-white/50"
+        }`}
+      >
+        {label}
+        <span className="flex flex-col -space-y-1">
+          <ChevronUp
+            size={8}
+            className={active && asc ? "text-white/70" : "text-white/15"}
+          />
+          <ChevronDown
+            size={8}
+            className={active && !asc ? "text-white/70" : "text-white/15"}
+          />
+        </span>
+      </button>
+      {tooltip && <ColumnTooltip text={tooltip} />}
+    </span>
   );
 }
 
@@ -1148,8 +1180,11 @@ export default function ContentRosterTable({
           <table className="w-full border-collapse">
             <thead>
               <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-                <th className="text-left pl-4 pr-2 py-2.5 text-[10px] font-semibold tracking-wider uppercase text-white/30 w-[200px]">
-                  Artist
+                <th className="text-left pl-4 pr-2 py-2.5 w-[200px]">
+                  <span className="flex items-center gap-1 text-[10px] font-semibold tracking-wider uppercase text-white/30">
+                    Artist
+                    <ColumnTooltip text="Roster artist with momentum tier badge and risk indicators." />
+                  </span>
                 </th>
                 <th className="px-2 py-2.5 text-left">
                   <SortHeader
@@ -1158,6 +1193,7 @@ export default function ContentRosterTable({
                     active={sortKey === "content_health"}
                     asc={sortAsc}
                     onSort={handleSort}
+                    tooltip="How consistently the artist is posting. Based on posting frequency over the last 30 days."
                   />
                 </th>
                 <th className="px-2 py-2.5 text-left hidden md:table-cell">
@@ -1167,6 +1203,7 @@ export default function ContentRosterTable({
                     active={sortKey === "performance"}
                     asc={sortAsc}
                     onSort={handleSort}
+                    tooltip="How views are trending. The percentage compares last 7 days vs the prior 30-day average. Below that: average views and save rate (saves ÷ views) over 30 days."
                   />
                 </th>
                 <th className="px-2 py-2.5 text-left hidden md:table-cell">
@@ -1176,6 +1213,7 @@ export default function ContentRosterTable({
                     active={sortKey === "top_sound"}
                     asc={sortAsc}
                     onSort={handleSort}
+                    tooltip="The artist's best-performing TikTok sound this week, ranked by new UGC videos in the last 7 days."
                   />
                 </th>
                 <th className="w-8 pr-2" />

@@ -1,9 +1,11 @@
 # Backend TODO — From Frontend Sessions
 
-Last cleaned: 2026-04-13 — removed all items shipped through commit `a99e0cd`
-(dbt pct_change pipeline + roster velocity columns) and the earlier batch
-(decision point actions, A&R pipeline, Culture Genome, Simulation Lab,
-catalog_tiktok_performance backfill, get_table_sizes fix).
+Last cleaned: 2026-04-14 — removed item #3 (Bb Trickz rescrape complete: 100
+videos under `imsorrymissjacksonuhh`, DNA + evolution rebuilt, last_post
+2026-03-10). Prior cleanup (2026-04-13) removed everything shipped through
+commit `a99e0cd` (dbt pct_change pipeline + roster velocity columns) and the
+earlier batch (decision point actions, A&R pipeline, Culture Genome,
+Simulation Lab, catalog_tiktok_performance backfill, get_table_sizes fix).
 
 ---
 
@@ -84,29 +86,6 @@ Bonus: do the same for any other table that stores avatar URLs (`profile_tiktok`
 
 - Add a lightweight daily Spotify check for new releases (just hit Spotify API `/artists/{id}/albums?limit=1`)
 - Or trigger a `latest_release` update whenever the TikTok scraper detects a new `music_id` that matches an original sound
-
-## 3. Bb Trickz: Wrong TikTok Handle Was `belize.kazi` (Fan Account)
-
-**Priority: High — FIXED in DB, needs scraper re-run**
-**Found:** 2026-04-11
-
-The TikTok handle for Bb Trickz was `belize.kazi` — a **fan account** that reposts clips and tags `@Bb trickz` in every caption. Her real handle is `imsorrymissjacksonuhh`. This caused the dashboard to show "308 days since last post" when she actually posted on March 9, 2026.
-
-**Already fixed:**
-
-- `artist_intelligence.artist_handle` → `imsorrymissjacksonuhh`
-- `roster_dashboard_metrics.artist_handle` → `imsorrymissjacksonuhh`
-- `artist_content_dna.artist_handle` → `imsorrymissjacksonuhh`
-- `artist_content_evolution.artist_handle` → `imsorrymissjacksonuhh`
-- Deleted 90 fan-account videos from `artist_videos_tiktok`
-- Reset `total_videos=0`, `days_since_last_post=null`, `has_baseline=false`
-
-**Backend action needed:**
-
-- Trigger a full TikTok scrape for handle `imsorrymissjacksonuhh` to populate fresh video data
-- Re-run content DNA and evolution analysis once videos are scraped
-- Re-run the `generate-artist-focus` edge function for Bb Trickz after data is refreshed
-- **Audit other artists**: Check if any other handles in `artist_intelligence` point to fan accounts instead of official artist accounts (look for accounts where every caption tags another user)
 
 ## 6. `artist_sounds` Table Staleness
 

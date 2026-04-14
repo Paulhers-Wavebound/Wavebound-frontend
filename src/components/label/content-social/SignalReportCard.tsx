@@ -215,12 +215,39 @@ function DecisionPointRow({
         borderBottom: "1px solid rgba(255,255,255,0.04)",
       }}
     >
-      <ArtistAvatar
-        name={dp.artist_name}
-        handle={dp.artist_handle}
-        url={dp.avatar_url}
-        color={cat.color}
-      />
+      {/* Artist avatars — show all for multi-artist decision points */}
+      <div
+        className="flex shrink-0"
+        style={{ marginLeft: dp.all_artists?.length > 1 ? 0 : 0 }}
+      >
+        {(dp.all_artists && dp.all_artists.length > 1
+          ? dp.all_artists
+          : [
+              {
+                name: dp.artist_name,
+                handle: dp.artist_handle,
+                avatar_url: dp.avatar_url,
+              },
+            ]
+        ).map((artist, ai) => (
+          <div
+            key={artist.handle || ai}
+            style={{
+              marginLeft: ai > 0 ? -10 : 0,
+              zIndex: dp.all_artists?.length ? dp.all_artists.length - ai : 1,
+            }}
+            className="relative"
+          >
+            <ArtistAvatar
+              name={artist.name}
+              handle={artist.handle}
+              url={artist.avatar_url}
+              color={cat.color}
+              size={dp.all_artists && dp.all_artists.length > 2 ? 30 : 36}
+            />
+          </div>
+        ))}
+      </div>
 
       {/* Content */}
       <div className="flex-1 min-w-0">
@@ -283,11 +310,11 @@ function DecisionPointRow({
 
         {/* Evidence chips */}
         {dp.evidence.length > 0 && (
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-1.5 flex-wrap min-w-0">
             {dp.evidence.map((e, i) => (
               <span
                 key={i}
-                className="text-[10px] font-medium tabular-nums px-2 py-0.5 rounded bg-white/[0.04]"
+                className="text-[10px] font-medium tabular-nums px-2 py-0.5 rounded bg-white/[0.04] max-w-full truncate"
                 style={{ color: e.color || "rgba(255,255,255,0.50)" }}
               >
                 {e.value ? `${e.label}: ${e.value}` : e.label}
@@ -523,7 +550,7 @@ export default function SignalReportCard({
             overflow: "hidden",
           }}
           transition={{ duration: 0.3 }}
-          className="rounded-xl border border-white/[0.06]"
+          className="rounded-xl border border-white/[0.06] overflow-hidden"
           style={{ background: "#1C1C1E" }}
         >
           {/* ── Header ─────────────────────────────────────── */}

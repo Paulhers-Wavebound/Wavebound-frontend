@@ -1,8 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
+import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useUserProfile } from "@/contexts/UserProfileContext";
-import { Check, X, AlertTriangle, RefreshCw } from "lucide-react";
+import { Check, X, AlertTriangle, RefreshCw, ExternalLink } from "lucide-react";
 import { normalizeHandle } from "@/data/contentDashboardHelpers";
 
 /* ─── Types ─────────────────────────────────────────────────── */
@@ -23,6 +24,7 @@ interface RosterRow {
   delta_followers_pct: number | null;
   momentum_tier: string | null;
   risk_level: string | null;
+  updated_at: string | null;
   // artist_content_dna
   videos_analyzed: number | null;
   avg_hook_score: number | null;
@@ -53,6 +55,20 @@ const fmtCompact = (n: number) => {
 };
 
 const fmtPct = (n: number) => `${n > 0 ? "+" : ""}${n.toFixed(1)}%`;
+
+function fmtRelative(ms: number, now = Date.now()): string {
+  const delta = now - ms;
+  if (delta < 0) return "just now";
+  const mins = Math.floor(delta / 60_000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days}d ago`;
+  const months = Math.floor(days / 30);
+  return `${months}mo ago`;
+}
 
 const FIELDS: FieldDef[] = [
   {
@@ -196,6 +212,7 @@ interface RosterRaw {
   delta_followers_pct: number | null;
   momentum_tier: string | null;
   risk_level: string | null;
+  updated_at: string | null;
 }
 
 interface DnaRaw {
@@ -219,7 +236,7 @@ async function fetchRosterCoverage(labelId: string): Promise<RosterRow[]> {
   const rosterRes = await supabase
     .from("roster_dashboard_metrics")
     .select(
-      "artist_name,artist_handle,total_videos,days_since_last_post,avg_views_7d,avg_views_30d,velocity_views_pct,avg_engagement_30d,velocity_engagement_pct,tiktok_followers,instagram_followers,delta_followers_pct,momentum_tier,risk_level",
+      "artist_name,artist_handle,total_videos,days_since_last_post,avg_views_7d,avg_views_30d,velocity_views_pct,avg_engagement_30d,velocity_engagement_pct,tiktok_followers,instagram_followers,delta_followers_pct,momentum_tier,risk_level,updated_at",
     )
     .eq("label_id", labelId)
     .order("artist_name", { ascending: true });
@@ -313,6 +330,11 @@ export default function HealthRosterCoverage() {
         overallPct: 0,
         worstField: null as { label: string; pct: number } | null,
         worstArtist: null as { name: string; pct: number } | null,
+        freshness: null as {
+          newestMs: number;
+          oldestMs: number;
+          stalestArtist: string | null;
+        } | null,
       };
     }
     let ok = 0;
@@ -354,6 +376,26 @@ export default function HealthRosterCoverage() {
       if (!worstArtist || pct < worstArtist.pct) worstArtist = { name, pct };
     });
 
+    // Freshness: span from newest updated_at to oldest updated_at across the roster.
+    // A wide spread means the pipeline is running unevenly per-artist.
+    let newestMs = 0;
+    let oldestMs = Number.POSITIVE_INFINITY;
+    let stalestArtist: string | null = null;
+    rows.forEach((row) => {
+      if (!row.updated_at) return;
+      const ms = Date.parse(row.updated_at);
+      if (Number.isNaN(ms)) return;
+      if (ms > newestMs) newestMs = ms;
+      if (ms < oldestMs) {
+        oldestMs = ms;
+        stalestArtist = row.artist_name ?? null;
+      }
+    });
+    const freshness =
+      newestMs > 0 && Number.isFinite(oldestMs)
+        ? { newestMs, oldestMs, stalestArtist }
+        : null;
+
     const total = ok + missing + suspect;
     return {
       artistCount: rows.length,
@@ -364,6 +406,7 @@ export default function HealthRosterCoverage() {
       overallPct: total === 0 ? 0 : (ok / total) * 100,
       worstField,
       worstArtist,
+      freshness,
     };
   }, [rows]);
 
@@ -515,6 +558,31 @@ export default function HealthRosterCoverage() {
           }
           tone="muted"
         />
+        {stats.freshness &&
+          (() => {
+            const f = stats.freshness;
+            const spanMs = f.newestMs - f.oldestMs;
+            const ageMs = Date.now() - f.newestMs;
+            // Tone driven by "how stale is the newest row" (main signal — is the
+            // materialized view refreshing at all?) and "how wide is the spread"
+            // (secondary signal — is the pipeline running unevenly per-artist?).
+            let tone: "ok" | "warn" | "bad" = "ok";
+            if (ageMs > 24 * 3600_000 || spanMs >= 3 * 86_400_000) tone = "bad";
+            else if (ageMs > 4 * 3600_000 || spanMs >= 86_400_000)
+              tone = "warn";
+            return (
+              <KpiCard
+                label="Data freshness"
+                value={fmtRelative(f.newestMs)}
+                sub={
+                  spanMs >= 60_000
+                    ? `oldest ${fmtRelative(f.oldestMs)}${f.stalestArtist ? ` · ${f.stalestArtist}` : ""}`
+                    : "whole roster refreshed together"
+                }
+                tone={tone}
+              />
+            );
+          })()}
       </div>
 
       {/* Legend */}
@@ -629,22 +697,13 @@ export default function HealthRosterCoverage() {
                       zIndex: 1,
                       fontWeight: 600,
                       color: "var(--ink)",
+                      textAlign: "left",
                     }}
                   >
-                    {row.artist_name ?? "—"}
-                    {row.artist_handle && (
-                      <div
-                        style={{
-                          fontSize: 10,
-                          fontWeight: 400,
-                          color: "var(--ink-faint)",
-                          fontFamily: '"JetBrains Mono", monospace',
-                          marginTop: 2,
-                        }}
-                      >
-                        @{row.artist_handle}
-                      </div>
-                    )}
+                    <ArtistLink
+                      name={row.artist_name}
+                      handle={row.artist_handle}
+                    />
                   </td>
                   {FIELDS.map((field) => (
                     <td key={field.key} style={tdStyle}>
@@ -733,6 +792,78 @@ const tdStyle: React.CSSProperties = {
   textAlign: "center",
   verticalAlign: "middle",
 };
+
+function ArtistLink({
+  name,
+  handle,
+}: {
+  name: string | null;
+  handle: string | null;
+}) {
+  const content = (
+    <>
+      <span
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 4,
+          color: "var(--ink)",
+        }}
+      >
+        {name ?? "—"}
+        {handle && (
+          <ExternalLink
+            size={11}
+            strokeWidth={2}
+            style={{
+              opacity: 0,
+              transition: "opacity 120ms",
+              color: "#e8430a",
+            }}
+            className="artist-link-icon"
+          />
+        )}
+      </span>
+      {handle && (
+        <div
+          style={{
+            fontSize: 10,
+            fontWeight: 400,
+            color: "var(--ink-faint)",
+            fontFamily: '"JetBrains Mono", monospace',
+            marginTop: 2,
+          }}
+        >
+          @{handle}
+        </div>
+      )}
+    </>
+  );
+
+  if (!handle) {
+    return <div>{content}</div>;
+  }
+
+  return (
+    <Link
+      to={`/label/artists/${handle}`}
+      title={`Open ${name ?? handle} profile`}
+      className="artist-link"
+      style={{
+        display: "block",
+        textDecoration: "none",
+        color: "inherit",
+        transition: "color 120ms",
+      }}
+    >
+      <style>{`
+        .artist-link:hover { color: #e8430a !important; }
+        .artist-link:hover .artist-link-icon { opacity: 1 !important; }
+      `}</style>
+      {content}
+    </Link>
+  );
+}
 
 function Cell({ field, value }: { field: FieldDef; value: unknown }) {
   const status = cellStatus(field, value);
