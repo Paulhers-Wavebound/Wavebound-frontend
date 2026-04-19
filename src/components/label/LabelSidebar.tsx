@@ -27,6 +27,7 @@ import { useDashboardRole } from "@/contexts/DashboardRoleContext";
 import waveboundLogo from "@/assets/wavebound-logo.png";
 import { format } from "date-fns";
 import { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { PREVIEW_FEATURES } from "@/config/previewFeatures";
 import {
   Tooltip,
@@ -173,6 +174,12 @@ export default function LabelSidebar({
   );
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const switcherRef = useRef<HTMLDivElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const collapsedButtonRef = useRef<HTMLButtonElement>(null);
+  const [collapsedDropdownPos, setCollapsedDropdownPos] = useState<{
+    top: number;
+    left: number;
+  } | null>(null);
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -190,19 +197,36 @@ export default function LabelSidebar({
     })();
   }, [isAdmin]);
 
-  // Close dropdown on outside click
+  // Close dropdown on outside click (checks both trigger and portaled dropdown)
   useEffect(() => {
     if (!switcherOpen) return;
     const handler = (e: MouseEvent) => {
-      if (
-        switcherRef.current &&
-        !switcherRef.current.contains(e.target as Node)
-      )
-        setSwitcherOpen(false);
+      const target = e.target as Node;
+      const insideTrigger = switcherRef.current?.contains(target);
+      const insideDropdown = dropdownRef.current?.contains(target);
+      if (!insideTrigger && !insideDropdown) setSwitcherOpen(false);
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, [switcherOpen]);
+
+  // Anchor the collapsed-mode dropdown to the trigger button in viewport space
+  // so it escapes the sidebar wrapper's overflow:hidden.
+  useEffect(() => {
+    if (!collapsed || !switcherOpen) return;
+    const update = () => {
+      const rect = collapsedButtonRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      setCollapsedDropdownPos({ top: rect.top, left: rect.right + 8 });
+    };
+    update();
+    window.addEventListener("resize", update);
+    window.addEventListener("scroll", update, true);
+    return () => {
+      window.removeEventListener("resize", update);
+      window.removeEventListener("scroll", update, true);
+    };
+  }, [collapsed, switcherOpen]);
 
   const displayName = labelName || "Label Portal";
   const initials =
@@ -272,6 +296,7 @@ export default function LabelSidebar({
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
+                  ref={collapsedButtonRef}
                   onClick={() => setSwitcherOpen(!switcherOpen)}
                   style={{
                     width: 40,
@@ -301,85 +326,30 @@ export default function LabelSidebar({
               </TooltipContent>
             </Tooltip>
 
-            {switcherOpen && (
-              <div
-                style={{
-                  position: "absolute",
-                  left: "100%",
-                  top: 0,
-                  marginLeft: 8,
-                  background: "#2C2C2E",
-                  border: "1px solid rgba(255,255,255,0.08)",
-                  borderRadius: 12,
-                  padding: 4,
-                  zIndex: 50,
-                  width: 220,
-                  maxHeight: 280,
-                  overflowY: "auto",
-                  boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
-                }}
-              >
-                {labelOverride && (
-                  <button
-                    onClick={() => {
-                      setLabelOverride(null);
-                      setSwitcherOpen(false);
-                    }}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 8,
-                      width: "100%",
-                      padding: "8px 10px",
-                      borderRadius: 8,
-                      border: "none",
-                      cursor: "pointer",
-                      background: "none",
-                      textAlign: "left",
-                      transition: "background 150ms",
-                      marginBottom: 2,
-                    }}
-                    onMouseEnter={(e) => {
-                      (e.currentTarget as HTMLButtonElement).style.background =
-                        "rgba(255,255,255,0.04)";
-                    }}
-                    onMouseLeave={(e) => {
-                      (e.currentTarget as HTMLButtonElement).style.background =
-                        "none";
-                    }}
-                  >
-                    <X size={14} color="#FF453A" style={{ flexShrink: 0 }} />
-                    <span
-                      style={{
-                        fontFamily: '"DM Sans", sans-serif',
-                        fontSize: 12,
-                        fontWeight: 600,
-                        color: "#FF453A",
-                      }}
-                    >
-                      Back to my account
-                    </span>
-                  </button>
-                )}
-                {allLabels.map((label) => {
-                  const active = labelOverride
-                    ? labelOverride.labelId === label.id
-                    : labelId === label.id;
-                  const isOwnLabel = !labelOverride && labelId === label.id;
-                  return (
+            {switcherOpen &&
+              collapsedDropdownPos &&
+              createPortal(
+                <div
+                  ref={dropdownRef}
+                  style={{
+                    position: "fixed",
+                    top: collapsedDropdownPos.top,
+                    left: collapsedDropdownPos.left,
+                    background: "#2C2C2E",
+                    border: "1px solid rgba(255,255,255,0.08)",
+                    borderRadius: 12,
+                    padding: 4,
+                    zIndex: 50,
+                    width: 220,
+                    maxHeight: 280,
+                    overflowY: "auto",
+                    boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
+                  }}
+                >
+                  {labelOverride && (
                     <button
-                      key={label.id}
                       onClick={() => {
-                        if (isOwnLabel) {
-                          setLabelOverride(null);
-                        } else {
-                          setLabelOverride({
-                            labelId: label.id,
-                            labelName: label.name,
-                            labelSlug: label.slug,
-                            labelLogoUrl: label.logo_url,
-                          });
-                        }
+                        setLabelOverride(null);
                         setSwitcherOpen(false);
                       }}
                       style={{
@@ -391,86 +361,150 @@ export default function LabelSidebar({
                         borderRadius: 8,
                         border: "none",
                         cursor: "pointer",
-                        background: active ? "rgba(255,255,255,0.04)" : "none",
+                        background: "none",
                         textAlign: "left",
                         transition: "background 150ms",
+                        marginBottom: 2,
                       }}
                       onMouseEnter={(e) => {
                         (
                           e.currentTarget as HTMLButtonElement
-                        ).style.background = "rgba(255,255,255,0.06)";
+                        ).style.background = "rgba(255,255,255,0.04)";
                       }}
                       onMouseLeave={(e) => {
                         (
                           e.currentTarget as HTMLButtonElement
-                        ).style.background = active
-                          ? "rgba(255,255,255,0.04)"
-                          : "none";
+                        ).style.background = "none";
                       }}
                     >
-                      {label.logo_url ? (
-                        <img
-                          src={label.logo_url}
-                          alt={`${label.name} logo`}
-                          style={{
-                            width: 20,
-                            height: 20,
-                            borderRadius: 5,
-                            objectFit: "contain",
-                            flexShrink: 0,
-                            background: "rgba(255,255,255,0.06)",
-                          }}
-                        />
-                      ) : (
-                        <div
-                          style={{
-                            width: 20,
-                            height: 20,
-                            borderRadius: 5,
-                            background: "rgba(255,255,255,0.06)",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            flexShrink: 0,
-                          }}
-                        >
-                          <span
-                            style={{
-                              fontSize: 9,
-                              fontWeight: 600,
-                              color: "var(--ink-tertiary)",
-                            }}
-                          >
-                            {label.name.slice(0, 2).toUpperCase()}
-                          </span>
-                        </div>
-                      )}
+                      <X size={14} color="#FF453A" style={{ flexShrink: 0 }} />
                       <span
                         style={{
                           fontFamily: '"DM Sans", sans-serif',
                           fontSize: 12,
-                          fontWeight: active ? 600 : 400,
-                          color: active ? "var(--ink)" : "var(--ink-secondary)",
-                          flex: 1,
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
+                          fontWeight: 600,
+                          color: "#FF453A",
                         }}
                       >
-                        {label.name}
+                        Back to my account
                       </span>
-                      {active && (
-                        <Check
-                          size={14}
-                          color="#e8430a"
-                          style={{ flexShrink: 0 }}
-                        />
-                      )}
                     </button>
-                  );
-                })}
-              </div>
-            )}
+                  )}
+                  {allLabels.map((label) => {
+                    const active = labelOverride
+                      ? labelOverride.labelId === label.id
+                      : labelId === label.id;
+                    const isOwnLabel = !labelOverride && labelId === label.id;
+                    return (
+                      <button
+                        key={label.id}
+                        onClick={() => {
+                          if (isOwnLabel) {
+                            setLabelOverride(null);
+                          } else {
+                            setLabelOverride({
+                              labelId: label.id,
+                              labelName: label.name,
+                              labelSlug: label.slug,
+                              labelLogoUrl: label.logo_url,
+                            });
+                          }
+                          setSwitcherOpen(false);
+                        }}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 8,
+                          width: "100%",
+                          padding: "8px 10px",
+                          borderRadius: 8,
+                          border: "none",
+                          cursor: "pointer",
+                          background: active
+                            ? "rgba(255,255,255,0.04)"
+                            : "none",
+                          textAlign: "left",
+                          transition: "background 150ms",
+                        }}
+                        onMouseEnter={(e) => {
+                          (
+                            e.currentTarget as HTMLButtonElement
+                          ).style.background = "rgba(255,255,255,0.06)";
+                        }}
+                        onMouseLeave={(e) => {
+                          (
+                            e.currentTarget as HTMLButtonElement
+                          ).style.background = active
+                            ? "rgba(255,255,255,0.04)"
+                            : "none";
+                        }}
+                      >
+                        {label.logo_url ? (
+                          <img
+                            src={label.logo_url}
+                            alt={`${label.name} logo`}
+                            style={{
+                              width: 20,
+                              height: 20,
+                              borderRadius: 5,
+                              objectFit: "contain",
+                              flexShrink: 0,
+                              background: "rgba(255,255,255,0.06)",
+                            }}
+                          />
+                        ) : (
+                          <div
+                            style={{
+                              width: 20,
+                              height: 20,
+                              borderRadius: 5,
+                              background: "rgba(255,255,255,0.06)",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              flexShrink: 0,
+                            }}
+                          >
+                            <span
+                              style={{
+                                fontSize: 9,
+                                fontWeight: 600,
+                                color: "var(--ink-tertiary)",
+                              }}
+                            >
+                              {label.name.slice(0, 2).toUpperCase()}
+                            </span>
+                          </div>
+                        )}
+                        <span
+                          style={{
+                            fontFamily: '"DM Sans", sans-serif',
+                            fontSize: 12,
+                            fontWeight: active ? 600 : 400,
+                            color: active
+                              ? "var(--ink)"
+                              : "var(--ink-secondary)",
+                            flex: 1,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {label.name}
+                        </span>
+                        {active && (
+                          <Check
+                            size={14}
+                            color="#e8430a"
+                            style={{ flexShrink: 0 }}
+                          />
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>,
+                document.body,
+              )}
           </div>
         )}
 
