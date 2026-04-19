@@ -363,6 +363,143 @@ export interface ContentIntelData {
 
 /* ─── Helpers ─────────────────────────────────────────────── */
 
+/** Synthesize FormatPerformanceEntry[] from grouped deep_research_jobs videos.
+ *  Fallback when artist_format_performance agg table hasn't been populated. */
+function synthesizeFormatPerformance(
+  formatVideos: Record<string, FormatVideoEntry[]>,
+  overallMedianViews: number | null,
+): FormatPerformanceEntry[] {
+  const keys = Object.keys(formatVideos);
+  if (keys.length === 0) return [];
+  const rows = keys.map((fmt) => {
+    const vids = formatVideos[fmt];
+    const views = vids.map((v) => v.views).filter((n) => n > 0);
+    const hooks = vids
+      .map((v) => v.hookScore)
+      .filter((n): n is number => n != null);
+    const virals = vids
+      .map((v) => v.viralScore)
+      .filter((n): n is number => n != null);
+    const durations = vids
+      .map((v) => v.durationSeconds)
+      .filter((n): n is number => n != null);
+    const avg = (arr: number[]) =>
+      arr.length ? arr.reduce((s, n) => s + n, 0) / arr.length : null;
+    const median = (arr: number[]) => {
+      if (!arr.length) return null;
+      const sorted = [...arr].sort((a, b) => a - b);
+      const mid = Math.floor(sorted.length / 2);
+      return sorted.length % 2
+        ? sorted[mid]
+        : (sorted[mid - 1] + sorted[mid]) / 2;
+    };
+    const avgViews = avg(views);
+    const topByViews = [...vids].sort((a, b) => b.views - a.views)[0];
+    const moodCounts = new Map<string, number>();
+    for (const v of vids)
+      if (v.mood) moodCounts.set(v.mood, (moodCounts.get(v.mood) ?? 0) + 1);
+    const commonMoods = Array.from(moodCounts.entries())
+      .sort((a, b) => b[1] - a[1])
+      .map(([m]) => m)
+      .slice(0, 3);
+    return {
+      contentFormat: fmt,
+      videoCount: vids.length,
+      pctOfTotal: null,
+      avgViews,
+      medianViews: median(views),
+      maxViews: views.length ? Math.max(...views) : null,
+      avgViralScore: avg(virals),
+      avgHookScore: avg(hooks),
+      avgEngagementRate: null,
+      performanceVsMedian:
+        avgViews != null && overallMedianViews && overallMedianViews > 0
+          ? avgViews / overallMedianViews
+          : null,
+      bestVideoCaption: topByViews?.caption ?? null,
+      avgDurationSeconds: avg(durations),
+      commonMoods: commonMoods.length ? commonMoods : null,
+      commonHooks: null,
+    } satisfies FormatPerformanceEntry;
+  });
+  // Sort by avgViews desc to match the SQL ordering
+  return rows.sort((a, b) => (b.avgViews ?? 0) - (a.avgViews ?? 0));
+}
+
+/** Synthesize ContentDnaData from deep_research_jobs.content_analysis_data.
+ *  Fallback when artist_content_dna agg table hasn't been populated. */
+function synthesizeContentDna(cad: any): ContentDnaData | null {
+  if (!cad) return null;
+  const summary = cad.summary ?? {};
+  const profile = cad.content_style_profile ?? {};
+  const perf: any[] = Array.isArray(cad.category_performance)
+    ? cad.category_performance
+    : [];
+  const sortedPerf = [...perf].sort(
+    (a, b) => (b.avg_viral_score ?? 0) - (a.avg_viral_score ?? 0),
+  );
+  const best = sortedPerf[0];
+  const worst = sortedPerf[sortedPerf.length - 1];
+  const pickTop = (arr: any[], key: string): string | null => {
+    if (!Array.isArray(arr) || arr.length === 0) return null;
+    const v = arr[0]?.[key];
+    return typeof v === "string" && v !== "[object Object]" ? v : null;
+  };
+  const formatDistribution: Record<string, number> | null = perf.length
+    ? Object.fromEntries(perf.map((p: any) => [p.category, p.count ?? 0]))
+    : null;
+  const moodDistribution: Record<string, number> | null = Array.isArray(
+    profile.dominant_moods,
+  )
+    ? Object.fromEntries(
+        profile.dominant_moods
+          .filter((m: any) => m?.mood && m.mood !== "[object Object]")
+          .map((m: any) => [m.mood, m.frequency ?? 0]),
+      )
+    : null;
+  const genreDistribution: Record<string, number> | null = Array.isArray(
+    profile.dominant_genres,
+  )
+    ? Object.fromEntries(
+        profile.dominant_genres.map((g: any) => [g.genre, g.frequency ?? 0]),
+      )
+    : null;
+  const parseNum = (v: any): number | null => {
+    if (v == null) return null;
+    const n = typeof v === "string" ? parseFloat(v) : Number(v);
+    return Number.isFinite(n) ? n : null;
+  };
+  return {
+    videosAnalyzed: summary.videos_deep_analyzed ?? null,
+    medianViews: summary.median_views ?? null,
+    avgViews: summary.avg_views ?? null,
+    avgDurationSeconds: parseNum(summary.avg_duration_seconds),
+    adContentPct: null,
+    originalSoundPct: summary.original_sound_pct ?? null,
+    formatDistribution,
+    topHooks: null,
+    moodDistribution,
+    genreDistribution,
+    bestFormat: best?.category ?? null,
+    bestFormatAvgViews: null,
+    bestFormatCount: best?.count ?? null,
+    bestFormatVsMedian: null,
+    worstFormat: sortedPerf.length > 1 ? (worst?.category ?? null) : null,
+    worstFormatAvgViews: null,
+    worstFormatCount: worst?.count ?? null,
+    worstFormatVsMedian: null,
+    topQFormat: null,
+    topQAvgHookScore: null,
+    bottomQFormat: null,
+    bottomQAvgHookScore: null,
+    signatureStyle: null,
+    primaryGenre: pickTop(profile.dominant_genres, "genre"),
+    dominantMood: pickTop(profile.dominant_moods, "mood"),
+    avgHookScore: parseNum(summary.avg_hook_score),
+    avgViralScore: null,
+  };
+}
+
 /** Clean up song names from catalog_tiktok_performance.
  *  The scraper stores them as: `"Song Title" by Artist Name` or `Song by Artist`.
  *  We strip the quotes and the ` by Artist` suffix since the artist is already known.  */
@@ -658,7 +795,9 @@ async function fetchContentIntelligence(
     artistSongEntityIds.length > 0
       ? supabase
           .from("song_health" as any)
-          .select("canonical_name, health_score, countries_charting, daily_streams")
+          .select(
+            "canonical_name, health_score, countries_charting, daily_streams",
+          )
           .in("entity_id", artistSongEntityIds.slice(0, 50))
           .gt("health_score", 0)
           .order("health_score", { ascending: false })
@@ -683,6 +822,21 @@ async function fetchContentIntelligence(
   const velocityRows = (velocityRes.data || []) as any[];
   const marketRows = (marketRes.data || []) as any[];
   const songHealthRows = (songHealthRes.data || []) as any[];
+
+  // Fallback: when artist_format_performance / artist_content_dna agg tables are
+  // empty, derive them from deep_research_jobs.content_analysis_data so the
+  // Content tab isn't blank for artists whose aggregation jobs haven't run yet.
+  const synthesizedFormatRows =
+    fmtRows.length === 0
+      ? synthesizeFormatPerformance(
+          formatVideos,
+          drjData?.content_analysis_data?.summary?.median_views ?? null,
+        )
+      : [];
+  const synthesizedDna =
+    !dna && drjData?.content_analysis_data
+      ? synthesizeContentDna(drjData.content_analysis_data)
+      : null;
 
   // Parse brief_json
   let briefJson: any = null;
@@ -764,23 +918,27 @@ async function fetchContentIntelligence(
     tiktokTotalLikes: footprint?.tiktok_total_likes ?? null,
     youtubeTotalViews: footprint?.youtube_total_views ?? null,
 
-    // ── artist_format_performance (array) ──
-    formatPerformance: fmtRows.map((f: any) => ({
-      contentFormat: f.content_format ?? "Unknown",
-      videoCount: f.video_count ?? 0,
-      pctOfTotal: f.pct_of_total ?? null,
-      avgViews: f.avg_views ?? null,
-      medianViews: f.median_views ?? null,
-      maxViews: f.max_views ?? null,
-      avgViralScore: f.avg_viral_score ?? null,
-      avgHookScore: f.avg_hook_score ?? null,
-      avgEngagementRate: f.avg_engagement_rate ?? null,
-      performanceVsMedian: f.performance_vs_median ?? null,
-      bestVideoCaption: f.best_video_caption ?? null,
-      avgDurationSeconds: f.avg_duration_seconds ?? null,
-      commonMoods: f.common_moods ?? null,
-      commonHooks: f.common_hooks ?? null,
-    })),
+    // ── artist_format_performance (array), synthesized from deep_research_jobs
+    //    when the agg table is empty ──
+    formatPerformance:
+      fmtRows.length > 0
+        ? fmtRows.map((f: any) => ({
+            contentFormat: f.content_format ?? "Unknown",
+            videoCount: f.video_count ?? 0,
+            pctOfTotal: f.pct_of_total ?? null,
+            avgViews: f.avg_views ?? null,
+            medianViews: f.median_views ?? null,
+            maxViews: f.max_views ?? null,
+            avgViralScore: f.avg_viral_score ?? null,
+            avgHookScore: f.avg_hook_score ?? null,
+            avgEngagementRate: f.avg_engagement_rate ?? null,
+            performanceVsMedian: f.performance_vs_median ?? null,
+            bestVideoCaption: f.best_video_caption ?? null,
+            avgDurationSeconds: f.avg_duration_seconds ?? null,
+            commonMoods: f.common_moods ?? null,
+            commonHooks: f.common_hooks ?? null,
+          }))
+        : synthesizedFormatRows,
 
     // ── deep_research_jobs (videos grouped by format) ──
     formatVideos,
@@ -890,7 +1048,7 @@ async function fetchContentIntelligence(
           avgHookScore: dna.avg_hook_score ?? null,
           avgViralScore: dna.avg_viral_score ?? null,
         }
-      : null,
+      : synthesizedDna,
 
     // ── artist_content_evolution (expanded) ──
     performanceTrend: evo?.performance_trend ?? null,

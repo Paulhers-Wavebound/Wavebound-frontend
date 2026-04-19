@@ -93,7 +93,24 @@ export default function ContentTab({ data }: ContentTabProps) {
   const vs = data.videoSummary;
   const cp = data.commentPulse;
 
+  // Bar baseline: use max avgViews, but clamp to 3× the median when a single
+  // viral outlier would otherwise compress the rest of the chart to slivers.
   const maxViews = Math.max(...rows.map((r) => r.avgViews ?? 0), 1);
+  const medianAvgViews = (() => {
+    const sorted = rows
+      .map((r) => r.avgViews ?? 0)
+      .filter((n) => n > 0)
+      .sort((a, b) => a - b);
+    if (sorted.length === 0) return 0;
+    const mid = Math.floor(sorted.length / 2);
+    return sorted.length % 2
+      ? sorted[mid]
+      : (sorted[mid - 1] + sorted[mid]) / 2;
+  })();
+  const barBaseline =
+    medianAvgViews > 0 && maxViews > medianAvgViews * 3
+      ? medianAvgViews * 3
+      : maxViews;
 
   // Comment pulse derived values
   const sentimentColor =
@@ -227,7 +244,10 @@ export default function ContentTab({ data }: ContentTabProps) {
 
               <div className="space-y-0">
                 {rows.map((r, i) => {
-                  const barPct = ((r.avgViews ?? 0) / maxViews) * 100;
+                  const barPct = Math.min(
+                    100,
+                    ((r.avgViews ?? 0) / barBaseline) * 100,
+                  );
                   const vsMedian = r.performanceVsMedian;
                   const vsColor =
                     vsMedian != null
