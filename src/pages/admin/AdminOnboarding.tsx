@@ -97,7 +97,7 @@ function StatusBadge({
 }) {
   if (status === "generating" && allApproved)
     return (
-      <Badge className="bg-yellow-600/20 text-yellow-400 border-yellow-600/30">
+      <Badge className="bg-orange-600/20 text-orange-400 border-orange-600/30">
         Ready to Upload
       </Badge>
     );
