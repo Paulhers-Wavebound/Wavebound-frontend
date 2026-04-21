@@ -41,6 +41,7 @@ import {
   sortContentArtists,
   fmtViews,
   fmtPct,
+  roundedTrendPct,
   saveToReachColor,
   saveToReachLabel,
   getTierGroup,
@@ -223,28 +224,29 @@ function ContentHealthPill({
 /* ─── Performance cell (Phase 2: hero flip — trend is PRIMARY) */
 
 function PerformanceCell({ artist }: { artist: ContentArtist }) {
-  const views = artist.avg_views_30d;
+  const views = artist.avg_views_30d ?? artist.avg_views_7d;
   const trend = artist.plays_trend_pct ?? artist.velocity_views_pct;
+  const roundedTrend = roundedTrendPct(trend);
   const saveRate = artist.save_to_reach_pct;
 
   const trendColor =
-    trend != null && trend > 10
+    roundedTrend != null && roundedTrend > 10
       ? "#30D158"
-      : trend != null && trend < -10
+      : roundedTrend != null && roundedTrend < -10
         ? "#FF453A"
         : "rgba(255,255,255,0.55)";
 
   // Hero: trend percentage (bold, colored, large)
   // When no trend, fall back to view count as hero
-  if (trend != null && trend !== 0) {
+  if (roundedTrend != null) {
     return (
       <div className="flex flex-col gap-0.5">
         <p
           className="text-[16px] font-bold tabular-nums leading-tight"
           style={{ color: trendColor }}
         >
-          {trend > 0 ? "+" : ""}
-          {trend.toFixed(0)}%
+          {roundedTrend > 0 ? "+" : ""}
+          {roundedTrend}%
         </p>
         <p className="text-[11px] text-white/40 tabular-nums leading-tight">
           {fmtViews(views)} avg views
@@ -432,17 +434,20 @@ function buildTierAdaptiveTiles(
   switch (tierGroup) {
     case "breakout": {
       // Breakout artists: velocity growth, engagement, format alpha, follower delta
-      if (artist.avg_views_30d != null) {
+      const velocityViews = artist.avg_views_30d ?? artist.avg_views_7d;
+      if (velocityViews != null) {
+        const roundedTrend = roundedTrendPct(trend);
         const velocitySub =
-          trend != null && trend !== 0
-            ? `${trend > 0 ? "+" : ""}${trend.toFixed(0)}% vs last 7d`
+          roundedTrend != null
+            ? `${roundedTrend > 0 ? "+" : ""}${roundedTrend}% vs last 7d`
             : undefined;
         tiles.push({
           icon: TrendingUp,
           label: "Velocity",
-          value: fmtViews(artist.avg_views_30d) + " avg",
+          value: fmtViews(velocityViews) + " avg",
           sub: velocitySub,
-          valueColor: trend != null && trend > 10 ? "#30D158" : undefined,
+          valueColor:
+            roundedTrend != null && roundedTrend > 10 ? "#30D158" : undefined,
         });
       }
       if (engagement != null) {
@@ -554,15 +559,17 @@ function buildTierAdaptiveTiles(
           valueColor: isGaining ? "#30D158" : undefined,
         });
       }
-      if (artist.avg_views_30d != null) {
+      const velocityViews = artist.avg_views_30d ?? artist.avg_views_7d;
+      if (velocityViews != null) {
+        const roundedTrend = roundedTrendPct(trend);
         const velocitySub =
-          trend != null && trend !== 0
-            ? `${trend > 0 ? "+" : ""}${trend.toFixed(0)}% vs last 7d`
+          roundedTrend != null
+            ? `${roundedTrend > 0 ? "+" : ""}${roundedTrend}% vs last 7d`
             : undefined;
         tiles.push({
           icon: TrendingUp,
           label: "Velocity",
-          value: fmtViews(artist.avg_views_30d) + " avg",
+          value: fmtViews(velocityViews) + " avg",
           sub: velocitySub,
         });
       }
@@ -920,6 +927,8 @@ function ArtistCard({
   onNavigate: () => void;
 }) {
   const trend = artist.plays_trend_pct ?? artist.velocity_views_pct;
+  const roundedTrend = roundedTrendPct(trend);
+  const heroViews = artist.avg_views_30d ?? artist.avg_views_7d;
   const saveRate = artist.save_to_reach_pct;
   const focused = artist.weekly_pulse?.focused_sound;
   const tierGroup = getTierGroup(artist.momentum_tier);
@@ -928,9 +937,9 @@ function ArtistCard({
   );
 
   const trendColor =
-    trend != null && trend > 10
+    roundedTrend != null && roundedTrend > 10
       ? "#30D158"
-      : trend != null && trend < -10
+      : roundedTrend != null && roundedTrend < -10
         ? "#FF453A"
         : "rgba(255,255,255,0.55)";
 
@@ -976,21 +985,21 @@ function ArtistCard({
 
       {/* Hero metric: trend % */}
       <div className="flex items-baseline gap-3 mb-3">
-        {trend != null && trend !== 0 ? (
+        {roundedTrend != null ? (
           <>
             <span
               className="text-[28px] font-bold tabular-nums leading-none"
               style={{ color: trendColor }}
             >
-              {trend > 0 ? "+" : ""}
-              {trend.toFixed(0)}%
+              {roundedTrend > 0 ? "+" : ""}
+              {roundedTrend}%
             </span>
             <span className="text-[11px] text-white/40">velocity</span>
           </>
         ) : (
           <>
             <span className="text-[22px] font-semibold text-white/87 tabular-nums leading-none">
-              {fmtViews(artist.avg_views_30d)}
+              {fmtViews(heroViews)}
             </span>
             <span className="text-[11px] text-white/40">avg views</span>
           </>

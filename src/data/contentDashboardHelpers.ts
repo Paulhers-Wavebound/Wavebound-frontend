@@ -160,8 +160,18 @@ export function fmtViews(n: number | null | undefined): string {
 
 export function fmtPct(n: number | null | undefined): string {
   if (n == null) return "—";
-  const sign = n > 0 ? "+" : "";
-  return `${sign}${n.toFixed(0)}%`;
+  const r = Math.round(n);
+  const sign = r > 0 ? "+" : "";
+  return `${sign}${r}%`;
+}
+
+// Returns rounded int percent, or null if the value rounds to 0 ("flat").
+// Use this for hero/primary trend displays that should show the view-count
+// fallback when a trend is effectively zero.
+export function roundedTrendPct(n: number | null | undefined): number | null {
+  if (n == null) return null;
+  const r = Math.round(n);
+  return r === 0 ? null : r;
 }
 
 export function fmtFreq(postsPerWeek: number | null | undefined): string {
