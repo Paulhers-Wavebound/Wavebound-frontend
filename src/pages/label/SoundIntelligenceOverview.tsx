@@ -95,8 +95,15 @@ export default function SoundIntelligenceOverview() {
           continue;
         }
         const prev = snaps.get(entry.job_id);
-        if (
-          !prev ||
+        if (!prev) {
+          // Seed stall clock from the job's creation time so jobs that were
+          // already stuck before the client loaded are flagged immediately.
+          snaps.set(entry.job_id, {
+            scraped: entry.videos_scraped,
+            analyzed: entry.videos_analyzed,
+            lastChanged: new Date(entry.created_at).getTime(),
+          });
+        } else if (
           prev.scraped !== entry.videos_scraped ||
           prev.analyzed !== entry.videos_analyzed
         ) {
