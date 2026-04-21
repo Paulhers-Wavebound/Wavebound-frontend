@@ -66,6 +66,28 @@ export default function RemoveArtistDialog({
         return;
       }
 
+      const partialErrors: Array<{ table: string; error?: string }> =
+        Array.isArray(data?.errors)
+          ? data.errors
+          : Array.isArray(data?.deletions)
+            ? data.deletions.filter((d: { error?: string }) => d.error)
+            : [];
+
+      if (partialErrors.length > 0 || data?.success === false) {
+        const tables = partialErrors
+          .map((e) => e.table)
+          .slice(0, 3)
+          .join(", ");
+        const extra =
+          partialErrors.length > 3 ? ` +${partialErrors.length - 3} more` : "";
+        toast({
+          title: "Partial failure — data may remain",
+          description: `Failed to clear: ${tables}${extra}. Check backend logs before retrying.`,
+          variant: "destructive",
+        });
+        return;
+      }
+
       toast({
         title: "Artist removed",
         description: `${artistName} has been removed from your roster`,
