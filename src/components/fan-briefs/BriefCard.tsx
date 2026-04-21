@@ -12,6 +12,7 @@ import {
   ChevronUp,
   Trash2,
   MessageCircle,
+  Maximize2,
 } from "lucide-react";
 import type { FanBrief } from "@/types/fanBriefs";
 
@@ -24,12 +25,36 @@ interface BriefCardProps {
   onDelete?: (id: string) => void;
   /** Render a static YouTube thumbnail instead of a live iframe embed */
   staticPreview?: boolean;
+  /** When provided, renders a selection checkbox for batch actions. Content mode only. */
+  selected?: boolean;
+  onToggleSelect?: (id: string) => void;
+  /** When provided, renders an "Expand" button that opens the BriefDetail modal. */
+  onExpand?: (id: string) => void;
 }
 
+/**
+ * Extract a YouTube video ID from any common URL shape:
+ *   - youtube.com/watch?v=ID
+ *   - youtu.be/ID
+ *   - youtube.com/embed/ID
+ *   - youtube.com/shorts/ID
+ *   - youtube.com/v/ID
+ * Returns null for non-YouTube URLs or unparseable shapes.
+ */
 function getVideoId(url: string | null): string | null {
   if (!url) return null;
-  const match = url.match(/v=([^&]+)/);
-  return match ? match[1] : null;
+  const patterns = [
+    /[?&]v=([a-zA-Z0-9_-]{11})/,
+    /youtu\.be\/([a-zA-Z0-9_-]{11})/,
+    /\/embed\/([a-zA-Z0-9_-]{11})/,
+    /\/shorts\/([a-zA-Z0-9_-]{11})/,
+    /\/v\/([a-zA-Z0-9_-]{11})/,
+  ];
+  for (const re of patterns) {
+    const match = url.match(re);
+    if (match) return match[1];
+  }
+  return null;
 }
 
 function getEmbedUrl(brief: FanBrief): string | null {
@@ -52,31 +77,15 @@ const statusBadgeStyles: Record<
   string,
   { bg: string; color: string; label: string }
 > = {
-  pending: {
-    bg: "rgba(255,159,10,0.12)",
-    color: "#FF9F0A",
-    label: "Pending",
-  },
-  approved: {
-    bg: "rgba(48,209,88,0.12)",
-    color: "#30D158",
-    label: "Approved",
-  },
-  skipped: {
-    bg: "rgba(142,142,147,0.12)",
-    color: "#8E8E93",
-    label: "Skipped",
-  },
+  pending: { bg: "rgba(255,159,10,0.12)", color: "#FF9F0A", label: "Pending" },
+  approved: { bg: "rgba(48,209,88,0.12)", color: "#30D158", label: "Approved" },
+  skipped: { bg: "rgba(142,142,147,0.12)", color: "#8E8E93", label: "Skipped" },
   modified: {
     bg: "rgba(10,132,255,0.12)",
     color: "#0A84FF",
     label: "Modified",
   },
-  posted: {
-    bg: "rgba(48,209,88,0.12)",
-    color: "#30D158",
-    label: "Posted",
-  },
+  posted: { bg: "rgba(48,209,88,0.12)", color: "#30D158", label: "Posted" },
   archived: {
     bg: "rgba(142,142,147,0.12)",
     color: "#8E8E93",
@@ -90,6 +99,13 @@ const tagColors = {
   reason: { bg: "rgba(255,159,10,0.12)", color: "#FF9F0A" },
 };
 
+/** Tier confidence chip color by score: <70 amber, 70–84 blue, ≥85 green. */
+function confidenceChipStyle(score: number): { bg: string; color: string } {
+  if (score >= 85) return { bg: "rgba(48,209,88,0.12)", color: "#30D158" };
+  if (score >= 70) return { bg: "rgba(10,132,255,0.12)", color: "#0A84FF" };
+  return { bg: "rgba(255,159,10,0.12)", color: "#FF9F0A" };
+}
+
 export default function BriefCard({
   brief,
   mode,
@@ -98,7 +114,11 @@ export default function BriefCard({
   onModifyHook,
   onDelete,
   staticPreview = false,
+  selected = false,
+  onToggleSelect,
+  onExpand,
 }: BriefCardProps) {
+  const selectable = mode === "content" && !!onToggleSelect;
   const navigate = useNavigate();
   const [isEditingHook, setIsEditingHook] = useState(false);
   const [editedHook, setEditedHook] = useState(brief.hook_text);
@@ -150,106 +170,81 @@ export default function BriefCard({
 
   return (
     <div
+      className="rounded-2xl overflow-hidden transition-transform font-['DM_Sans',sans-serif]"
       style={{
         background: "var(--surface)",
-        borderRadius: 16,
         borderTop: "0.5px solid var(--card-edge)",
-        overflow: "hidden",
-        transition: "transform 150ms",
       }}
     >
       {/* Header: artist + confidence */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          padding: "20px 24px 0",
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+      <div className="flex items-center justify-between pt-5 px-6">
+        <div className="flex items-center gap-2.5">
+          {selectable && (
+            <button
+              type="button"
+              onClick={() => onToggleSelect!(brief.id)}
+              aria-pressed={selected}
+              aria-label={selected ? "Deselect brief" : "Select brief"}
+              className="w-5 h-5 rounded-md flex items-center justify-center shrink-0 cursor-pointer transition-colors"
+              style={{
+                border: selected
+                  ? "1.5px solid var(--accent)"
+                  : "1.5px solid var(--border-hover)",
+                background: selected ? "var(--accent)" : "transparent",
+              }}
+            >
+              {selected && <Check size={13} color="#fff" strokeWidth={3} />}
+            </button>
+          )}
           <div
+            className="w-9 h-9 rounded-full flex items-center justify-center shrink-0 border-2"
             style={{
-              width: 36,
-              height: 36,
-              borderRadius: "50%",
               background:
                 "linear-gradient(135deg, var(--bg) 0%, var(--border) 100%)",
-              border: "2px solid var(--border)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              flexShrink: 0,
+              borderColor: "var(--border)",
             }}
           >
             <span
-              style={{
-                fontFamily: '"DM Sans", sans-serif',
-                fontSize: 12,
-                fontWeight: 600,
-                color: "var(--ink-tertiary)",
-              }}
+              className="text-xs font-semibold"
+              style={{ color: "var(--ink-tertiary)" }}
             >
               {brief.artist_handle.slice(0, 2).toUpperCase()}
             </span>
           </div>
           <div>
             <div
-              style={{
-                fontFamily: '"DM Sans", sans-serif',
-                fontSize: 14,
-                fontWeight: 600,
-                color: "var(--ink)",
-              }}
+              className="text-sm font-semibold"
+              style={{ color: "var(--ink)" }}
             >
               @{brief.artist_handle}
             </div>
             {brief.source_title && (
               <div
-                style={{
-                  fontFamily: '"DM Sans", sans-serif',
-                  fontSize: 12,
-                  color: "var(--ink-tertiary)",
-                  marginTop: 1,
-                  maxWidth: 220,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                }}
+                className="text-xs mt-px max-w-[220px] overflow-hidden text-ellipsis whitespace-nowrap"
+                style={{ color: "var(--ink-tertiary)" }}
               >
                 {brief.source_title}
               </div>
             )}
           </div>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          {/* Confidence score */}
-          <div
-            style={{
-              padding: "4px 10px",
-              borderRadius: 20,
-              background: "rgba(48,209,88,0.12)",
-              fontFamily: '"JetBrains Mono", monospace',
-              fontSize: 12,
-              fontWeight: 600,
-              color: "#30D158",
-            }}
-          >
-            {brief.confidence_score}%
-          </div>
+        <div className="flex items-center gap-2">
+          {/* Confidence score — tiered by value */}
+          {(() => {
+            const chip = confidenceChipStyle(brief.confidence_score);
+            return (
+              <div
+                className="px-2.5 py-1 rounded-full text-xs font-semibold font-['JetBrains_Mono',monospace]"
+                style={{ background: chip.bg, color: chip.color }}
+              >
+                {brief.confidence_score}%
+              </div>
+            );
+          })()}
           {/* Status badge */}
           <div
-            style={{
-              padding: "4px 10px",
-              borderRadius: 20,
-              background: badge.bg,
-              fontFamily: '"DM Sans", sans-serif',
-              fontSize: 11,
-              fontWeight: 600,
-              color: badge.color,
-              textTransform: "uppercase",
-              letterSpacing: "0.3px",
-            }}
+            className="px-2.5 py-1 rounded-full text-[11px] font-semibold uppercase tracking-wide"
+            style={{ background: badge.bg, color: badge.color }}
           >
             {badge.label}
           </div>
@@ -258,19 +253,11 @@ export default function BriefCard({
 
       {/* Video section — mode-aware */}
       {mode === "clips" ? (
-        <div style={{ padding: "16px 24px 0" }}>
+        <div className="px-6 pt-4">
           {brief.rendered_clip_url ? (
             <>
               {/* Rendered clip player — 9:16 */}
-              <div
-                style={{
-                  width: 270,
-                  height: 480,
-                  borderRadius: 12,
-                  overflow: "hidden",
-                  background: "#000",
-                }}
-              >
+              <div className="w-[270px] h-[480px] rounded-xl overflow-hidden bg-black">
                 <video
                   src={brief.rendered_clip_url}
                   autoPlay
@@ -278,38 +265,15 @@ export default function BriefCard({
                   loop
                   playsInline
                   controls
-                  style={{
-                    width: "100%",
-                    height: "100%",
-                    objectFit: "cover",
-                  }}
+                  className="w-full h-full object-cover"
                 />
               </div>
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                  marginTop: 12,
-                }}
-              >
+              <div className="flex items-center gap-2 mt-3">
                 <a
                   href={brief.rendered_clip_url}
                   download
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 6,
-                    padding: "10px 18px",
-                    borderRadius: 10,
-                    background: "#30D158",
-                    color: "#fff",
-                    fontFamily: '"DM Sans", sans-serif',
-                    fontSize: 14,
-                    fontWeight: 600,
-                    textDecoration: "none",
-                    cursor: "pointer",
-                  }}
+                  className="inline-flex items-center gap-1.5 px-[18px] py-2.5 rounded-[10px] text-sm font-semibold text-white no-underline cursor-pointer"
+                  style={{ background: "#30D158" }}
                 >
                   <Download size={15} />
                   Download Clip
@@ -317,19 +281,10 @@ export default function BriefCard({
                 {embedUrl && (
                   <button
                     onClick={() => setShowSource((s) => !s)}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-[9px] rounded-[10px] text-[13px] font-medium cursor-pointer bg-transparent"
                     style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 5,
-                      padding: "9px 14px",
-                      borderRadius: 10,
-                      background: "none",
                       border: "1px solid var(--border)",
                       color: "var(--ink-tertiary)",
-                      fontFamily: '"DM Sans", sans-serif',
-                      fontSize: 13,
-                      fontWeight: 500,
-                      cursor: "pointer",
                     }}
                   >
                     <Play size={12} />
@@ -343,73 +298,29 @@ export default function BriefCard({
                 )}
               </div>
               {showSource && embedUrl && (
-                <div
-                  style={{
-                    position: "relative",
-                    paddingBottom: "56.25%",
-                    borderRadius: 10,
-                    overflow: "hidden",
-                    background: "#000",
-                    marginTop: 12,
-                  }}
-                >
+                <div className="relative pb-[56.25%] rounded-[10px] overflow-hidden bg-black mt-3">
                   <iframe
                     src={embedUrl}
                     title={brief.source_title || "Source video"}
                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                     allowFullScreen
-                    style={{
-                      position: "absolute",
-                      top: 0,
-                      left: 0,
-                      width: "100%",
-                      height: "100%",
-                      border: "none",
-                    }}
+                    className="absolute inset-0 w-full h-full border-0"
                   />
                 </div>
               )}
             </>
           ) : (
             /* Rendering... placeholder */
-            <div
-              style={{
-                width: 270,
-                height: 480,
-                borderRadius: 12,
-                overflow: "hidden",
-                background: "#000",
-              }}
-            >
-              <div
-                style={{
-                  width: "100%",
-                  height: "100%",
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: 12,
-                }}
-              >
+            <div className="w-[270px] h-[480px] rounded-xl overflow-hidden bg-black">
+              <div className="w-full h-full flex flex-col items-center justify-center gap-3">
                 <div
+                  className="w-8 h-8 rounded-full animate-spin"
                   style={{
-                    width: 32,
-                    height: 32,
                     border: "3px solid rgba(255,255,255,0.15)",
                     borderTopColor: "var(--accent)",
-                    borderRadius: "50%",
-                    animation: "spin 1s linear infinite",
                   }}
                 />
-                <span
-                  style={{
-                    fontFamily: '"DM Sans", sans-serif',
-                    fontSize: 14,
-                    fontWeight: 500,
-                    color: "rgba(255,255,255,0.55)",
-                  }}
-                >
+                <span className="text-sm font-medium text-white/55">
                   Rendering...
                 </span>
               </div>
@@ -419,56 +330,22 @@ export default function BriefCard({
       ) : (
         /* Content mode — YouTube embed or static thumbnail */
         embedUrl && (
-          <div style={{ padding: "16px 24px 0" }}>
-            <div
-              style={{
-                position: "relative",
-                paddingBottom: "56.25%",
-                borderRadius: 12,
-                overflow: "hidden",
-                background: "#000",
-              }}
-            >
+          <div className="px-6 pt-4">
+            <div className="relative pb-[56.25%] rounded-xl overflow-hidden bg-black">
               {staticPreview ? (
                 <>
                   <img
                     src={`https://img.youtube.com/vi/${getVideoId(brief.source_url)}/hqdefault.jpg`}
                     alt={brief.source_title || "Video preview"}
-                    style={{
-                      position: "absolute",
-                      top: 0,
-                      left: 0,
-                      width: "100%",
-                      height: "100%",
-                      objectFit: "cover",
-                    }}
+                    className="absolute inset-0 w-full h-full object-cover"
                   />
-                  <div
-                    style={{
-                      position: "absolute",
-                      inset: 0,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      background: "rgba(0,0,0,0.25)",
-                    }}
-                  >
-                    <div
-                      style={{
-                        width: 56,
-                        height: 56,
-                        borderRadius: "50%",
-                        background: "rgba(0,0,0,0.6)",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                      }}
-                    >
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/25">
+                    <div className="w-14 h-14 rounded-full bg-black/60 flex items-center justify-center">
                       <Play
                         size={28}
                         color="#fff"
                         fill="#fff"
-                        style={{ marginLeft: 3 }}
+                        className="ml-[3px]"
                       />
                     </div>
                   </div>
@@ -480,54 +357,22 @@ export default function BriefCard({
                   title={brief.source_title || "Video preview"}
                   allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                   allowFullScreen
-                  style={{
-                    position: "absolute",
-                    top: 0,
-                    left: 0,
-                    width: "100%",
-                    height: "100%",
-                    border: "none",
-                  }}
+                  className="absolute inset-0 w-full h-full border-0"
                 />
               )}
             </div>
             <button
               onClick={() => setReplayKey((k) => k + 1)}
+              className="inline-flex items-center gap-1.5 mt-2.5 px-3.5 py-2 rounded-[10px] text-[13px] font-semibold cursor-pointer bg-transparent transition-colors hover:!text-[var(--accent)] hover:!border-[var(--accent)]"
               style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-                marginTop: 10,
-                padding: "8px 14px",
-                borderRadius: 10,
-                background: "none",
                 border: "1px solid var(--border)",
                 color: "var(--ink-secondary)",
-                fontFamily: '"DM Sans", sans-serif',
-                fontSize: 13,
-                fontWeight: 600,
-                cursor: "pointer",
-                transition: "color 150ms, border-color 150ms",
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.color = "var(--accent)";
-                e.currentTarget.style.borderColor = "var(--accent)";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.color = "var(--ink-secondary)";
-                e.currentTarget.style.borderColor = "var(--border)";
               }}
             >
               <RotateCcw size={14} />
               Replay Clip
               {brief.timestamp_start != null && (
-                <span
-                  style={{
-                    fontFamily: '"JetBrains Mono", monospace',
-                    fontSize: 11,
-                    opacity: 0.7,
-                  }}
-                >
+                <span className="text-[11px] opacity-70 font-['JetBrains_Mono',monospace]">
                   {formatTimestamp(brief.timestamp_start)} –{" "}
                   {formatTimestamp(brief.timestamp_end)}
                 </span>
@@ -538,9 +383,9 @@ export default function BriefCard({
       )}
 
       {/* Hook text — editable on click */}
-      <div style={{ padding: "16px 24px 0" }}>
+      <div className="px-6 pt-4">
         {isEditingHook ? (
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <div className="flex flex-col gap-2">
             <textarea
               ref={editRef}
               value={editedHook}
@@ -555,56 +400,31 @@ export default function BriefCard({
                   setIsEditingHook(false);
                 }
               }}
+              className="w-full min-h-[60px] p-3 rounded-[10px] text-base italic leading-relaxed resize-y outline-none"
               style={{
-                width: "100%",
-                minHeight: 60,
-                padding: 12,
-                borderRadius: 10,
                 border: "1px solid var(--accent)",
                 background: "var(--bg)",
                 color: "var(--ink)",
-                fontFamily: '"DM Sans", sans-serif',
-                fontSize: 16,
-                fontStyle: "italic",
-                lineHeight: 1.5,
-                resize: "vertical",
-                outline: "none",
               }}
             />
-            <div
-              style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}
-            >
+            <div className="flex gap-2 justify-end">
               <button
                 onClick={() => {
                   setEditedHook(brief.hook_text);
                   setIsEditingHook(false);
                 }}
+                className="px-3 py-1.5 rounded-lg text-xs cursor-pointer bg-transparent"
                 style={{
-                  padding: "6px 12px",
-                  borderRadius: 8,
                   border: "1px solid var(--border)",
-                  background: "none",
                   color: "var(--ink-secondary)",
-                  fontFamily: '"DM Sans", sans-serif',
-                  fontSize: 12,
-                  cursor: "pointer",
                 }}
               >
                 Cancel
               </button>
               <button
                 onClick={handleSaveHook}
-                style={{
-                  padding: "6px 12px",
-                  borderRadius: 8,
-                  border: "none",
-                  background: "var(--accent)",
-                  color: "#fff",
-                  fontFamily: '"DM Sans", sans-serif',
-                  fontSize: 12,
-                  fontWeight: 600,
-                  cursor: "pointer",
-                }}
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white cursor-pointer border-0"
+                style={{ background: "var(--accent)" }}
               >
                 Save Hook
               </button>
@@ -613,18 +433,10 @@ export default function BriefCard({
         ) : (
           <div
             onClick={() => isActionable && setIsEditingHook(true)}
-            style={{
-              fontFamily: '"DM Sans", sans-serif',
-              fontSize: 18,
-              fontWeight: 500,
-              fontStyle: "italic",
-              color: "var(--ink)",
-              lineHeight: 1.5,
-              cursor: isActionable ? "text" : "default",
-              padding: "8px 0",
-              borderRadius: 8,
-              transition: "background 150ms",
-            }}
+            className={`text-lg font-medium italic leading-relaxed py-2 rounded-lg transition-colors ${
+              isActionable ? "cursor-text" : "cursor-default"
+            }`}
+            style={{ color: "var(--ink)" }}
             title={isActionable ? "Click to edit hook" : undefined}
           >
             "{brief.modified_hook || brief.hook_text}"
@@ -632,20 +444,15 @@ export default function BriefCard({
               <Pencil
                 size={13}
                 color="var(--ink-tertiary)"
-                style={{ marginLeft: 8, verticalAlign: "middle", opacity: 0.5 }}
+                className="ml-2 inline-block align-middle opacity-50"
               />
             )}
           </div>
         )}
         {brief.caption && (
           <div
-            style={{
-              fontFamily: '"DM Sans", sans-serif',
-              fontSize: 13,
-              color: "var(--ink-tertiary)",
-              marginTop: 4,
-              lineHeight: 1.4,
-            }}
+            className="text-[13px] mt-1 leading-snug"
+            style={{ color: "var(--ink-tertiary)" }}
           >
             {brief.caption}
           </div>
@@ -653,23 +460,12 @@ export default function BriefCard({
       </div>
 
       {/* Tags row: format, platforms, sound pairing */}
-      <div
-        style={{
-          display: "flex",
-          flexWrap: "wrap",
-          gap: 6,
-          padding: "12px 24px 0",
-        }}
-      >
+      <div className="flex flex-wrap gap-1.5 px-6 pt-3">
         <span
+          className="px-2.5 py-1 rounded-lg text-[11px] font-semibold"
           style={{
-            padding: "4px 10px",
-            borderRadius: 8,
             background: tagColors.format.bg,
             color: tagColors.format.color,
-            fontFamily: '"DM Sans", sans-serif',
-            fontSize: 11,
-            fontWeight: 600,
           }}
         >
           {brief.format_recommendation.replace(/_/g, " ")}
@@ -677,15 +473,10 @@ export default function BriefCard({
         {brief.platform_recommendation.map((p) => (
           <span
             key={p}
+            className="px-2.5 py-1 rounded-lg text-[11px] font-semibold capitalize"
             style={{
-              padding: "4px 10px",
-              borderRadius: 8,
               background: tagColors.platform.bg,
               color: tagColors.platform.color,
-              fontFamily: '"DM Sans", sans-serif',
-              fontSize: 11,
-              fontWeight: 600,
-              textTransform: "capitalize",
             }}
           >
             {p}
@@ -693,14 +484,10 @@ export default function BriefCard({
         ))}
         {brief.sound_pairing && (
           <span
+            className="px-2.5 py-1 rounded-lg text-[11px] font-semibold"
             style={{
-              padding: "4px 10px",
-              borderRadius: 8,
               background: tagColors.reason.bg,
               color: tagColors.reason.color,
-              fontFamily: '"DM Sans", sans-serif',
-              fontSize: 11,
-              fontWeight: 600,
             }}
           >
             {brief.sound_pairing}
@@ -710,41 +497,25 @@ export default function BriefCard({
 
       {/* Source info block */}
       <div
+        className="mt-4 mx-6 p-4 rounded-xl"
         style={{
-          margin: "16px 24px 0",
-          padding: 16,
-          borderRadius: 12,
           background: "var(--surface-hover)",
           border: "1px solid var(--border)",
         }}
       >
         {brief.source_title && (
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
-              marginBottom: 8,
-            }}
-          >
+          <div className="flex items-center gap-1.5 mb-2">
             <ExternalLink size={12} color="var(--ink-tertiary)" />
             <span
-              style={{
-                fontFamily: '"DM Sans", sans-serif',
-                fontSize: 12,
-                fontWeight: 600,
-                color: "var(--ink-secondary)",
-              }}
+              className="text-xs font-semibold"
+              style={{ color: "var(--ink-secondary)" }}
             >
               {brief.source_title}
             </span>
             {brief.timestamp_start != null && (
               <span
-                style={{
-                  fontFamily: '"JetBrains Mono", monospace',
-                  fontSize: 11,
-                  color: "var(--ink-tertiary)",
-                }}
+                className="text-[11px] font-['JetBrains_Mono',monospace]"
+                style={{ color: "var(--ink-tertiary)" }}
               >
                 {formatTimestamp(brief.timestamp_start)} –{" "}
                 {formatTimestamp(brief.timestamp_end)}
@@ -753,101 +524,59 @@ export default function BriefCard({
           </div>
         )}
         <div
-          style={{
-            fontFamily: '"DM Sans", sans-serif',
-            fontSize: 13,
-            color: "var(--ink-secondary)",
-            lineHeight: 1.5,
-          }}
+          className="text-[13px] leading-relaxed"
+          style={{ color: "var(--ink-secondary)" }}
         >
           {brief.why_now}
         </div>
       </div>
 
-      {/* Chat about this */}
-      <div style={{ padding: "12px 24px 0" }}>
+      {/* Chat + Details row */}
+      <div className="flex items-center gap-2 px-6 pt-3">
         <button
           onClick={handleChatAboutThis}
+          className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-[10px] text-[13px] font-medium cursor-pointer bg-transparent transition-colors hover:!text-[var(--accent)] hover:!border-[var(--accent)]"
           style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 6,
-            padding: "8px 14px",
-            borderRadius: 10,
             border: "1px solid var(--border)",
-            background: "none",
             color: "var(--ink-tertiary)",
-            fontFamily: '"DM Sans", sans-serif',
-            fontSize: 13,
-            fontWeight: 500,
-            cursor: "pointer",
-            transition: "color 150ms, border-color 150ms",
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.color = "var(--accent)";
-            e.currentTarget.style.borderColor = "var(--accent)";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.color = "var(--ink-tertiary)";
-            e.currentTarget.style.borderColor = "var(--border)";
           }}
         >
           <MessageCircle size={14} />
           Chat about this
         </button>
+        {onExpand && (
+          <button
+            onClick={() => onExpand(brief.id)}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-[10px] text-[13px] font-medium cursor-pointer bg-transparent transition-colors hover:!text-[var(--accent)] hover:!border-[var(--accent)]"
+            style={{
+              border: "1px solid var(--border)",
+              color: "var(--ink-tertiary)",
+            }}
+          >
+            <Maximize2 size={14} />
+            Details
+          </button>
+        )}
       </div>
 
       {/* Action buttons */}
-      <div
-        style={{
-          display: "flex",
-          gap: 8,
-          padding: "16px 24px 20px",
-        }}
-      >
+      <div className="flex gap-2 px-6 pt-4 pb-5">
         {isActionable ? (
           <>
             <button
               onClick={() => onApprove(brief.id)}
-              style={{
-                flex: 1,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 6,
-                height: 40,
-                borderRadius: 10,
-                border: "none",
-                background: "#30D158",
-                color: "#fff",
-                fontFamily: '"DM Sans", sans-serif',
-                fontSize: 14,
-                fontWeight: 600,
-                cursor: "pointer",
-                transition: "opacity 150ms",
-              }}
+              className="flex-1 flex items-center justify-center gap-1.5 h-10 rounded-[10px] border-0 text-white text-sm font-semibold cursor-pointer transition-opacity"
+              style={{ background: "#30D158" }}
             >
               <Check size={16} />
               Approve
             </button>
             <button
               onClick={() => setIsEditingHook(true)}
+              className="flex-1 flex items-center justify-center gap-1.5 h-10 rounded-[10px] text-sm font-medium cursor-pointer bg-transparent transition-colors"
               style={{
-                flex: 1,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 6,
-                height: 40,
-                borderRadius: 10,
                 border: "1px solid var(--border)",
-                background: "none",
                 color: "var(--ink-secondary)",
-                fontFamily: '"DM Sans", sans-serif',
-                fontSize: 14,
-                fontWeight: 500,
-                cursor: "pointer",
-                transition: "background 150ms",
               }}
             >
               <Pencil size={14} />
@@ -855,22 +584,10 @@ export default function BriefCard({
             </button>
             <button
               onClick={() => onSkip(brief.id)}
+              className="flex-1 flex items-center justify-center gap-1.5 h-10 rounded-[10px] text-sm font-medium cursor-pointer bg-transparent transition-colors"
               style={{
-                flex: 1,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 6,
-                height: 40,
-                borderRadius: 10,
                 border: "1px solid var(--border)",
-                background: "none",
                 color: "var(--ink-tertiary)",
-                fontFamily: '"DM Sans", sans-serif',
-                fontSize: 14,
-                fontWeight: 500,
-                cursor: "pointer",
-                transition: "background 150ms",
               }}
             >
               <X size={14} />
@@ -878,21 +595,10 @@ export default function BriefCard({
             </button>
           </>
         ) : (
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              width: "100%",
-            }}
-          >
+          <div className="flex items-center justify-between w-full">
             <div
-              style={{
-                fontFamily: '"DM Sans", sans-serif',
-                fontSize: 13,
-                color: "var(--ink-tertiary)",
-                fontStyle: "italic",
-              }}
+              className="text-[13px] italic"
+              style={{ color: "var(--ink-tertiary)" }}
             >
               {brief.status === "approved" && "Approved"}
               {brief.status === "skipped" && "Skipped"}
@@ -904,19 +610,10 @@ export default function BriefCard({
             {onDelete && (
               <>
                 {confirmDelete ? (
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 8,
-                    }}
-                  >
+                  <div className="flex items-center gap-2">
                     <span
-                      style={{
-                        fontFamily: '"DM Sans", sans-serif',
-                        fontSize: 12,
-                        color: "var(--ink-tertiary)",
-                      }}
+                      className="text-xs"
+                      style={{ color: "var(--ink-tertiary)" }}
                     >
                       Delete this clip?
                     </span>
@@ -925,19 +622,10 @@ export default function BriefCard({
                         onDelete(brief.id);
                         setConfirmDelete(false);
                       }}
+                      className="inline-flex items-center gap-1 px-3.5 py-1.5 rounded-lg border-0 text-xs font-semibold cursor-pointer"
                       style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: 5,
-                        padding: "6px 14px",
-                        borderRadius: 8,
-                        border: "none",
                         background: "rgba(255,69,58,0.15)",
                         color: "#FF453A",
-                        fontFamily: '"DM Sans", sans-serif',
-                        fontSize: 12,
-                        fontWeight: 600,
-                        cursor: "pointer",
                       }}
                     >
                       <Trash2 size={13} />
@@ -945,15 +633,10 @@ export default function BriefCard({
                     </button>
                     <button
                       onClick={() => setConfirmDelete(false)}
+                      className="px-3 py-1.5 rounded-lg text-xs cursor-pointer bg-transparent"
                       style={{
-                        padding: "6px 12px",
-                        borderRadius: 8,
                         border: "1px solid var(--border)",
-                        background: "none",
                         color: "var(--ink-tertiary)",
-                        fontFamily: '"DM Sans", sans-serif',
-                        fontSize: 12,
-                        cursor: "pointer",
                       }}
                     >
                       Cancel
@@ -962,28 +645,10 @@ export default function BriefCard({
                 ) : (
                   <button
                     onClick={() => setConfirmDelete(true)}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer bg-transparent transition-colors hover:!text-[#FF453A] hover:!border-[rgba(255,69,58,0.3)]"
                     style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 5,
-                      padding: "6px 12px",
-                      borderRadius: 8,
                       border: "1px solid var(--border)",
-                      background: "none",
                       color: "var(--ink-tertiary)",
-                      fontFamily: '"DM Sans", sans-serif',
-                      fontSize: 12,
-                      fontWeight: 500,
-                      cursor: "pointer",
-                      transition: "color 150ms, border-color 150ms",
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.color = "#FF453A";
-                      e.currentTarget.style.borderColor = "rgba(255,69,58,0.3)";
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.color = "var(--ink-tertiary)";
-                      e.currentTarget.style.borderColor = "var(--border)";
                     }}
                   >
                     <Trash2 size={13} />
