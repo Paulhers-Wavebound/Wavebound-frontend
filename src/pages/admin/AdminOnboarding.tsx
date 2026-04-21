@@ -103,8 +103,8 @@ function StatusBadge({
     );
   if (status === "generating" && allCompleted)
     return (
-      <Badge className="bg-purple-600/20 text-purple-400 border-purple-600/30">
-        Pending
+      <Badge className="bg-yellow-600/20 text-yellow-400 border-yellow-600/30">
+        Awaiting Approval
       </Badge>
     );
   if (status === "generating")
@@ -173,7 +173,7 @@ function ReviewBadge({ status }: { status: string }) {
     );
   return (
     <Badge className="bg-[#1C1C1E] text-[#a8a29e] border-[#1C1C1E] text-xs">
-      Pending
+      Needs Review
     </Badge>
   );
 }
