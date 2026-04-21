@@ -478,11 +478,11 @@ function buildTierAdaptiveTiles(
         });
       }
       if (artist.velocity_posting_freq_pct != null) {
-        const v = artist.velocity_posting_freq_pct;
+        const v = Math.round(artist.velocity_posting_freq_pct);
         tiles.push({
           icon: Activity,
           label: "Cadence Momentum",
-          value: `${v > 0 ? "+" : ""}${v.toFixed(0)}%`,
+          value: `${v > 0 ? "+" : ""}${v}%`,
           sub: "posts/week vs last 30d",
           valueColor: v > 5 ? "#30D158" : v < -5 ? "#FF453A" : undefined,
         });
@@ -527,11 +527,11 @@ function buildTierAdaptiveTiles(
         });
       }
       if (artist.velocity_posting_freq_pct != null) {
-        const v = artist.velocity_posting_freq_pct;
+        const v = Math.round(artist.velocity_posting_freq_pct);
         tiles.push({
           icon: Activity,
           label: "Cadence Momentum",
-          value: `${v > 0 ? "+" : ""}${v.toFixed(0)}%`,
+          value: `${v > 0 ? "+" : ""}${v}%`,
           sub: "posts/week vs last 30d",
           valueColor: v > 5 ? "#30D158" : v < -5 ? "#FF453A" : undefined,
         });
