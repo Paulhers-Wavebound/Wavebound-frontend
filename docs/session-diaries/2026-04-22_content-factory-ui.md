@@ -1,5 +1,47 @@
 # 2026-04-22 — Content Factory UI (T7)
 
+## Browser verification (Tony via Chrome MCP, ~10:55 local)
+
+Dev server was already up on port 8080 (Vite config pins it). Navigated to
+`http://localhost:8080/label/content-factory` from a clean Chrome MCP tab.
+
+**What rendered:**
+
+- Sidebar entry "Content Factory" visible between Fan Briefs and The Pulse,
+  with the Film icon, `NEW` badge, and active-route highlight (current route
+  was this one).
+- Page header "Content Factory" + tagline "Paste a TikTok reference, upload
+  the artist MP3, get a 9:16 MP4 that mirrors the reference's vibe."
+- Form card with three inputs stacked: TikTok URL (url-type input with
+  `https://www.tiktok.com/@creator/video/...` placeholder), Artist Handle
+  (`e.g. sombr` placeholder + helper text "Free-text — leading @ is
+  stripped."), Artist MP3 (max 10 MB) file picker.
+- Generate button in disabled state (faded).
+- Label scope chip top-left = "Warner US" (test operator
+  `malcolmtodddd`) — `useUserProfile().labelId` wiring works.
+
+**Form interaction:**
+
+- Typed `https://www.tiktok.com/@mxcxvo/video/7516161541541252382` into the
+  URL field and `sombr` into the Handle field via Chrome MCP `form_input`.
+  Both values committed to state.
+- Generate button **remained disabled** with only 2/3 fields filled —
+  validation gate correct.
+
+**Unverified (blocked):**
+
+- MP3 upload via Chrome MCP's `file_upload` returned `"Not allowed"` —
+  extension sandbox blocks programmatic file-input injection, expected
+  limitation.
+- Therefore: no real submit → no `job_id`, no polling stepper animation, no
+  inline video playback.
+
+**To finish the verification**, Paul clicks "Choose MP3 file" manually,
+picks any ≤10 MB MP3 (e.g. `~/Downloads/+2.mp3`, 3 MB), confirms the button
+enables, and optionally hits Generate to watch the live stepper. We have
+~$49.07 of V1 budget headroom (spend after T6 = 93¢ / 5000¢) so one or two
+live submits is fine.
+
 ## What changed
 
 New files:
