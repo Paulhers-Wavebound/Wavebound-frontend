@@ -19,6 +19,7 @@ import {
   HeartPulse,
   Globe,
   Database,
+  Film,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useUserProfile } from "@/contexts/UserProfileContext";
@@ -120,6 +121,13 @@ const getMainNav = (isAdmin: boolean, labelId: string | null) => {
       icon: Sparkles,
       path: "/label/fan-briefs",
       ...tag("fan-briefs"),
+    },
+    {
+      id: "content-factory",
+      label: "Content Factory",
+      icon: Film,
+      path: "/label/content-factory",
+      isNew: true as const,
     },
     ...(isAdmin
       ? [
