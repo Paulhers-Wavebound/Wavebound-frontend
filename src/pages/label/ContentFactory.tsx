@@ -93,6 +93,17 @@ function formatElapsed(ms: number): string {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
+function friendlyError(raw: string | null | undefined): string {
+  if (!raw) return "Pipeline failed";
+  if (raw === "sound_no_play_url") {
+    return "This TikTok has no usable audio. Upload an MP3 or pick a different reference clip.";
+  }
+  if (raw.startsWith("sound_fetch_")) {
+    return "Could not download the TikTok's sound. Try again or upload an MP3.";
+  }
+  return raw;
+}
+
 export default function ContentFactory() {
   const { labelId } = useUserProfile();
 
@@ -173,7 +184,7 @@ export default function ContentFactory() {
             setUiState("done");
             clearTimers();
           } else if (data.status === "error") {
-            setErrorMsg(data.error || "Pipeline failed");
+            setErrorMsg(friendlyError(data.error));
             setUiState("error");
             clearTimers();
           }
@@ -191,9 +202,8 @@ export default function ContentFactory() {
     if (!labelId) return false;
     if (!isValidTikTokUrl(refUrl)) return false;
     if (!stripHandle(artistHandle)) return false;
-    if (!file) return false;
     return uiState === "idle";
-  }, [labelId, refUrl, artistHandle, file, uiState]);
+  }, [labelId, refUrl, artistHandle, uiState]);
 
   const handleFile = (f: File | null) => {
     setErrorMsg(null);
@@ -232,22 +242,27 @@ export default function ContentFactory() {
   };
 
   const handleSubmit = async () => {
-    if (!canSubmit || !labelId || !file) return;
+    if (!canSubmit || !labelId) return;
     setErrorMsg(null);
     setUiState("uploading");
 
     try {
       const handle = stripHandle(artistHandle);
-      const rand = crypto.randomUUID().slice(0, 8);
-      const path = `sources/${labelId}/${rand}-${slugify(handle)}.mp3`;
 
-      const { error: uploadError } = await supabase.storage
-        .from(STORAGE_BUCKET)
-        .upload(path, file, {
-          contentType: "audio/mpeg",
-          upsert: false,
-        });
-      if (uploadError) throw uploadError;
+      // Only upload when the operator provided a file; otherwise the backend
+      // falls back to the sound attached to the ref TikTok.
+      let artistMp3Path: string | undefined;
+      if (file) {
+        const rand = crypto.randomUUID().slice(0, 8);
+        artistMp3Path = `sources/${labelId}/${rand}-${slugify(handle)}.mp3`;
+        const { error: uploadError } = await supabase.storage
+          .from(STORAGE_BUCKET)
+          .upload(artistMp3Path, file, {
+            contentType: "audio/mpeg",
+            upsert: false,
+          });
+        if (uploadError) throw uploadError;
+      }
 
       const { data, error: invokeError } = await supabase.functions.invoke(
         "content-factory-generate",
@@ -256,7 +271,7 @@ export default function ContentFactory() {
             label_id: labelId,
             artist_handle: handle,
             ref_tiktok_url: refUrl.trim(),
-            artist_mp3_path: path,
+            ...(artistMp3Path ? { artist_mp3_path: artistMp3Path } : {}),
           },
         },
       );
@@ -317,8 +332,9 @@ export default function ContentFactory() {
           className="text-[15px] leading-snug"
           style={{ color: "var(--ink-tertiary)" }}
         >
-          Paste a TikTok reference, upload the artist MP3, get a 9:16 MP4 that
-          mirrors the reference's vibe.
+          Paste a TikTok reference and optionally upload the artist MP3 — skip
+          the upload and we'll use the sound from the TikTok. Out comes a 9:16
+          MP4 that mirrors the reference's vibe.
         </p>
       </div>
 
@@ -387,7 +403,7 @@ export default function ContentFactory() {
             <HelpText>Free-text — leading @ is stripped.</HelpText>
           </Field>
 
-          <Field label="Artist MP3 (max 10 MB)" htmlFor="cf-mp3">
+          <Field label="Artist MP3 (optional, max 10 MB)" htmlFor="cf-mp3">
             <label
               htmlFor="cf-mp3"
               className="flex items-center justify-between gap-3 h-12 px-3 rounded-[10px] cursor-pointer transition-colors"
@@ -420,6 +436,9 @@ export default function ContentFactory() {
               disabled={uiState !== "idle"}
               onChange={(e) => handleFile(e.target.files?.[0] ?? null)}
             />
+            <HelpText>
+              Skip to use the sound attached to the ref TikTok.
+            </HelpText>
           </Field>
 
           {errorMsg && (
