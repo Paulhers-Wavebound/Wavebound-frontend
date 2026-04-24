@@ -7,11 +7,7 @@ import { useContentIntelligence } from "@/hooks/useContentIntelligence";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  ArrowLeft,
-  AlertTriangle,
-  AlertCircle,
-} from "lucide-react";
+import { ArrowLeft, AlertTriangle, AlertCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import RemoveArtistDialog from "@/components/label/RemoveArtistDialog";
 import {
@@ -21,7 +17,6 @@ import {
 } from "@/components/ui/collapsible";
 import { useUserProfile } from "@/contexts/UserProfileContext";
 import { useLabelPermissions } from "@/hooks/useLabelPermissions";
-import RoleSelector from "@/components/label/RoleSelector";
 import { useDashboardRole } from "@/contexts/DashboardRoleContext";
 import { format } from "date-fns";
 
@@ -120,7 +115,9 @@ export default function LabelArtistProfile() {
 
   // Tab state from URL
   const rawTab = searchParams.get("tab") as TabKey | null;
-  const activeTab: TabKey = TABS.some((t) => t.key === rawTab) ? rawTab! : "overview";
+  const activeTab: TabKey = TABS.some((t) => t.key === rawTab)
+    ? rawTab!
+    : "overview";
 
   const [artist, setArtist] = useState<ArtistMetrics | null>(null);
   useSetPageTitle(artist?.artist_name ?? null);
@@ -232,7 +229,9 @@ export default function LabelArtistProfile() {
           risk_flags: null,
           has_content_plan: !!ai.content_plan_html,
           has_intelligence_report: !!ai.intelligence_report_html,
-          has_30day_plan: !!(ai.content_plan_30d_html || ai.thirty_day_plan_html),
+          has_30day_plan: !!(
+            ai.content_plan_30d_html || ai.thirty_day_plan_html
+          ),
           has_artist_brief: !!ai.artist_brief_html,
           invite_code: ai.invite_code ?? null,
           baseline_date: null,
@@ -252,23 +251,37 @@ export default function LabelArtistProfile() {
   // ── Chart data (RMM Performance) ──
   const chartData = useMemo(() => {
     const filtered = organicOnly
-      ? timeline.filter((pt) => pt.is_ad !== true && pt.is_likely_promoted !== true)
+      ? timeline.filter(
+          (pt) => pt.is_ad !== true && pt.is_likely_promoted !== true,
+        )
       : timeline;
 
     const medianBaseline =
       (artist as any)?.median_views_baseline ??
       (() => {
-        const views = filtered.map((p) => p.video_views).filter(Boolean).sort((a, b) => a - b);
+        const views = filtered
+          .map((p) => p.video_views)
+          .filter(Boolean)
+          .sort((a, b) => a - b);
         return views.length ? views[Math.floor(views.length / 2)] : 1;
       })();
 
     const sorted = [...filtered].sort(
-      (a, b) => new Date(a.date_posted).getTime() - new Date(b.date_posted).getTime(),
+      (a, b) =>
+        new Date(a.date_posted).getTime() - new Date(b.date_posted).getTime(),
     );
     return sorted.map((pt) => {
       const pr = medianBaseline > 0 ? pt.video_views / medianBaseline : 0;
       const tier =
-        pr >= 10 ? "viral" : pr >= 4 ? "breakout" : pr >= 1.5 ? "momentum" : pr >= 0.5 ? "stable" : "stalled";
+        pr >= 10
+          ? "viral"
+          : pr >= 4
+            ? "breakout"
+            : pr >= 1.5
+              ? "momentum"
+              : pr >= 0.5
+                ? "stable"
+                : "stalled";
       return {
         ...pt,
         views: pt.video_views,
@@ -282,13 +295,16 @@ export default function LabelArtistProfile() {
   }, [timeline, organicOnly, artist]);
 
   const filteredStats = useMemo(() => {
-    if (chartData.length === 0) return { current: null, avg7: null, avg30: null };
+    if (chartData.length === 0)
+      return { current: null, avg7: null, avg30: null };
     const current = chartData[chartData.length - 1]?.performance_ratio ?? null;
     const last7 = chartData.slice(-7);
     const last30 = chartData.slice(-30);
     const avg = (arr: typeof chartData) => {
       const vals = arr.map((p) => p.performance_ratio).filter((v) => v != null);
-      return vals.length > 0 ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
+      return vals.length > 0
+        ? vals.reduce((a, b) => a + b, 0) / vals.length
+        : null;
     };
     return { current, avg7: avg(last7), avg30: avg(last30) };
   }, [chartData]);
@@ -310,7 +326,9 @@ export default function LabelArtistProfile() {
       <div className="max-w-7xl mx-auto px-6 py-8 space-y-6">
         <Skeleton className="h-8 w-48" />
         <div className="flex gap-6">
-          {[1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-8 w-20" />)}
+          {[1, 2, 3, 4].map((i) => (
+            <Skeleton key={i} className="h-8 w-20" />
+          ))}
         </div>
         <Skeleton className="h-96" />
       </div>
@@ -320,7 +338,11 @@ export default function LabelArtistProfile() {
   if (!artist) {
     return (
       <div className="max-w-7xl mx-auto px-6 py-8">
-        <Button variant="ghost" onClick={() => navigate(backPath)} className="mb-4">
+        <Button
+          variant="ghost"
+          onClick={() => navigate(backPath)}
+          className="mb-4"
+        >
           <ArrowLeft className="w-4 h-4 mr-2" /> Back to Dashboard
         </Button>
         <p className="text-muted-foreground">Artist not found.</p>
@@ -333,10 +355,14 @@ export default function LabelArtistProfile() {
     return (
       <div className="max-w-7xl mx-auto px-6 py-8 space-y-6">
         <div className="flex items-center justify-between">
-          <Button variant="ghost" size="sm" onClick={() => navigate(backPath)} className="text-muted-foreground hover:text-foreground -ml-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => navigate(backPath)}
+            className="text-muted-foreground hover:text-foreground -ml-2"
+          >
             <ArrowLeft className="w-4 h-4 mr-2" /> Back to Dashboard
           </Button>
-          <RoleSelector />
         </div>
 
         <div className="flex justify-end mb-4">
@@ -346,7 +372,9 @@ export default function LabelArtistProfile() {
                 key={v}
                 onClick={() => setBriefingView(v)}
                 className={`font-[family-name:'DM_Sans',sans-serif] text-[12px] border-none rounded-md px-3.5 py-1.5 cursor-pointer transition-all duration-150 ${
-                  briefingView === v ? "font-semibold text-white/87 bg-white/[0.08]" : "font-normal text-white/35 bg-transparent"
+                  briefingView === v
+                    ? "font-semibold text-white/87 bg-white/[0.08]"
+                    : "font-normal text-white/35 bg-transparent"
                 }`}
               >
                 {v === "v2" ? "Intelligence Briefing" : "Classic View"}
@@ -359,8 +387,13 @@ export default function LabelArtistProfile() {
           <IntelligenceTab artistName={artist.artist_name} />
         ) : briefingLoading ? (
           <div className="flex flex-col items-center py-20 gap-3">
-            <div className="w-6 h-6 rounded-full border-[2.5px] border-white/[0.06] border-t-[#e8430a]" style={{ animation: "labelSpin 0.8s linear infinite" }} />
-            <div className="font-[family-name:'DM_Sans',sans-serif] text-[13px] text-white/35">Assembling briefing...</div>
+            <div
+              className="w-6 h-6 rounded-full border-[2.5px] border-white/[0.06] border-t-[#e8430a]"
+              style={{ animation: "labelSpin 0.8s linear infinite" }}
+            />
+            <div className="font-[family-name:'DM_Sans',sans-serif] text-[13px] text-white/35">
+              Assembling briefing...
+            </div>
           </div>
         ) : noEntity ? (
           <IntelligenceTab artistName={artist.artist_name} />
@@ -369,7 +402,10 @@ export default function LabelArtistProfile() {
             <BriefingHero data={briefing} />
             <SignalMap data={briefing} />
             <OpportunityEngine data={briefing} />
-            <CompetitiveLens card={briefing.artistCard} rosterScores={rosterScores} />
+            <CompetitiveLens
+              card={briefing.artistCard}
+              rosterScores={rosterScores}
+            />
             <Outlook data={briefing} />
           </div>
         ) : (
@@ -382,12 +418,16 @@ export default function LabelArtistProfile() {
   // ── Content & Social role: 4-tab layout ──
   return (
     <div className="max-w-7xl mx-auto px-6 py-8 space-y-5">
-      {/* Back + Role selector */}
+      {/* Back button */}
       <div className="flex items-center justify-between">
-        <Button variant="ghost" size="sm" onClick={() => navigate(backPath)} className="text-muted-foreground hover:text-foreground -ml-2">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => navigate(backPath)}
+          className="text-muted-foreground hover:text-foreground -ml-2"
+        >
           <ArrowLeft className="w-4 h-4 mr-2" /> Back to Dashboard
         </Button>
-        <RoleSelector />
       </div>
 
       {/* Tab bar */}
@@ -438,8 +478,8 @@ export default function LabelArtistProfile() {
           />
         </>
       )}
-      {activeTab === "content" && (
-        contentIntelLoading ? (
+      {activeTab === "content" &&
+        (contentIntelLoading ? (
           <div className="space-y-4">
             <Skeleton className="h-60 rounded-xl" />
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -452,12 +492,13 @@ export default function LabelArtistProfile() {
           <ContentTab data={contentIntelData} />
         ) : (
           <div className="rounded-xl border-2 border-dashed border-white/[0.06] p-16 text-center">
-            <p className="text-[15px] text-white/45">Content data not yet available</p>
+            <p className="text-[15px] text-white/45">
+              Content data not yet available
+            </p>
           </div>
-        )
-      )}
-      {activeTab === "sounds" && (
-        contentIntelLoading ? (
+        ))}
+      {activeTab === "sounds" &&
+        (contentIntelLoading ? (
           <div className="space-y-4">
             {/* Sound Pulse Hero skeleton */}
             <div className="rounded-2xl p-6" style={{ background: "#1C1C1E" }}>
@@ -465,9 +506,18 @@ export default function LabelArtistProfile() {
               <div className="flex items-center gap-6">
                 <Skeleton className="h-[68px] w-[68px] rounded-full shrink-0" />
                 <div className="flex gap-6 flex-1">
-                  <div><Skeleton className="h-2 w-16 rounded mb-2" /><Skeleton className="h-5 w-12 rounded" /></div>
-                  <div><Skeleton className="h-2 w-16 rounded mb-2" /><Skeleton className="h-5 w-12 rounded" /></div>
-                  <div><Skeleton className="h-2 w-20 rounded mb-2" /><Skeleton className="h-5 w-16 rounded" /></div>
+                  <div>
+                    <Skeleton className="h-2 w-16 rounded mb-2" />
+                    <Skeleton className="h-5 w-12 rounded" />
+                  </div>
+                  <div>
+                    <Skeleton className="h-2 w-16 rounded mb-2" />
+                    <Skeleton className="h-5 w-12 rounded" />
+                  </div>
+                  <div>
+                    <Skeleton className="h-2 w-20 rounded mb-2" />
+                    <Skeleton className="h-5 w-16 rounded" />
+                  </div>
                 </div>
                 <Skeleton className="h-8 w-[160px] rounded shrink-0" />
               </div>
@@ -480,7 +530,12 @@ export default function LabelArtistProfile() {
               <Skeleton className="h-3 w-36 rounded mb-5" />
               <Skeleton className="h-[72px] w-full rounded mb-4" />
               <div className="grid grid-cols-4 gap-6">
-                {[1,2,3,4].map(n => <div key={n}><Skeleton className="h-2 w-20 rounded mb-2" /><Skeleton className="h-5 w-14 rounded" /></div>)}
+                {[1, 2, 3, 4].map((n) => (
+                  <div key={n}>
+                    <Skeleton className="h-2 w-20 rounded mb-2" />
+                    <Skeleton className="h-5 w-14 rounded" />
+                  </div>
+                ))}
               </div>
             </div>
             <Skeleton className="h-44 rounded-2xl" />
@@ -490,12 +545,13 @@ export default function LabelArtistProfile() {
           <SoundsTab data={contentIntelData} />
         ) : (
           <div className="rounded-xl border-2 border-dashed border-white/[0.06] p-16 text-center">
-            <p className="text-[15px] text-white/45">Sound data not yet available</p>
+            <p className="text-[15px] text-white/45">
+              Sound data not yet available
+            </p>
           </div>
-        )
-      )}
-      {activeTab === "growth" && (
-        contentIntelLoading ? (
+        ))}
+      {activeTab === "growth" &&
+        (contentIntelLoading ? (
           <div className="space-y-4">
             <Skeleton className="h-48 rounded-xl" />
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -514,10 +570,11 @@ export default function LabelArtistProfile() {
           />
         ) : (
           <div className="rounded-xl border-2 border-dashed border-white/[0.06] p-16 text-center">
-            <p className="text-[15px] text-white/45">Growth data not yet available</p>
+            <p className="text-[15px] text-white/45">
+              Growth data not yet available
+            </p>
           </div>
-        )
-      )}
+        ))}
 
       {/* Deliverable Links — always visible */}
       <DeliverableLinks
@@ -536,14 +593,21 @@ export default function LabelArtistProfile() {
                 <span className="text-sm font-semibold text-destructive flex items-center gap-2">
                   <AlertTriangle className="h-4 w-4" /> Danger Zone
                 </span>
-                <span className="text-xs text-muted-foreground">Click to expand</span>
+                <span className="text-xs text-muted-foreground">
+                  Click to expand
+                </span>
               </button>
             </CollapsibleTrigger>
             <CollapsibleContent className="px-4 pb-4 space-y-3">
               <p className="text-sm text-muted-foreground">
-                Permanently remove this artist and all associated data from your roster.
+                Permanently remove this artist and all associated data from your
+                roster.
               </p>
-              <Button variant="destructive" size="sm" onClick={() => setRemoveDialogOpen(true)}>
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={() => setRemoveDialogOpen(true)}
+              >
                 Remove from Roster
               </Button>
             </CollapsibleContent>

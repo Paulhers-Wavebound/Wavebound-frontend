@@ -31,7 +31,6 @@ import SoundAlertBell from "@/components/sound-intelligence/SoundAlertBell";
 import MonitoringTrendChart from "@/components/sound-intelligence/MonitoringTrendChart";
 import { useUserProfile } from "@/contexts/UserProfileContext";
 import { useSetPageTitle } from "@/contexts/PageTitleContext";
-import RoleSelector from "@/components/label/RoleSelector";
 
 // V2 Zone Components
 import VerdictStrip from "@/components/sound-intelligence/VerdictStrip";
@@ -337,7 +336,6 @@ export default function SoundIntelligenceDetail() {
           </div>
 
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <RoleSelector />
             {analysis && subChecked && (
               <>
                 {/* Subscribe / Own vs Competitor toggle */}

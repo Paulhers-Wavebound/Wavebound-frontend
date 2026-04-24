@@ -40,7 +40,6 @@ import { exportOverviewPDF } from "@/utils/exportAnalysis";
 import MonitoringBadge from "@/components/sound-intelligence/MonitoringBadge";
 import NextCheckCountdown from "@/components/sound-intelligence/NextCheckCountdown";
 import SoundAlertBell from "@/components/sound-intelligence/SoundAlertBell";
-import RoleSelector from "@/components/label/RoleSelector";
 
 /** Stall threshold: 3 min for refreshing (fast), 15 min for others */
 function stallThresholdMs(status: string): number {
@@ -358,7 +357,6 @@ export default function SoundIntelligenceOverview() {
             </p>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <RoleSelector />
             {labelId && <SoundAlertBell labelId={labelId} />}
           </div>
         </div>

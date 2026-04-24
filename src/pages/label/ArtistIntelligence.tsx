@@ -7,7 +7,6 @@ import { useSetPageTitle } from "@/contexts/PageTitleContext";
 import { useUserProfile } from "@/contexts/UserProfileContext";
 import { useArtistBriefing } from "@/hooks/useArtistBriefing";
 import { useDashboardRole } from "@/contexts/DashboardRoleContext";
-import RoleSelector from "@/components/label/RoleSelector";
 import ContentIntelligenceView from "@/components/label/intelligence/ContentIntelligenceView";
 
 // New briefing components
@@ -194,7 +193,6 @@ export default function ArtistIntelligencePage() {
           </button>
 
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <RoleSelector />
             {role === "marketing" && (
               <div
                 style={{
