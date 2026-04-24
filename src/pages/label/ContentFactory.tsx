@@ -11,6 +11,55 @@ import { toast } from "@/hooks/use-toast";
 const STORAGE_BUCKET = "content-factory";
 const MAX_MP3_BYTES = 10 * 1024 * 1024;
 const POLL_INTERVAL_MS = 3000;
+const ACTIVE_JOB_STORAGE_KEY = "cf:active_job";
+// Don't rehydrate jobs older than this — likely abandoned or already terminal.
+const ACTIVE_JOB_MAX_AGE_MS = 30 * 60 * 1000;
+// Surface a "this may be stuck" banner once the backend has gone quiet
+// while the UI is still non-terminal. 10min > any legitimate pipeline step.
+const STALE_BANNER_THRESHOLD_MS = 10 * 60 * 1000;
+
+interface StoredActiveJob {
+  jobId: string;
+  createdAt: number;
+  artistHandle: string;
+  refUrl: string;
+  transcribeProvider: TranscribeProvider;
+}
+
+function loadActiveJob(): StoredActiveJob | null {
+  try {
+    const raw = window.sessionStorage.getItem(ACTIVE_JOB_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as StoredActiveJob;
+    if (
+      !parsed ||
+      typeof parsed.jobId !== "string" ||
+      typeof parsed.createdAt !== "number" ||
+      !isTranscribeProvider(parsed.transcribeProvider)
+    ) {
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function saveActiveJob(job: StoredActiveJob): void {
+  try {
+    window.sessionStorage.setItem(ACTIVE_JOB_STORAGE_KEY, JSON.stringify(job));
+  } catch {
+    // storage disabled / quota — rehydrate-on-reload just won't work
+  }
+}
+
+function clearActiveJob(): void {
+  try {
+    window.sessionStorage.removeItem(ACTIVE_JOB_STORAGE_KEY);
+  } catch {
+    // storage disabled — nothing to clear
+  }
+}
 
 type JobStatus =
   | "pending"
@@ -186,6 +235,9 @@ export default function ContentFactory() {
   const [startedAt, setStartedAt] = useState<number | null>(null);
   const [elapsedMs, setElapsedMs] = useState(0);
   const [failedStageIdx, setFailedStageIdx] = useState<number | null>(null);
+  // Backend's `updated_at` from the most recent poll — used to detect when
+  // the pipeline has gone quiet for too long (stale banner below).
+  const [backendUpdatedAt, setBackendUpdatedAt] = useState<string | null>(null);
 
   const pollRef = useRef<number | null>(null);
   const tickRef = useRef<number | null>(null);
@@ -205,6 +257,27 @@ export default function ContentFactory() {
   }, []);
 
   useEffect(() => clearTimers, [clearTimers]);
+
+  // Rehydrate an in-flight job across page reloads. Runs once on mount; the
+  // poll loop itself handles 404 / terminal-on-first-poll via the same code
+  // path as a freshly submitted job.
+  useEffect(() => {
+    const saved = loadActiveJob();
+    if (!saved) return;
+    if (Date.now() - saved.createdAt > ACTIVE_JOB_MAX_AGE_MS) {
+      clearActiveJob();
+      return;
+    }
+    setJobId(saved.jobId);
+    setArtistHandle(saved.artistHandle);
+    setRefUrl(saved.refUrl);
+    setTranscribeProvider(saved.transcribeProvider);
+    setStartedAt(saved.createdAt);
+    setElapsedMs(Date.now() - saved.createdAt);
+    setUiState("polling");
+    startPolling(saved.jobId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (startedAt == null) return;
@@ -258,6 +331,7 @@ export default function ContentFactory() {
 
           setJobStatus(data.status);
           setCostCents(data.cost_cents ?? 0);
+          setBackendUpdatedAt(data.updated_at);
 
           const isTerminal = data.status === "done" || data.status === "error";
 
@@ -277,6 +351,7 @@ export default function ContentFactory() {
             setFinalUrl(data.final_url);
             setUiState("done");
             clearTimers();
+            clearActiveJob();
           } else if (data.status === "error") {
             const lastIdx = STAGE_ORDER[lastNonTerminalRef.current] ?? -1;
             // The failed row is the one that was in flight: lastCompleted + 1.
@@ -287,8 +362,21 @@ export default function ContentFactory() {
             setErrorMsg(friendlyError(data.error));
             setUiState("error");
             clearTimers();
+            clearActiveJob();
           }
         } catch (e) {
+          // 404 means the job was deleted / never existed — typical after a
+          // stale sessionStorage rehydrate. Bail back to the form instead of
+          // infinitely spamming the endpoint.
+          if (e instanceof Error && /Status 404/.test(e.message)) {
+            clearTimers();
+            clearActiveJob();
+            setUiState("idle");
+            setJobId(null);
+            setStartedAt(null);
+            setElapsedMs(0);
+            return;
+          }
           console.error("[content-factory] poll error", e);
         }
       };
@@ -328,6 +416,7 @@ export default function ContentFactory() {
 
   const resetAll = () => {
     clearTimers();
+    clearActiveJob();
     setUiState("idle");
     setRefUrl("");
     setArtistHandle("");
@@ -340,6 +429,7 @@ export default function ContentFactory() {
     setStartedAt(null);
     setElapsedMs(0);
     setFailedStageIdx(null);
+    setBackendUpdatedAt(null);
     lastNonTerminalRef.current = "pending";
   };
 
@@ -386,13 +476,22 @@ export default function ContentFactory() {
         throw new Error("No job_id returned from generate endpoint");
       }
 
+      const now = Date.now();
       setJobId(returnedJobId);
       setJobStatus("pending");
-      setStartedAt(Date.now());
+      setStartedAt(now);
       setElapsedMs(0);
       setFailedStageIdx(null);
+      setBackendUpdatedAt(null);
       lastNonTerminalRef.current = "pending";
       setUiState("polling");
+      saveActiveJob({
+        jobId: returnedJobId,
+        createdAt: now,
+        artistHandle: handle,
+        refUrl: refUrl.trim(),
+        transcribeProvider,
+      });
       startPolling(returnedJobId);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -420,6 +519,14 @@ export default function ContentFactory() {
   const showForm = uiState === "idle" || uiState === "uploading";
   const showProgress = uiState === "polling" || uiState === "error";
   const showResult = uiState === "done";
+  // True when the backend row hasn't moved in STALE_BANNER_THRESHOLD_MS while
+  // the UI is still actively polling. Re-evaluates every render, which the
+  // 500ms tick interval already drives during a live job.
+  const isStale =
+    uiState === "polling" &&
+    backendUpdatedAt !== null &&
+    Date.now() - new Date(backendUpdatedAt).getTime() >
+      STALE_BANNER_THRESHOLD_MS;
 
   return (
     <div
@@ -652,6 +759,21 @@ export default function ContentFactory() {
               <div className="text-[12px]">{formatCost(costCents)}</div>
             </div>
           </div>
+
+          {isStale && (
+            <div
+              className="rounded-[10px] px-3 py-2 text-[13px]"
+              style={{
+                background: "var(--yellow-light, rgba(234,179,8,0.08))",
+                color: "var(--yellow, #b45309)",
+                border: "1px solid var(--yellow, #eab308)",
+              }}
+            >
+              This job may be stuck — no backend progress in{" "}
+              {Math.floor(STALE_BANNER_THRESHOLD_MS / 60_000)}+ minutes. Check
+              the server logs for {jobId ?? "this job"}.
+            </div>
+          )}
 
           <Stepper
             currentIdx={currentStageIdx}
