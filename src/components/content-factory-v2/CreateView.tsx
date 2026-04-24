@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ChevronDown,
   FileText,
@@ -19,7 +19,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { useUserProfile } from "@/contexts/UserProfileContext";
 import { useLabelArtists } from "@/hooks/useLabelArtists";
 import { toast } from "@/hooks/use-toast";
-import BriefCard from "@/components/fan-briefs/BriefCard";
 import type { FanBrief } from "@/types/fanBriefs";
 import type { Angle, OutputType, QueueItem } from "./types";
 import {
@@ -58,6 +57,7 @@ interface CreateViewProps {
   draftPreset: OutputType | null;
   onDraftConsumed: () => void;
   onGenerate: (item: QueueItem) => void;
+  onBulkCreate: (items: QueueItem[]) => void;
 }
 
 const PRESETS: {
@@ -123,14 +123,12 @@ export default function CreateView({
   draftPreset,
   onDraftConsumed,
   onGenerate,
+  onBulkCreate,
 }: CreateViewProps) {
   const [activePreset, setActivePreset] = useState<OutputType | null>(null);
   const [selectedArtistId, setSelectedArtistId] = useState<string>("art-papi");
   const [selectedAvatar, setSelectedAvatar] = useState<string>("av-native");
   const [tuneOpen, setTuneOpen] = useState(false);
-
-  // Track the brief being mutated so the right BriefCard shows a pending state.
-  const [mutatingBriefId, setMutatingBriefId] = useState<string | null>(null);
 
   // Preset-specific form state (kept simple for mock)
   const [angleId, setAngleId] = useState<string>("");
@@ -163,11 +161,9 @@ export default function CreateView({
   const [linkUrl, setLinkUrl] = useState<string>("");
   const [linkExtracted, setLinkExtracted] = useState(false);
 
-  // Fan-brief wizard state. Renders a 3-knob picker (artist + source + count)
-  // before the BriefCard list. wizardDone flips when the user hits "Show
-  // briefs"; the breadcrumb's "Change filters" button flips it back.
-  // Initial values are seeded from URL params so refresh/share preserves the
-  // selection — the sync useEffect below writes back as the user interacts.
+  // Fan-brief wizard state. The wizard is single-phase now: pick artist +
+  // source + count, hit Create, items go straight to Review. Initial values
+  // seed from URL params so refresh preserves selection.
   const [searchParams, setSearchParams] = useSearchParams();
   const [briefArtistHandle, setBriefArtistHandle] = useState<string>(
     () => searchParams.get("fbArtist") ?? "",
@@ -182,9 +178,7 @@ export default function CreateView({
     const v = Number(searchParams.get("fbCount"));
     return Number.isFinite(v) && v >= 1 && v <= 20 ? v : 5;
   });
-  const [wizardDone, setWizardDone] = useState<boolean>(
-    () => searchParams.get("fbDone") === "1",
-  );
+  const [isCreating, setIsCreating] = useState(false);
 
   // Live fetch of pending fan briefs for this label. Shares the query key with
   // /label/fan-briefs so mutations in either route update both caches. The
@@ -246,97 +240,89 @@ export default function CreateView({
     }).length;
   }, [livePendingBriefs, briefArtistHandle, briefSource]);
 
-  // Approve a live brief: flip status to 'approved' on fan_briefs (backend
-  // rendering fires off that), optimistically remove it from the pending
-  // cache, and push a matching item into the v2 Review queue tagged with the
-  // brief id so Kill-with-feedback can cascade an archive back.
-  const handleApproveBrief = async (briefId: string) => {
-    const brief = livePendingBriefs.find((b) => b.id === briefId);
-    if (!brief) return;
-    setMutatingBriefId(briefId);
+  // Bulk-approve the filtered briefs: one .in() update on fan_briefs,
+  // optimistic cache purge, and a single onBulkCreate that adds them to the
+  // Review queue and switches the user there. Top N by confidence_score
+  // (already the order coming back from the pendingBriefsQuery).
+  const handleCreate = async () => {
+    if (
+      !briefArtistHandle ||
+      !briefSource ||
+      filteredBriefs.length === 0 ||
+      isCreating
+    ) {
+      return;
+    }
+    setIsCreating(true);
+
+    // Telemetry — actual conversion event. Swap for a real analytics call
+    // once instrumented.
+    console.log("[fan-brief-wizard] create", {
+      artist: briefArtistHandle,
+      source: briefSource,
+      count: filteredBriefs.length,
+      requested: briefCount,
+      totalMatches,
+    });
+
+    const ids = filteredBriefs.map((b) => b.id);
     const approvedAt = new Date().toISOString();
     const { error } = await supabase
       .from("fan_briefs")
       .update({ status: "approved", approved_at: approvedAt })
-      .eq("id", briefId);
-    setMutatingBriefId(null);
-    if (error) {
-      toast({
-        title: "Failed to approve",
-        description: error.message,
-        variant: "destructive",
-      });
-      return;
-    }
-    queryClient.setQueryData<FanBrief[]>(
-      pendingBriefsQueryKey(labelId),
-      (prev) => (prev ?? []).filter((b) => b.id !== briefId),
-    );
-    const hook = brief.modified_hook || brief.hook_text;
-    const short = hook.length > 56 ? `${hook.slice(0, 56)}…` : hook;
-    onGenerate({
-      id: `q-fb-${briefId}`,
-      artistId: `fb-${brief.artist_id}`,
-      artistDisplayName: `@${brief.artist_handle}`,
-      artistDisplayHandle: brief.artist_handle,
-      title: `Fan brief · @${brief.artist_handle} — ${short || "(no hook)"}`,
-      outputType: "fan_brief",
-      source: "fan_brief",
-      status: "pending",
-      risk: "low",
-      riskNotes: [],
-      thumbKind: "brief",
-      createdAt: "just now",
-      fanBriefId: briefId,
-    });
-    toast({
-      title: "Brief approved — rendering",
-      description: "Queued into Review. Schedule it when ready.",
-    });
-  };
+      .in("id", ids);
 
-  const handleSkipBrief = async (briefId: string) => {
-    setMutatingBriefId(briefId);
-    const { error } = await supabase
-      .from("fan_briefs")
-      .update({ status: "skipped" })
-      .eq("id", briefId);
-    setMutatingBriefId(null);
     if (error) {
+      setIsCreating(false);
       toast({
-        title: "Failed to skip",
+        title: "Create failed",
         description: error.message,
         variant: "destructive",
       });
       return;
     }
-    queryClient.setQueryData<FanBrief[]>(
-      pendingBriefsQueryKey(labelId),
-      (prev) => (prev ?? []).filter((b) => b.id !== briefId),
-    );
-  };
 
-  const handleModifyBriefHook = async (briefId: string, newHook: string) => {
-    const { error } = await supabase
-      .from("fan_briefs")
-      .update({ modified_hook: newHook })
-      .eq("id", briefId);
-    if (error) {
-      toast({
-        title: "Failed to save hook",
-        description: error.message,
-        variant: "destructive",
-      });
-      return;
-    }
     queryClient.setQueryData<FanBrief[]>(
       pendingBriefsQueryKey(labelId),
-      (prev) =>
-        (prev ?? []).map((b) =>
-          b.id === briefId ? { ...b, modified_hook: newHook } : b,
-        ),
+      (prev) => (prev ?? []).filter((b) => !ids.includes(b.id)),
     );
-    toast({ title: "Hook saved" });
+
+    const items: QueueItem[] = filteredBriefs.map((brief) => {
+      const hook = brief.modified_hook || brief.hook_text;
+      const short = hook.length > 56 ? `${hook.slice(0, 56)}…` : hook;
+      return {
+        id: `q-fb-${brief.id}`,
+        artistId: `fb-${brief.artist_id}`,
+        artistDisplayName: `@${brief.artist_handle}`,
+        artistDisplayHandle: brief.artist_handle,
+        title: `Fan brief · @${brief.artist_handle} — ${short || "(no hook)"}`,
+        outputType: "fan_brief",
+        source: "fan_brief",
+        status: "pending",
+        risk: "low",
+        riskNotes: [],
+        thumbKind: "brief",
+        createdAt: "just now",
+        fanBriefId: brief.id,
+      };
+    });
+    onBulkCreate(items);
+
+    // Reset wizard + URL so the next batch starts fresh.
+    setBriefArtistHandle("");
+    setBriefSource("");
+    setBriefCount(5);
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete("fbArtist");
+        next.delete("fbSource");
+        next.delete("fbCount");
+        return next;
+      },
+      { replace: true },
+    );
+    setIsCreating(false);
   };
 
   // Hydrate from a draft (when user hits "Send to Create" in Angles)
@@ -353,34 +339,9 @@ export default function CreateView({
     onDraftConsumed();
   }, [draftAngleId, draftPreset, angles, onDraftConsumed]);
 
-  // Reset the fan-brief wizard ONLY when the user actively switches AWAY
-  // from the preset. Using a ref means the initial mount (activePreset=null)
-  // doesn't blow away state seeded from the URL — refresh/share works.
-  const wasFanBriefRef = useRef(activePreset === "fan_brief");
-  useEffect(() => {
-    if (wasFanBriefRef.current && activePreset !== "fan_brief") {
-      setBriefArtistHandle("");
-      setBriefSource("");
-      setBriefCount(5);
-      setWizardDone(false);
-      setSearchParams(
-        (prev) => {
-          const next = new URLSearchParams(prev);
-          next.delete("fbArtist");
-          next.delete("fbSource");
-          next.delete("fbCount");
-          next.delete("fbDone");
-          return next;
-        },
-        { replace: true },
-      );
-    }
-    wasFanBriefRef.current = activePreset === "fan_brief";
-  }, [activePreset, setSearchParams]);
-
-  // Sync wizard state → URL params so refresh keeps the user on Phase 2 and
-  // a copied URL lands somebody else there too (after they re-pick the
-  // preset). Defaults are dropped so the URL stays clean.
+  // Sync wizard state → URL params so refresh preserves selection and a
+  // copied URL lands somebody else with the same picks (once they re-enter
+  // the preset). Defaults are dropped so the URL stays clean.
   useEffect(() => {
     if (activePreset !== "fan_brief") return;
     setSearchParams(
@@ -392,8 +353,6 @@ export default function CreateView({
         else next.delete("fbSource");
         if (briefCount !== 5) next.set("fbCount", String(briefCount));
         else next.delete("fbCount");
-        if (wizardDone) next.set("fbDone", "1");
-        else next.delete("fbDone");
         return next;
       },
       { replace: true },
@@ -403,7 +362,6 @@ export default function CreateView({
     briefArtistHandle,
     briefSource,
     briefCount,
-    wizardDone,
     setSearchParams,
   ]);
 
@@ -806,7 +764,7 @@ export default function CreateView({
               </>
             )}
 
-            {/* Fan brief — live: inline BriefCard list; mock fallback: simple picker */}
+            {/* Fan brief — live: artist + source + count wizard; mock fallback: simple picker */}
             {activePreset === "fan_brief" && (
               <>
                 {pendingBriefsQuery.isLoading ? (
@@ -822,260 +780,142 @@ export default function CreateView({
                     Loading pending briefs…
                   </div>
                 ) : usingLiveBriefs ? (
-                  !wizardDone ? (
-                    /* Phase 1 — wizard: pick artist + source + clip count */
-                    <>
-                      <Field label="Artist">
-                        {labelArtistsQuery.isError ? (
-                          <input
-                            type="text"
-                            value={briefArtistHandle}
-                            onChange={(e) =>
-                              setBriefArtistHandle(e.target.value.trim())
-                            }
-                            placeholder="@handle (roster fetch failed — type manually)"
-                            className="w-full h-10 px-3 rounded-[10px] text-[13px] outline-none"
-                            style={{
-                              background: "var(--bg-subtle)",
-                              color: "var(--ink)",
-                              border: "1px solid var(--border)",
-                            }}
-                          />
-                        ) : labelArtistsQuery.isLoading ? (
-                          <div
-                            className="rounded-[10px] px-3 py-2 text-[12px] flex items-center gap-2"
-                            style={{
-                              background: "var(--bg-subtle)",
-                              border: "1px solid var(--border)",
-                              color: "var(--ink-tertiary)",
-                            }}
-                          >
-                            <Loader2 size={12} className="animate-spin" />
-                            Loading roster…
-                          </div>
-                        ) : labelArtists.length === 0 ? (
-                          <div
-                            className="rounded-[10px] px-3 py-2 text-[12px]"
-                            style={{
-                              background: "var(--bg-subtle)",
-                              border: "1px solid var(--border)",
-                              color: "var(--ink-tertiary)",
-                            }}
-                          >
-                            No artists in roster — see /label/admin to onboard.
-                          </div>
-                        ) : (
-                          <Select
-                            value={briefArtistHandle}
-                            onChange={setBriefArtistHandle}
-                            options={[
-                              { value: "", label: "— pick an artist —" },
-                              ...labelArtists.map((a) => ({
-                                value: a.artist_handle,
-                                label: `${a.artist_name} · @${a.artist_handle}`,
-                              })),
-                            ]}
-                          />
-                        )}
-                      </Field>
-
-                      <Field label="Source">
-                        <ChipRow
-                          options={[
-                            {
-                              k: "live_performance",
-                              label: "Live performance",
-                            },
-                            { k: "podcasts", label: "Podcasts" },
-                          ]}
-                          value={briefSource}
-                          onChange={(v) =>
-                            setBriefSource(v as "live_performance" | "podcasts")
-                          }
-                        />
-                      </Field>
-
-                      <Field
-                        label={`Clip count — up to ${briefCount}${
-                          briefArtistHandle && briefSource
-                            ? ` (${totalMatches} available)`
-                            : ""
-                        }`}
-                      >
+                  /* Single-phase wizard: pick artist + source + count, then
+                     hit Create. Items go straight to Review. */
+                  <>
+                    <Field label="Artist">
+                      {labelArtistsQuery.isError ? (
                         <input
-                          type="range"
-                          min={1}
-                          max={20}
-                          value={briefCount}
+                          type="text"
+                          value={briefArtistHandle}
                           onChange={(e) =>
-                            setBriefCount(Number(e.target.value))
+                            setBriefArtistHandle(e.target.value.trim())
                           }
-                          className="w-full"
-                          style={{ accentColor: "var(--accent)" }}
-                        />
-                        <div
-                          className="flex justify-between text-[10px] uppercase tracking-wide mt-1"
-                          style={{ color: "var(--ink-tertiary)" }}
-                        >
-                          <span>1</span>
-                          <span>20</span>
-                        </div>
-                      </Field>
-
-                      <div className="flex items-center justify-between gap-3 pt-1">
-                        <div
-                          className="text-[11px]"
-                          style={{ color: "var(--ink-tertiary)" }}
-                        >
-                          {!briefArtistHandle || !briefSource
-                            ? "Pick an artist and a source to continue."
-                            : `Will filter ${livePendingBriefs.length} pending brief${
-                                livePendingBriefs.length === 1 ? "" : "s"
-                              } on this label.`}
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            // Telemetry — early signal for which artists +
-                            // sources are getting reviewed most. Swap for a
-                            // real analytics call once instrumented.
-                            console.log("[fan-brief-wizard] show", {
-                              artist: briefArtistHandle,
-                              source: briefSource,
-                              count: briefCount,
-                              totalMatches,
-                            });
-                            setWizardDone(true);
-                          }}
-                          disabled={!briefArtistHandle || !briefSource}
-                          className="h-10 px-5 rounded-[10px] text-[14px] font-semibold disabled:opacity-40"
+                          placeholder="@handle (roster fetch failed — type manually)"
+                          className="w-full h-10 px-3 rounded-[10px] text-[13px] outline-none"
                           style={{
-                            background: "var(--accent)",
-                            color: "#fff",
-                            border: "none",
-                          }}
-                        >
-                          Show briefs
-                        </button>
-                      </div>
-                    </>
-                  ) : (
-                    /* Phase 2 — filtered BriefCard list */
-                    <>
-                      <div
-                        className="rounded-[10px] px-3 py-2 flex items-center gap-2 flex-wrap"
-                        style={{
-                          background: "var(--bg-subtle)",
-                          border: "1px solid var(--border)",
-                        }}
-                      >
-                        <span
-                          className="px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide"
-                          style={{
-                            background: "var(--accent-light)",
-                            color: "var(--accent)",
-                          }}
-                        >
-                          @{briefArtistHandle}
-                        </span>
-                        <span
-                          className="px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide"
-                          style={{
-                            background: "var(--accent-light)",
-                            color: "var(--accent)",
-                          }}
-                        >
-                          {briefSource === "live_performance"
-                            ? "Live performance"
-                            : "Podcasts"}
-                        </span>
-                        <span
-                          className="text-[11px] font-['JetBrains_Mono',monospace] tabular-nums"
-                          style={{ color: "var(--ink-tertiary)" }}
-                        >
-                          up to {briefCount}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => setWizardDone(false)}
-                          className="ml-auto h-7 px-3 rounded-[8px] text-[11px] font-semibold"
-                          style={{
-                            background: "transparent",
-                            color: "var(--ink-secondary)",
+                            background: "var(--bg-subtle)",
+                            color: "var(--ink)",
                             border: "1px solid var(--border)",
                           }}
-                        >
-                          Change filters
-                        </button>
-                      </div>
-
-                      <div
-                        className="text-[11px] flex items-center gap-1.5"
-                        style={{ color: "var(--ink-tertiary)" }}
-                      >
-                        <span style={{ color: "#4aa07a" }}>●</span>
-                        {briefSource === "live_performance"
-                          ? "Live performance"
-                          : "Podcasts"}{" "}
-                        · @{briefArtistHandle} · {filteredBriefs.length} of{" "}
-                        {totalMatches} pending brief
-                        {totalMatches === 1 ? "" : "s"} on this label.
-                      </div>
-
-                      {filteredBriefs.length === 0 ? (
+                        />
+                      ) : labelArtistsQuery.isLoading ? (
                         <div
-                          className="rounded-[10px] px-4 py-6 text-[13px] text-center"
+                          className="rounded-[10px] px-3 py-2 text-[12px] flex items-center gap-2"
                           style={{
                             background: "var(--bg-subtle)",
                             border: "1px solid var(--border)",
                             color: "var(--ink-tertiary)",
                           }}
                         >
-                          No{" "}
-                          {briefSource === "live_performance"
-                            ? "live-performance"
-                            : "podcast / interview"}{" "}
-                          briefs for @{briefArtistHandle} yet — seed via{" "}
-                          <code
-                            className="font-['JetBrains_Mono',monospace] text-[12px]"
-                            style={{ color: "var(--ink-secondary)" }}
-                          >
-                            scripts/fan-briefs/discover-live.ts @
-                            {briefArtistHandle}
-                          </code>
-                          , or change filters.
+                          <Loader2 size={12} className="animate-spin" />
+                          Loading roster…
+                        </div>
+                      ) : labelArtists.length === 0 ? (
+                        <div
+                          className="rounded-[10px] px-3 py-2 text-[12px]"
+                          style={{
+                            background: "var(--bg-subtle)",
+                            border: "1px solid var(--border)",
+                            color: "var(--ink-tertiary)",
+                          }}
+                        >
+                          No artists in roster — see /label/admin to onboard.
                         </div>
                       ) : (
-                        <div className="flex flex-col gap-4">
-                          {filteredBriefs.map((brief, i) => (
-                            <div
-                              key={brief.id}
-                              style={{
-                                opacity: mutatingBriefId === brief.id ? 0.5 : 1,
-                                pointerEvents:
-                                  mutatingBriefId === brief.id
-                                    ? "none"
-                                    : "auto",
-                                transition: "opacity 0.15s",
-                              }}
-                            >
-                              <BriefCard
-                                brief={brief}
-                                mode="content"
-                                staticPreview
-                                onApprove={handleApproveBrief}
-                                onSkip={handleSkipBrief}
-                                onModifyHook={handleModifyBriefHook}
-                                defaultWhyOpen={
-                                  i === 0 && briefSource === "live_performance"
-                                }
-                              />
-                            </div>
-                          ))}
-                        </div>
+                        <Select
+                          value={briefArtistHandle}
+                          onChange={setBriefArtistHandle}
+                          options={[
+                            { value: "", label: "— pick an artist —" },
+                            ...labelArtists.map((a) => ({
+                              value: a.artist_handle,
+                              label: `${a.artist_name} · @${a.artist_handle}`,
+                            })),
+                          ]}
+                        />
                       )}
-                    </>
-                  )
+                    </Field>
+
+                    <Field label="Source">
+                      <ChipRow
+                        options={[
+                          {
+                            k: "live_performance",
+                            label: "Live performance",
+                          },
+                          { k: "podcasts", label: "Podcasts" },
+                        ]}
+                        value={briefSource}
+                        onChange={(v) =>
+                          setBriefSource(v as "live_performance" | "podcasts")
+                        }
+                      />
+                    </Field>
+
+                    <Field
+                      label={`Clip count — up to ${briefCount}${
+                        briefArtistHandle && briefSource
+                          ? ` (${totalMatches} available)`
+                          : ""
+                      }`}
+                    >
+                      <input
+                        type="range"
+                        min={1}
+                        max={20}
+                        value={briefCount}
+                        onChange={(e) => setBriefCount(Number(e.target.value))}
+                        className="w-full"
+                        style={{ accentColor: "var(--accent)" }}
+                      />
+                      <div
+                        className="flex justify-between text-[10px] uppercase tracking-wide mt-1"
+                        style={{ color: "var(--ink-tertiary)" }}
+                      >
+                        <span>1</span>
+                        <span>20</span>
+                      </div>
+                    </Field>
+
+                    <div className="flex items-center justify-between gap-3 pt-1">
+                      <div
+                        className="text-[11px]"
+                        style={{ color: "var(--ink-tertiary)" }}
+                      >
+                        {!briefArtistHandle || !briefSource
+                          ? "Pick an artist and a source to continue."
+                          : totalMatches === 0
+                            ? "No matching briefs yet — seed via scripts/fan-briefs/discover-live.ts, or change filters."
+                            : `Creates ${filteredBriefs.length} ${
+                                briefSource === "live_performance"
+                                  ? "live-performance"
+                                  : "podcast / interview"
+                              } brief${filteredBriefs.length === 1 ? "" : "s"} for @${briefArtistHandle} → straight to Review.`}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleCreate}
+                        disabled={
+                          !briefArtistHandle ||
+                          !briefSource ||
+                          filteredBriefs.length === 0 ||
+                          isCreating
+                        }
+                        className="h-10 px-5 rounded-[10px] text-[14px] font-semibold disabled:opacity-40 flex items-center gap-2"
+                        style={{
+                          background: "var(--accent)",
+                          color: "#fff",
+                          border: "none",
+                        }}
+                      >
+                        {isCreating && (
+                          <Loader2 size={14} className="animate-spin" />
+                        )}
+                        {isCreating ? "Creating…" : "Create"}
+                      </button>
+                    </div>
+                  </>
                 ) : (
                   <>
                     <Field label="Pending brief (mock)">
@@ -1208,7 +1048,7 @@ export default function CreateView({
             )}
 
             {/* Footer — Tune + Generate. Hidden for live fan-brief mode
-                since Approve lives on each BriefCard. */}
+                since the wizard's own Create button replaces Generate. */}
             {!(activePreset === "fan_brief" && usingLiveBriefs) && (
               <div className="flex items-center justify-end gap-2 pt-2">
                 <button

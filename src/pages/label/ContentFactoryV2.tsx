@@ -120,6 +120,23 @@ export default function ContentFactoryV2() {
     });
   }, []);
 
+  // Bulk-create handler — used by the fan-brief wizard's Create button. One
+  // setQueue, one toast, hop the user straight into Review so they can see
+  // their freshly-rendered batch land. Skips the per-item toast spam that
+  // calling handleGenerate in a loop would produce.
+  const handleBulkCreate = useCallback(
+    (items: QueueItem[]) => {
+      if (items.length === 0) return;
+      setQueue((prev) => [...items, ...prev]);
+      setActiveTab("review");
+      toast({
+        title: `Created ${items.length} brief${items.length === 1 ? "" : "s"} — rendering`,
+        description: "Schedule them under Review when ready.",
+      });
+    },
+    [setActiveTab],
+  );
+
   // Review handlers
   const handleApproveSchedule = useCallback((itemId: string) => {
     const when = mockScheduleSlot();
@@ -294,6 +311,7 @@ export default function ContentFactoryV2() {
             draftPreset={draftPreset}
             onDraftConsumed={handleDraftConsumed}
             onGenerate={handleGenerate}
+            onBulkCreate={handleBulkCreate}
           />
         )}
 

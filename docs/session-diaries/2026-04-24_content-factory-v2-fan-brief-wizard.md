@@ -94,3 +94,43 @@ After Paul said "go for it, all recommended too":
 - **Rec 5 (telemetry) ✓** — `console.log("[fan-brief-wizard] show", { artist, source, count, totalMatches })` on the Show-briefs click. Plain console for now — drop in an actual analytics call (`track("fan_brief_wizard_show", …)`) when the analytics layer is in.
 
 `npx tsc --noEmit` clean. `npm run build` green.
+
+## Follow-up #2 — wizard becomes one-click Create (Phase 2 removed)
+
+After Paul flagged that the wizard should actually create content, not just preview:
+
+- **CTA renamed**: "Show briefs" → **Create**. Click runs a single
+  `UPDATE fan_briefs SET status='approved', approved_at=now() WHERE id IN (…)`
+  over the filtered ids, then `onBulkCreate(items)` pushes the matching
+  QueueItems into Review and `setActiveTab("review")` jumps the user there.
+  Single bulk toast (`Created N briefs — rendering. Schedule them under
+Review when ready.`) instead of N per-item toasts.
+- **Phase 2 removed.** No more inline BriefCard list, breadcrumb, or
+  "Change filters" button — Review IS the review surface now. If the user
+  needs the full peak_evidence card they can hop to /label/fan-briefs.
+- **Wizard auto-resets after success** (state + URL params cleared) so the
+  next batch starts fresh.
+- **Disable + helper text** updated:
+  - 0 matches: "No matching briefs yet — seed via scripts/fan-briefs/discover-live.ts, or change filters." Button disabled.
+  - Otherwise: "Creates N live-performance / podcast briefs for @handle → straight to Review." Button enabled.
+  - During mutation: button shows spinner + "Creating…" + disabled.
+
+**Files modified**
+
+- `src/pages/label/ContentFactoryV2.tsx` — added `handleBulkCreate(items[])` callback that bulk-pushes to queue, single toast, switches activeTab to review. Wired as a new `onBulkCreate` prop on CreateView.
+- `src/components/content-factory-v2/CreateView.tsx`:
+  - Added `onBulkCreate` to `CreateViewProps`.
+  - Replaced `handleApproveBrief` / `handleSkipBrief` / `handleModifyBriefHook` (per-card) with one `handleCreate` (bulk).
+  - Removed `wizardDone` state + `fbDone` URL param + the `wasFanBriefRef`/preset-change reset effect — the wizard is single-phase now and the URL only carries selection state.
+  - Removed `mutatingBriefId` state. Replaced with `isCreating` boolean for the button's pending state.
+  - Removed `BriefCard` import and the entire Phase 2 JSX block (~110 lines).
+  - Updated stale comments referring to BriefCard / Approve-per-card.
+- Telemetry: replaced `[fan-brief-wizard] show` log with `[fan-brief-wizard] create` carrying artist, source, requested count, actual count, totalMatches.
+
+**What stayed**
+
+- URL persistence (`fbArtist` / `fbSource` / `fbCount`) so refresh keeps selection.
+- `useLabelArtists` hook, mock fallback, status-dot loading state.
+- BriefCard's `defaultWhyOpen` prop is harmless but unused now in v2 — left in BriefCard itself for future callers.
+
+`npx tsc --noEmit` clean. `npm run build` green (10.69s).
