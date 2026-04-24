@@ -20,6 +20,7 @@ import {
   Globe,
   Database,
   Film,
+  Factory,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useUserProfile } from "@/contexts/UserProfileContext";
@@ -128,6 +129,14 @@ const getMainNav = (isAdmin: boolean, labelId: string | null) => {
       icon: Film,
       path: "/label/content-factory",
       isNew: true as const,
+    },
+    {
+      id: "content-factory-v2",
+      label: "Factory v2",
+      icon: Factory,
+      path: "/label/content-factory-v2",
+      isNew: true as const,
+      badgeLabel: "PREVIEW",
     },
     ...(isAdmin
       ? [

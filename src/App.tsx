@@ -31,6 +31,7 @@ const ARSimulationLab = lazy(() => import("./pages/label/ARSimulationLab"));
 const CultureGenome = lazy(() => import("./pages/label/CultureGenome"));
 const ArtistDatabase = lazy(() => import("./pages/label/ArtistDatabase"));
 const ContentFactory = lazy(() => import("./pages/label/ContentFactory"));
+const ContentFactoryV2 = lazy(() => import("./pages/label/ContentFactoryV2"));
 import ErrorBoundary from "@/components/ErrorBoundary";
 import { AISidebarProvider } from "@/contexts/AISidebarContext";
 import { AnalysisProvider } from "@/contexts/AnalysisContext";
@@ -391,6 +392,10 @@ const App = () => {
                                     <Route
                                       path="content-factory"
                                       element={<ContentFactory />}
+                                    />
+                                    <Route
+                                      path="content-factory-v2"
+                                      element={<ContentFactoryV2 />}
                                     />
                                     <Route
                                       path="settings"
