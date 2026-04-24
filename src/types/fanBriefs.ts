@@ -1,9 +1,58 @@
+export type BriefContentType = "interview" | "live_performance" | "podcast";
+export type RenderStyle = "talking_head" | "karaoke" | "banter";
+
+/**
+ * Shape of a fan comment used to evidence a live-performance peak. Populated by
+ * scripts/fan-briefs/mine-live-signals.ts from the content_comments table.
+ */
+export interface PeakComment {
+  id: string;
+  author: string | null;
+  content: string;
+  like_count: number;
+  referenced_seconds: number | null;
+}
+
+/**
+ * Crowd-sourced evidence backing a live_performance brief. Stored on
+ * content_segments.peak_evidence (not on fan_briefs itself) — read via the
+ * nested join in LabelFanBriefs.
+ */
+export interface PeakEvidence {
+  source: "comments";
+  cluster_size: number;
+  sum_likes: number;
+  chapter_title: string | null;
+  chapter_duration: number | null;
+  top_comments: PeakComment[];
+  synthesized_hook: string;
+  cited_comment_idx: number | null;
+}
+
+/**
+ * Partial shape of the content_segments join on fan_briefs. Nested catalog
+ * carries live_venue + content_type of the underlying video.
+ */
+export interface BriefSegmentJoin {
+  peak_evidence: PeakEvidence | null;
+  hook_source: "comment" | "lyric" | "llm" | null;
+  content_catalog: {
+    live_venue: string | null;
+    content_type: string | null;
+    title: string | null;
+    duration_seconds: number | null;
+  } | null;
+}
+
 export interface FanBrief {
   id: string;
   artist_handle: string;
   artist_id: string;
   label_id: string;
   segment_id: string | null;
+
+  content_type: BriefContentType | null;
+  render_style: RenderStyle | null;
 
   hook_text: string;
   caption: string | null;
@@ -35,6 +84,9 @@ export interface FanBrief {
   modified_hook: string | null;
 
   created_at: string;
+
+  /** Nested result of select(`*, content_segments(peak_evidence, content_catalog(live_venue, ...))`). */
+  content_segments?: BriefSegmentJoin | null;
 }
 
 export interface ContentSegment {

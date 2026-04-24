@@ -2430,6 +2430,51 @@ export type Database = {
         }
         Relationships: []
       }
+      artist_deletion_log: {
+        Row: {
+          artist_handle: string
+          artist_name: string | null
+          created_at: string
+          deleted_by_email: string | null
+          deleted_by_user_id: string
+          deletions: Json
+          errors: Json | null
+          id: string
+          ip_address: string | null
+          label_id: string
+          success: boolean
+          user_agent: string | null
+        }
+        Insert: {
+          artist_handle: string
+          artist_name?: string | null
+          created_at?: string
+          deleted_by_email?: string | null
+          deleted_by_user_id: string
+          deletions: Json
+          errors?: Json | null
+          id?: string
+          ip_address?: string | null
+          label_id: string
+          success: boolean
+          user_agent?: string | null
+        }
+        Update: {
+          artist_handle?: string
+          artist_name?: string | null
+          created_at?: string
+          deleted_by_email?: string | null
+          deleted_by_user_id?: string
+          deletions?: Json
+          errors?: Json | null
+          id?: string
+          ip_address?: string | null
+          label_id?: string
+          success?: boolean
+          user_agent?: string | null
+        }
+        Relationships: []
+      }
       artist_format_performance: {
         Row: {
           ad_count: number | null
@@ -3406,6 +3451,8 @@ export type Database = {
           last_tracked_at: string | null
           latest_ugc_count: number | null
           match_reason: string | null
+          matched_song_id: string | null
+          matched_song_title: string | null
           music_id: string
           needs_si_trigger: boolean | null
           ownership: string | null
@@ -3427,6 +3474,8 @@ export type Database = {
           last_tracked_at?: string | null
           latest_ugc_count?: number | null
           match_reason?: string | null
+          matched_song_id?: string | null
+          matched_song_title?: string | null
           music_id: string
           needs_si_trigger?: boolean | null
           ownership?: string | null
@@ -3448,6 +3497,8 @@ export type Database = {
           last_tracked_at?: string | null
           latest_ugc_count?: number | null
           match_reason?: string | null
+          matched_song_id?: string | null
+          matched_song_title?: string | null
           music_id?: string
           needs_si_trigger?: boolean | null
           ownership?: string | null
@@ -4197,6 +4248,101 @@ export type Database = {
         }
         Relationships: []
       }
+      cf_jobs: {
+        Row: {
+          artist_handle: string
+          artist_mp3_storage_url: string | null
+          cost_cents: number
+          cost_cents_breakdown: Json
+          created_at: string
+          creatomate_attempts: number
+          creatomate_render_id: string | null
+          creatomate_sent_at: string | null
+          creatomate_source_json: Json | null
+          error: string | null
+          final_url: string | null
+          id: string
+          label_id: string
+          lyric_fix_note: string | null
+          lyric_timestamps: Json | null
+          operator_user_id: string
+          ref_metadata: Json | null
+          ref_mp4_storage_url: string | null
+          ref_tiktok_url: string
+          ref_webvtt_storage_url: string | null
+          shot_list: Json | null
+          status: string
+          template_dna: Json | null
+          transcribe_provider: string
+          updated_at: string
+          webhook_secret: string | null
+        }
+        Insert: {
+          artist_handle: string
+          artist_mp3_storage_url?: string | null
+          cost_cents?: number
+          cost_cents_breakdown?: Json
+          created_at?: string
+          creatomate_attempts?: number
+          creatomate_render_id?: string | null
+          creatomate_sent_at?: string | null
+          creatomate_source_json?: Json | null
+          error?: string | null
+          final_url?: string | null
+          id?: string
+          label_id: string
+          lyric_fix_note?: string | null
+          lyric_timestamps?: Json | null
+          operator_user_id: string
+          ref_metadata?: Json | null
+          ref_mp4_storage_url?: string | null
+          ref_tiktok_url: string
+          ref_webvtt_storage_url?: string | null
+          shot_list?: Json | null
+          status?: string
+          template_dna?: Json | null
+          transcribe_provider?: string
+          updated_at?: string
+          webhook_secret?: string | null
+        }
+        Update: {
+          artist_handle?: string
+          artist_mp3_storage_url?: string | null
+          cost_cents?: number
+          cost_cents_breakdown?: Json
+          created_at?: string
+          creatomate_attempts?: number
+          creatomate_render_id?: string | null
+          creatomate_sent_at?: string | null
+          creatomate_source_json?: Json | null
+          error?: string | null
+          final_url?: string | null
+          id?: string
+          label_id?: string
+          lyric_fix_note?: string | null
+          lyric_timestamps?: Json | null
+          operator_user_id?: string
+          ref_metadata?: Json | null
+          ref_mp4_storage_url?: string | null
+          ref_tiktok_url?: string
+          ref_webvtt_storage_url?: string | null
+          shot_list?: Json | null
+          status?: string
+          template_dna?: Json | null
+          transcribe_provider?: string
+          updated_at?: string
+          webhook_secret?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cf_jobs_label_id_fkey"
+            columns: ["label_id"]
+            isOneToOne: false
+            referencedRelation: "labels"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       chat_jobs: {
         Row: {
           chat_history: Json | null
@@ -4395,14 +4541,18 @@ export type Database = {
           artist_handle: string
           artist_id: string | null
           channel_name: string | null
+          comments_fetched_at: string | null
+          content_type: string
           created_at: string | null
           description: string | null
           duration_seconds: number | null
           id: string
           is_processed: boolean | null
           label_id: string | null
+          live_venue: string | null
           metadata: Json | null
           processed_at: string | null
+          signal_sources: Json | null
           source_platform: string
           source_url: string
           title: string | null
@@ -4417,14 +4567,18 @@ export type Database = {
           artist_handle: string
           artist_id?: string | null
           channel_name?: string | null
+          comments_fetched_at?: string | null
+          content_type?: string
           created_at?: string | null
           description?: string | null
           duration_seconds?: number | null
           id?: string
           is_processed?: boolean | null
           label_id?: string | null
+          live_venue?: string | null
           metadata?: Json | null
           processed_at?: string | null
+          signal_sources?: Json | null
           source_platform: string
           source_url: string
           title?: string | null
@@ -4439,14 +4593,18 @@ export type Database = {
           artist_handle?: string
           artist_id?: string | null
           channel_name?: string | null
+          comments_fetched_at?: string | null
+          content_type?: string
           created_at?: string | null
           description?: string | null
           duration_seconds?: number | null
           id?: string
           is_processed?: boolean | null
           label_id?: string | null
+          live_venue?: string | null
           metadata?: Json | null
           processed_at?: string | null
+          signal_sources?: Json | null
           source_platform?: string
           source_url?: string
           title?: string | null
@@ -4470,6 +4628,59 @@ export type Database = {
             columns: ["label_id"]
             isOneToOne: false
             referencedRelation: "labels"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      content_comments: {
+        Row: {
+          author: string | null
+          author_handle: string | null
+          catalog_id: string
+          content: string
+          created_at: string | null
+          id: string
+          is_reply: boolean | null
+          like_count: number | null
+          published_at: string | null
+          raw: Json | null
+          referenced_seconds: number | null
+          reply_count: number | null
+        }
+        Insert: {
+          author?: string | null
+          author_handle?: string | null
+          catalog_id: string
+          content: string
+          created_at?: string | null
+          id?: string
+          is_reply?: boolean | null
+          like_count?: number | null
+          published_at?: string | null
+          raw?: Json | null
+          referenced_seconds?: number | null
+          reply_count?: number | null
+        }
+        Update: {
+          author?: string | null
+          author_handle?: string | null
+          catalog_id?: string
+          content?: string
+          created_at?: string | null
+          id?: string
+          is_reply?: boolean | null
+          like_count?: number | null
+          published_at?: string | null
+          raw?: Json | null
+          referenced_seconds?: number | null
+          reply_count?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "content_comments_catalog_id_fkey"
+            columns: ["catalog_id"]
+            isOneToOne: false
+            referencedRelation: "content_catalog"
             referencedColumns: ["id"]
           },
         ]
@@ -4583,11 +4794,13 @@ export type Database = {
           end_seconds: number
           fan_potential_score: number | null
           fts: unknown
+          hook_source: string | null
           id: string
           label_id: string | null
           metadata: Json | null
           moment_summary: string
           moment_type: string | null
+          peak_evidence: Json | null
           speaker: string | null
           start_seconds: number
           transcript_excerpt: string
@@ -4607,11 +4820,13 @@ export type Database = {
           end_seconds: number
           fan_potential_score?: number | null
           fts?: unknown
+          hook_source?: string | null
           id?: string
           label_id?: string | null
           metadata?: Json | null
           moment_summary: string
           moment_type?: string | null
+          peak_evidence?: Json | null
           speaker?: string | null
           start_seconds: number
           transcript_excerpt: string
@@ -4631,11 +4846,13 @@ export type Database = {
           end_seconds?: number
           fan_potential_score?: number | null
           fts?: unknown
+          hook_source?: string | null
           id?: string
           label_id?: string | null
           metadata?: Json | null
           moment_summary?: string
           moment_type?: string | null
+          peak_evidence?: Json | null
           speaker?: string | null
           start_seconds?: number
           transcript_excerpt?: string
@@ -5129,6 +5346,7 @@ export type Database = {
           id: string
           instagram_data: Json | null
           instagram_status: string | null
+          intelligence_report: Json | null
           label_id: string | null
           plan_render_status: string | null
           rag_status: string | null
@@ -5170,6 +5388,7 @@ export type Database = {
           id?: string
           instagram_data?: Json | null
           instagram_status?: string | null
+          intelligence_report?: Json | null
           label_id?: string | null
           plan_render_status?: string | null
           rag_status?: string | null
@@ -5211,6 +5430,7 @@ export type Database = {
           id?: string
           instagram_data?: Json | null
           instagram_status?: string | null
+          intelligence_report?: Json | null
           label_id?: string | null
           plan_render_status?: string | null
           rag_status?: string | null
@@ -5394,6 +5614,7 @@ export type Database = {
           clip_storage_path: string | null
           clip_storage_url: string | null
           confidence_score: number | null
+          content_type: string | null
           created_at: string | null
           format_recommendation: string
           generation_context: Json | null
@@ -5403,6 +5624,7 @@ export type Database = {
           modified_hook: string | null
           platform_recommendation: string[] | null
           posted_url: string | null
+          render_style: string | null
           rendered_clip_url: string | null
           segment_id: string | null
           sound_pairing: string | null
@@ -5424,6 +5646,7 @@ export type Database = {
           clip_storage_path?: string | null
           clip_storage_url?: string | null
           confidence_score?: number | null
+          content_type?: string | null
           created_at?: string | null
           format_recommendation: string
           generation_context?: Json | null
@@ -5433,6 +5656,7 @@ export type Database = {
           modified_hook?: string | null
           platform_recommendation?: string[] | null
           posted_url?: string | null
+          render_style?: string | null
           rendered_clip_url?: string | null
           segment_id?: string | null
           sound_pairing?: string | null
@@ -5454,6 +5678,7 @@ export type Database = {
           clip_storage_path?: string | null
           clip_storage_url?: string | null
           confidence_score?: number | null
+          content_type?: string | null
           created_at?: string | null
           format_recommendation?: string
           generation_context?: Json | null
@@ -5463,6 +5688,7 @@ export type Database = {
           modified_hook?: string | null
           platform_recommendation?: string[] | null
           posted_url?: string | null
+          render_style?: string | null
           rendered_clip_url?: string | null
           segment_id?: string | null
           sound_pairing?: string | null
@@ -5764,6 +5990,21 @@ export type Database = {
           strong_markets?: number | null
           total_chart_streams?: number | null
           total_markets?: number | null
+        }
+        Relationships: []
+      }
+      goal_meta: {
+        Row: {
+          created_at: string
+          goal: string
+        }
+        Insert: {
+          created_at?: string
+          goal: string
+        }
+        Update: {
+          created_at?: string
+          goal?: string
         }
         Relationships: []
       }
@@ -10300,6 +10541,7 @@ export type Database = {
           canonical_name: string
           created_at: string | null
           entity_type: string
+          ever_kworb_top_25k: boolean
           id: string
           metadata: Json | null
           slug: string | null
@@ -10309,6 +10551,7 @@ export type Database = {
           canonical_name: string
           created_at?: string | null
           entity_type: string
+          ever_kworb_top_25k?: boolean
           id?: string
           metadata?: Json | null
           slug?: string | null
@@ -10318,6 +10561,7 @@ export type Database = {
           canonical_name?: string
           created_at?: string | null
           entity_type?: string
+          ever_kworb_top_25k?: boolean
           id?: string
           metadata?: Json | null
           slug?: string | null
@@ -12998,6 +13242,7 @@ export type Database = {
         Args: { p_handle: string }
         Returns: boolean
       }
+      cf_sweep_stuck: { Args: never; Returns: number }
       cleanup_archived_plans: { Args: never; Returns: undefined }
       cleanup_zombie_scraper_runs: { Args: never; Returns: number }
       filter_explore_content: {
@@ -13400,11 +13645,13 @@ export type Database = {
           end_seconds: number
           fan_potential_score: number | null
           fts: unknown
+          hook_source: string | null
           id: string
           label_id: string | null
           metadata: Json | null
           moment_summary: string
           moment_type: string | null
+          peak_evidence: Json | null
           speaker: string | null
           start_seconds: number
           transcript_excerpt: string

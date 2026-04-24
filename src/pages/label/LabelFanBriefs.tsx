@@ -1,12 +1,36 @@
-import { useState, useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import BriefCard from "@/components/fan-briefs/BriefCard";
 import BriefDetail from "@/components/fan-briefs/BriefDetail";
+import BriefAuditModal from "@/components/fan-briefs/BriefAuditModal";
+import {
+  VENUE_STYLES,
+  isLiveBrief,
+  venueFromBrief,
+  type VenueKey,
+} from "@/components/fan-briefs/venues";
 import { useUserProfile } from "@/contexts/UserProfileContext";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 import { Check, Loader2, Sparkles, X } from "lucide-react";
 import type { FanBrief } from "@/types/fanBriefs";
+
+type ContentTypeFilter = "all" | "interview" | "live";
+
+const BRIEFS_SELECT = `
+  *,
+  content_segments (
+    peak_evidence,
+    hook_source,
+    content_catalog (
+      live_venue,
+      content_type,
+      title,
+      duration_seconds
+    )
+  )
+`;
 
 type Tab = "content" | "clips";
 
@@ -34,6 +58,35 @@ export default function LabelFanBriefs() {
   const [activeTab, setActiveTab] = useState<Tab>("content");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [auditId, setAuditId] = useState<string | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const typeFilter = (searchParams.get("type") ?? "all") as ContentTypeFilter;
+  const venueFilter = searchParams.get("venue") as VenueKey | null;
+
+  const updateTypeFilter = (v: ContentTypeFilter) => {
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (v === "all") next.delete("type");
+        else next.set("type", v);
+        if (v !== "live") next.delete("venue");
+        return next;
+      },
+      { replace: true },
+    );
+  };
+
+  const updateVenueFilter = (v: VenueKey | null) => {
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (!v) next.delete("venue");
+        else next.set("venue", v);
+        return next;
+      },
+      { replace: true },
+    );
+  };
 
   // Clear selection when leaving the Content tab or when labelId changes
   useEffect(() => {
@@ -51,7 +104,7 @@ export default function LabelFanBriefs() {
     queryFn: async (): Promise<FanBrief[]> => {
       const { data, error } = await supabase
         .from("fan_briefs")
-        .select("*")
+        .select(BRIEFS_SELECT)
         .eq("label_id", labelId!)
         .eq("status", "pending")
         .is("rendered_clip_url", null)
@@ -70,7 +123,7 @@ export default function LabelFanBriefs() {
     queryFn: async (): Promise<FanBrief[]> => {
       const { data, error } = await supabase
         .from("fan_briefs")
-        .select("*")
+        .select(BRIEFS_SELECT)
         .eq("label_id", labelId!)
         .eq("status", "approved")
         .order("approved_at", { ascending: false })
@@ -83,6 +136,41 @@ export default function LabelFanBriefs() {
   const contentBriefs = contentQuery.data ?? [];
   const clipsBriefs = clipsQuery.data ?? [];
   const isLoading = !labelId || contentQuery.isLoading || clipsQuery.isLoading;
+
+  const applyFilters = (briefs: FanBrief[]): FanBrief[] =>
+    briefs.filter((b) => {
+      const live = isLiveBrief(b);
+      if (typeFilter === "live" && !live) return false;
+      if (typeFilter === "interview" && live) return false;
+      if (typeFilter === "live" && venueFilter) {
+        return venueFromBrief(b) === venueFilter;
+      }
+      return true;
+    });
+
+  const filteredContent = useMemo(
+    () => applyFilters(contentBriefs),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [contentBriefs, typeFilter, venueFilter],
+  );
+  const filteredClips = useMemo(
+    () => applyFilters(clipsBriefs),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [clipsBriefs, typeFilter, venueFilter],
+  );
+
+  // Venue pill counts are derived from the CURRENT tab's live briefs only —
+  // so switching tabs reflects what's actually reviewable right now.
+  const venueCountsForTab = useMemo(() => {
+    const base = activeTab === "content" ? contentBriefs : clipsBriefs;
+    const counts = new Map<VenueKey, number>();
+    for (const b of base) {
+      if (!isLiveBrief(b)) continue;
+      const key = venueFromBrief(b);
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    return Array.from(counts.entries()).sort((a, b) => b[1] - a[1]);
+  }, [activeTab, contentBriefs, clipsBriefs]);
 
   const handleApprove = async (briefId: string) => {
     const approvedAt = new Date().toISOString();
@@ -279,7 +367,8 @@ export default function LabelFanBriefs() {
     });
   };
 
-  const activeBriefs = activeTab === "content" ? contentBriefs : clipsBriefs;
+  const activeBriefs =
+    activeTab === "content" ? filteredContent : filteredClips;
   const selectionCount = selectedIds.size;
 
   return (
@@ -301,6 +390,84 @@ export default function LabelFanBriefs() {
         >
           Review content ideas, edit hooks, approve to render.
         </p>
+      </div>
+
+      {/* Filter pills — content type + (when live) venue */}
+      <div className="flex flex-col gap-2 mb-5 font-['DM_Sans',sans-serif]">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {(["all", "interview", "live"] as const).map((t) => {
+            const active = typeFilter === t;
+            return (
+              <button
+                key={t}
+                type="button"
+                onClick={() => updateTypeFilter(t)}
+                className="transition-colors cursor-pointer"
+                style={{
+                  padding: "5px 12px",
+                  borderRadius: 999,
+                  border: `1px solid ${active ? "var(--accent)" : "var(--border)"}`,
+                  background: active ? "var(--accent-light)" : "transparent",
+                  color: active ? "var(--accent)" : "var(--ink-secondary)",
+                  fontSize: 12,
+                  fontWeight: 600,
+                }}
+              >
+                {t === "all" ? "All" : t === "interview" ? "Interview" : "Live"}
+              </button>
+            );
+          })}
+        </div>
+
+        {typeFilter === "live" && venueCountsForTab.length > 0 && (
+          <div className="flex items-center gap-1.5 flex-wrap pt-1">
+            <button
+              type="button"
+              onClick={() => updateVenueFilter(null)}
+              className="transition-colors cursor-pointer"
+              style={{
+                padding: "3px 10px",
+                borderRadius: 999,
+                border: `1px solid ${!venueFilter ? "var(--ink-secondary)" : "var(--border)"}`,
+                background: "transparent",
+                color: !venueFilter ? "var(--ink)" : "var(--ink-tertiary)",
+                fontSize: 11,
+                fontWeight: 600,
+              }}
+            >
+              All venues
+            </button>
+            {venueCountsForTab.map(([key, count]) => {
+              const style = VENUE_STYLES[key];
+              const active = venueFilter === key;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => updateVenueFilter(active ? null : key)}
+                  className="inline-flex items-center gap-1 transition-colors cursor-pointer"
+                  style={{
+                    padding: "3px 10px",
+                    borderRadius: 999,
+                    border: `1px solid ${active ? style.color : "var(--border)"}`,
+                    background: active ? style.bg : "transparent",
+                    color: active ? style.color : "var(--ink-tertiary)",
+                    fontSize: 11,
+                    fontWeight: 600,
+                  }}
+                >
+                  <span>{style.label}</span>
+                  <span
+                    className="font-['JetBrains_Mono',monospace] tabular-nums opacity-80"
+                    style={{ fontSize: 10 }}
+                  >
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* Content / Clips tabs */}
@@ -369,9 +536,11 @@ export default function LabelFanBriefs() {
             className="text-base mx-auto leading-relaxed font-['DM_Sans',sans-serif]"
             style={{ color: "var(--ink-secondary)", maxWidth: 400 }}
           >
-            {activeTab === "content"
-              ? "No content to review. New briefs will appear here when the pipeline runs."
-              : "No clips yet. Approve content to start rendering."}
+            {typeFilter !== "all" || venueFilter
+              ? "No briefs match the current filter. Try clearing the venue or content-type pill above."
+              : activeTab === "content"
+                ? "No content to review. New briefs will appear here when the pipeline runs."
+                : "No clips yet. Approve content to start rendering."}
           </div>
         </div>
       )}
@@ -395,6 +564,7 @@ export default function LabelFanBriefs() {
                 activeTab === "content" ? toggleSelect : undefined
               }
               onExpand={setExpandedId}
+              onOpenAudit={setAuditId}
             />
           ))}
         </div>
@@ -461,6 +631,20 @@ export default function LabelFanBriefs() {
         onApprove={handleApprove}
         onSkip={handleSkip}
         onModifyHook={handleModifyHook}
+      />
+
+      <BriefAuditModal
+        brief={
+          auditId
+            ? (contentBriefs.find((b) => b.id === auditId) ??
+              clipsBriefs.find((b) => b.id === auditId) ??
+              null)
+            : null
+        }
+        open={!!auditId}
+        onOpenChange={(o) => {
+          if (!o) setAuditId(null);
+        }}
       />
     </div>
   );

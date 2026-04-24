@@ -13,8 +13,18 @@ import {
   Trash2,
   MessageCircle,
   Maximize2,
+  Info,
+  Users,
 } from "lucide-react";
 import type { FanBrief } from "@/types/fanBriefs";
+import {
+  VENUE_STYLES,
+  venueFromBrief,
+  peakEvidenceOf,
+  isLiveBrief,
+  truncateFanComment,
+  hookCameFromFanComment,
+} from "./venues";
 
 interface BriefCardProps {
   brief: FanBrief;
@@ -30,6 +40,8 @@ interface BriefCardProps {
   onToggleSelect?: (id: string) => void;
   /** When provided, renders an "Expand" button that opens the BriefDetail modal. */
   onExpand?: (id: string) => void;
+  /** When provided, the ⓘ on live-brief cards opens the peak_evidence audit modal. */
+  onOpenAudit?: (id: string) => void;
 }
 
 /**
@@ -117,6 +129,7 @@ export default function BriefCard({
   selected = false,
   onToggleSelect,
   onExpand,
+  onOpenAudit,
 }: BriefCardProps) {
   const selectable = mode === "content" && !!onToggleSelect;
   const navigate = useNavigate();
@@ -125,10 +138,28 @@ export default function BriefCard({
   const [replayKey, setReplayKey] = useState(0);
   const [showSource, setShowSource] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [isWhyOpen, setIsWhyOpen] = useState(false);
   const editRef = useRef<HTMLTextAreaElement>(null);
   const embedUrl = getEmbedUrl(brief);
   const badge = statusBadgeStyles[brief.status] ?? statusBadgeStyles.pending;
   const isActionable = mode === "content";
+
+  // Live-performance extensions (v1 supports talking_head; karaoke briefs are deferred).
+  const isLive = isLiveBrief(brief);
+  const evidence = isLive ? peakEvidenceOf(brief) : null;
+  const venue = isLive ? VENUE_STYLES[venueFromBrief(brief)] : null;
+  const isKaraoke = brief.render_style === "karaoke";
+  const fromFanComment = isLive && hookCameFromFanComment(brief);
+  const confidenceTooltip =
+    isLive && evidence
+      ? `Score breakdown: 50 + cluster(${evidence.cluster_size})×5 + log10(likes+1)×5 + chapter_bonus`
+      : undefined;
+
+  const handleSwapHookToComment = (content: string) => {
+    const truncated = truncateFanComment(content);
+    if (!truncated) return;
+    onModifyHook(brief.id, truncated);
+  };
 
   const handleChatAboutThis = () => {
     const hook = brief.modified_hook || brief.hook_text;
@@ -236,11 +267,35 @@ export default function BriefCard({
               <div
                 className="px-2.5 py-1 rounded-full text-xs font-semibold font-['JetBrains_Mono',monospace]"
                 style={{ background: chip.bg, color: chip.color }}
+                title={confidenceTooltip}
               >
                 {brief.confidence_score}%
               </div>
             );
           })()}
+          {/* Venue badge (live only) + audit ⓘ trigger */}
+          {isLive && venue && (
+            <div className="flex items-center gap-1">
+              <span
+                className="px-2.5 py-1 rounded-full text-[11px] font-semibold uppercase tracking-wide"
+                style={{ background: venue.bg, color: venue.color }}
+              >
+                {venue.label}
+              </span>
+              {onOpenAudit && (
+                <button
+                  type="button"
+                  onClick={() => onOpenAudit(brief.id)}
+                  aria-label="Open evidence audit"
+                  title="Open evidence audit"
+                  className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-transparent cursor-pointer border-0 transition-colors hover:!text-[var(--accent)]"
+                  style={{ color: "var(--ink-tertiary)" }}
+                >
+                  <Info size={14} />
+                </button>
+              )}
+            </div>
+          )}
           {/* Status badge */}
           <div
             className="px-2.5 py-1 rounded-full text-[11px] font-semibold uppercase tracking-wide"
@@ -327,6 +382,33 @@ export default function BriefCard({
             </div>
           )}
         </div>
+      ) : isKaraoke ? (
+        /* Karaoke (render_style='karaoke') — v2 deferral placeholder. */
+        <div className="px-6 pt-4">
+          <div
+            className="flex flex-col items-center justify-center text-center rounded-xl"
+            style={{
+              background: "var(--surface-hover)",
+              border: "1px dashed var(--border)",
+              padding: "28px 24px",
+              minHeight: 180,
+            }}
+          >
+            <div
+              className="text-[11px] font-semibold uppercase tracking-wide mb-2"
+              style={{ color: "var(--ink-tertiary)" }}
+            >
+              Song clip · karaoke render
+            </div>
+            <div
+              className="text-[14px] leading-snug max-w-[420px]"
+              style={{ color: "var(--ink-secondary)" }}
+            >
+              Karaoke rendering ships in v2. Approved clips will auto-render
+              once the feature is live — you can still approve this brief now.
+            </div>
+          </div>
+        </div>
       ) : (
         /* Content mode — YouTube embed or static thumbnail */
         embedUrl && (
@@ -407,6 +489,15 @@ export default function BriefCard({
                 color: "var(--ink)",
               }}
             />
+            {isLive && (
+              <div
+                className="text-[12px] leading-snug"
+                style={{ color: "var(--ink-tertiary)" }}
+              >
+                Hook synthesized from fan comments — click a comment above to
+                swap to a fan's own words, or write your own.
+              </div>
+            )}
             <div className="flex gap-2 justify-end">
               <button
                 onClick={() => {
@@ -447,6 +538,14 @@ export default function BriefCard({
                 className="ml-2 inline-block align-middle opacity-50"
               />
             )}
+          </div>
+        )}
+        {fromFanComment && (
+          <div
+            className="text-[11px] mt-1 font-medium"
+            style={{ color: "var(--ink-tertiary)" }}
+          >
+            ✍️ edited from fan comment
           </div>
         )}
         {brief.caption && (
@@ -495,6 +594,80 @@ export default function BriefCard({
         )}
       </div>
 
+      {/* Why this moment — live-brief evidence (top 3 fan comments) */}
+      {isLive && evidence && evidence.top_comments.length > 0 && (
+        <div className="px-6 pt-4">
+          <button
+            type="button"
+            onClick={() => setIsWhyOpen((v) => !v)}
+            className="w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-lg text-[12px] bg-transparent cursor-pointer"
+            style={{
+              border: "1px solid var(--border)",
+              color: "var(--ink-secondary)",
+            }}
+          >
+            <span className="flex items-center gap-2">
+              <Users size={13} />
+              <span>
+                <strong style={{ color: "var(--ink)" }}>
+                  {evidence.cluster_size} fans
+                </strong>{" "}
+                flagged this moment at{" "}
+                <span className="font-['JetBrains_Mono',monospace]">
+                  {formatTimestamp(brief.timestamp_start)}
+                </span>{" "}
+                —{" "}
+                <strong style={{ color: "var(--ink)" }}>
+                  {evidence.sum_likes}
+                </strong>{" "}
+                total likes
+              </span>
+            </span>
+            {isWhyOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+          </button>
+
+          {isWhyOpen && (
+            <div className="flex flex-col gap-2 mt-2">
+              {evidence.top_comments.slice(0, 3).map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => handleSwapHookToComment(c.content)}
+                  disabled={!isActionable}
+                  title={
+                    isActionable
+                      ? "Use this fan's words as the hook"
+                      : undefined
+                  }
+                  className="text-left px-3 py-2.5 rounded-lg bg-transparent transition-colors hover:!border-[var(--accent)] disabled:cursor-default"
+                  style={{
+                    background: "var(--surface-hover)",
+                    border: "1px solid var(--border)",
+                    cursor: isActionable ? "pointer" : "default",
+                  }}
+                >
+                  <div
+                    className="text-[13px] leading-snug"
+                    style={{ color: "var(--ink)" }}
+                  >
+                    {c.content}
+                  </div>
+                  <div
+                    className="mt-1 text-[11px] font-['JetBrains_Mono',monospace] tabular-nums"
+                    style={{ color: "var(--ink-tertiary)" }}
+                  >
+                    — {c.author ?? "unknown"}, {c.like_count} likes
+                    {c.referenced_seconds != null && (
+                      <> , @ {formatTimestamp(c.referenced_seconds)}</>
+                    )}
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Source info block */}
       <div
         className="mt-4 mx-6 p-4 rounded-xl"
@@ -504,7 +677,7 @@ export default function BriefCard({
         }}
       >
         {brief.source_title && (
-          <div className="flex items-center gap-1.5 mb-2">
+          <div className="flex items-center gap-1.5 mb-2 flex-wrap">
             <ExternalLink size={12} color="var(--ink-tertiary)" />
             <span
               className="text-xs font-semibold"
@@ -512,7 +685,22 @@ export default function BriefCard({
             >
               {brief.source_title}
             </span>
-            {brief.timestamp_start != null && (
+            {isLive && venue && brief.youtube_timestamp_url ? (
+              <a
+                href={brief.youtube_timestamp_url}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1.5 text-[11px] no-underline hover:underline"
+                style={{ color: venue.color }}
+              >
+                <span>· {venue.label}</span>
+                {brief.timestamp_start != null && (
+                  <span className="font-['JetBrains_Mono',monospace] tabular-nums">
+                    · {formatTimestamp(brief.timestamp_start)}
+                  </span>
+                )}
+              </a>
+            ) : brief.timestamp_start != null ? (
               <span
                 className="text-[11px] font-['JetBrains_Mono',monospace]"
                 style={{ color: "var(--ink-tertiary)" }}
@@ -520,7 +708,7 @@ export default function BriefCard({
                 {formatTimestamp(brief.timestamp_start)} –{" "}
                 {formatTimestamp(brief.timestamp_end)}
               </span>
-            )}
+            ) : null}
           </div>
         )}
         <div
