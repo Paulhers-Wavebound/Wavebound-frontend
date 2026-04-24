@@ -785,7 +785,7 @@ function TopSoundCell({ artist }: { artist: ContentArtist }) {
   const velocity = artist.sound_velocity;
 
   if (!title) {
-    return <span className="text-[12px] text-white/30">\u2014</span>;
+    return <span className="text-[12px] text-white/30">{"\u2014"}</span>;
   }
 
   const tierGroup = getTierGroup(artist.momentum_tier);
