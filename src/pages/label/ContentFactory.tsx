@@ -17,6 +17,7 @@ type JobStatus =
   | "ingested"
   | "decomposed"
   | "transcribed"
+  | "lyrics_fixed"
   | "cast"
   | "rendering"
   | "done"
@@ -36,6 +37,7 @@ const STAGES: { id: JobStatus; label: string }[] = [
   { id: "ingested", label: "Ingested" },
   { id: "decomposed", label: "Decomposed" },
   { id: "transcribed", label: "Transcribed" },
+  { id: "lyrics_fixed", label: "Lyrics fixed" },
   { id: "cast", label: "Cast" },
   { id: "rendering", label: "Rendering" },
   { id: "done", label: "Done" },
@@ -46,11 +48,36 @@ const STAGE_ORDER: Record<JobStatus, number> = {
   ingested: 0,
   decomposed: 1,
   transcribed: 2,
-  cast: 3,
-  rendering: 4,
-  done: 5,
+  lyrics_fixed: 3,
+  cast: 4,
+  rendering: 5,
+  done: 6,
   error: -1,
 };
+
+function isKnownStatus(s: string): s is JobStatus {
+  return Object.prototype.hasOwnProperty.call(STAGE_ORDER, s);
+}
+
+type TranscribeProvider = "audioshake" | "whisperx";
+
+const TRANSCRIBE_PROVIDER_OPTIONS: {
+  value: TranscribeProvider;
+  label: string;
+}[] = [
+  { value: "audioshake", label: "AudioShake — premium (~11¢/clip)" },
+  { value: "whisperx", label: "WhisperX — free (self-hosted)" },
+];
+
+const DEFAULT_TRANSCRIBE_PROVIDER: TranscribeProvider = "audioshake";
+
+function isTranscribeProvider(v: unknown): v is TranscribeProvider {
+  return v === "audioshake" || v === "whisperx";
+}
+
+function transcribeProviderStorageKey(userId: string): string {
+  return `cf:transcribe_provider:${userId}`;
+}
 
 type UiState = "idle" | "uploading" | "polling" | "done" | "error";
 
@@ -101,6 +128,9 @@ function friendlyError(raw: string | null | undefined): string {
   if (raw.startsWith("sound_fetch_")) {
     return "Could not download the TikTok's sound. Try again or upload an MP3.";
   }
+  if (raw.startsWith("audioshake_") || raw.startsWith("whisperx_")) {
+    return `${raw} — try the other provider and re-submit.`;
+  }
   return raw;
 }
 
@@ -112,6 +142,42 @@ export default function ContentFactory() {
   const [artistHandle, setArtistHandle] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [transcribeProvider, setTranscribeProvider] =
+    useState<TranscribeProvider>(DEFAULT_TRANSCRIBE_PROVIDER);
+  const [userId, setUserId] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void supabase.auth.getUser().then(({ data }) => {
+      if (cancelled) return;
+      const uid = data.user?.id ?? null;
+      setUserId(uid);
+      if (!uid) return;
+      try {
+        const stored = window.localStorage.getItem(
+          transcribeProviderStorageKey(uid),
+        );
+        if (isTranscribeProvider(stored)) setTranscribeProvider(stored);
+      } catch {
+        // localStorage disabled — fall back to default
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!userId) return;
+    try {
+      window.localStorage.setItem(
+        transcribeProviderStorageKey(userId),
+        transcribeProvider,
+      );
+    } catch {
+      // localStorage disabled — skip persistence
+    }
+  }, [userId, transcribeProvider]);
 
   const [jobId, setJobId] = useState<string | null>(null);
   const [jobStatus, setJobStatus] = useState<JobStatus>("pending");
@@ -119,9 +185,13 @@ export default function ContentFactory() {
   const [costCents, setCostCents] = useState(0);
   const [startedAt, setStartedAt] = useState<number | null>(null);
   const [elapsedMs, setElapsedMs] = useState(0);
+  const [failedStageIdx, setFailedStageIdx] = useState<number | null>(null);
 
   const pollRef = useRef<number | null>(null);
   const tickRef = useRef<number | null>(null);
+  // Tracks the last non-terminal status so we can locate which stepper row
+  // was in flight when `error` hits (the failed row is the one after it).
+  const lastNonTerminalRef = useRef<JobStatus>("pending");
 
   const clearTimers = useCallback(() => {
     if (pollRef.current !== null) {
@@ -177,13 +247,43 @@ export default function ContentFactory() {
       const tick = async () => {
         try {
           const data = await fetchJobStatus(id);
+
+          if (!isKnownStatus(data.status)) {
+            // Front-end enum drifted from backend — log so the next new status
+            // shows up as a real signal instead of a silent stall.
+            console.warn(
+              `[content-factory] unknown status "${data.status}" — UI is out of date`,
+            );
+          }
+
           setJobStatus(data.status);
           setCostCents(data.cost_cents ?? 0);
+
+          const isTerminal = data.status === "done" || data.status === "error";
+
+          if (isTerminal) {
+            // Freeze elapsed to the backend-authoritative duration so the UI
+            // can't lie if the tick interval somehow keeps running.
+            const created = new Date(data.created_at).getTime();
+            const updated = new Date(data.updated_at).getTime();
+            if (Number.isFinite(created) && Number.isFinite(updated)) {
+              setElapsedMs(Math.max(0, updated - created));
+            }
+          } else if (isKnownStatus(data.status)) {
+            lastNonTerminalRef.current = data.status;
+          }
+
           if (data.status === "done") {
             setFinalUrl(data.final_url);
             setUiState("done");
             clearTimers();
           } else if (data.status === "error") {
+            const lastIdx = STAGE_ORDER[lastNonTerminalRef.current] ?? -1;
+            // The failed row is the one that was in flight: lastCompleted + 1.
+            // Clamp into the stepper range in case the backend reported an
+            // error before the first real transition.
+            const failedIdx = Math.min(lastIdx + 1, STAGES.length - 1);
+            setFailedStageIdx(failedIdx);
             setErrorMsg(friendlyError(data.error));
             setUiState("error");
             clearTimers();
@@ -239,6 +339,8 @@ export default function ContentFactory() {
     setCostCents(0);
     setStartedAt(null);
     setElapsedMs(0);
+    setFailedStageIdx(null);
+    lastNonTerminalRef.current = "pending";
   };
 
   const handleSubmit = async () => {
@@ -271,6 +373,7 @@ export default function ContentFactory() {
             label_id: labelId,
             artist_handle: handle,
             ref_tiktok_url: refUrl.trim(),
+            transcribe_provider: transcribeProvider,
             ...(artistMp3Path ? { artist_mp3_path: artistMp3Path } : {}),
           },
         },
@@ -287,6 +390,8 @@ export default function ContentFactory() {
       setJobStatus("pending");
       setStartedAt(Date.now());
       setElapsedMs(0);
+      setFailedStageIdx(null);
+      lastNonTerminalRef.current = "pending";
       setUiState("polling");
       startPolling(returnedJobId);
     } catch (e) {
@@ -441,6 +546,37 @@ export default function ContentFactory() {
             </HelpText>
           </Field>
 
+          <Field
+            label="Transcription provider"
+            htmlFor="cf-transcribe-provider"
+          >
+            <select
+              id="cf-transcribe-provider"
+              value={transcribeProvider}
+              onChange={(e) => {
+                const next = e.target.value;
+                if (isTranscribeProvider(next)) setTranscribeProvider(next);
+              }}
+              disabled={uiState !== "idle"}
+              className="w-full h-10 px-3 rounded-[10px] text-[14px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+              style={{
+                background: "var(--bg-subtle)",
+                color: "var(--ink)",
+                border: "1px solid var(--border)",
+              }}
+            >
+              {TRANSCRIBE_PROVIDER_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+            <HelpText>
+              AudioShake is higher quality. WhisperX is free but self-hosted;
+              pick it for throwaway tests or to save credits.
+            </HelpText>
+          </Field>
+
           {errorMsg && (
             <div
               className="rounded-[10px] px-3 py-2 text-[13px]"
@@ -517,9 +653,14 @@ export default function ContentFactory() {
             </div>
           </div>
 
-          <Stepper currentIdx={currentStageIdx} isError={uiState === "error"} />
+          <Stepper
+            currentIdx={currentStageIdx}
+            isError={uiState === "error"}
+            failedStageIdx={failedStageIdx}
+            errorMsg={errorMsg}
+          />
 
-          {uiState === "error" && (
+          {uiState === "error" && failedStageIdx === null && (
             <div
               className="rounded-[10px] px-3 py-2 text-[13px]"
               style={{
@@ -687,17 +828,25 @@ function HelpText({
 function Stepper({
   currentIdx,
   isError,
+  failedStageIdx,
+  errorMsg,
 }: {
   currentIdx: number;
   isError: boolean;
+  failedStageIdx: number | null;
+  errorMsg: string | null;
 }) {
   return (
     <ol className="flex flex-col gap-2">
       {STAGES.map((stage, i) => {
-        const isPast = i < currentIdx;
-        const isCurrent = i === currentIdx;
-        const isDone = stage.id === "done" && currentIdx >= STAGE_ORDER.done;
-        const activeError = isError && isCurrent;
+        // In error state: do not show green checks anywhere. The failed row
+        // gets the red X + the inline error message; every other row is grey.
+        // Otherwise: backend status X means "X just completed", so rows with
+        // rank <= currentIdx render green and rank currentIdx+1 is in flight.
+        const isFailed =
+          isError && failedStageIdx !== null && i === failedStageIdx;
+        const isPast = !isError && i <= currentIdx;
+        const isCurrent = !isError && i === currentIdx + 1;
 
         let dotBg = "var(--border)";
         let dotColor = "var(--ink-tertiary)";
@@ -708,12 +857,12 @@ function Stepper({
           </span>
         );
 
-        if (isPast || isDone) {
+        if (isPast) {
           dotBg = "var(--green, #1a8917)";
           dotColor = "#fff";
           labelColor = "var(--ink-secondary)";
           icon = <Check size={12} strokeWidth={3} />;
-        } else if (activeError) {
+        } else if (isFailed) {
           dotBg = "var(--red, #dc2626)";
           dotColor = "#fff";
           labelColor = "var(--red, #dc2626)";
@@ -726,22 +875,32 @@ function Stepper({
         }
 
         return (
-          <li key={stage.id} className="flex items-center gap-3">
+          <li key={stage.id} className="flex items-start gap-3">
             <span
-              className="w-6 h-6 rounded-full flex items-center justify-center shrink-0"
+              className="w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-[1px]"
               style={{ background: dotBg, color: dotColor }}
             >
               {icon}
             </span>
-            <span
-              className="text-[14px]"
-              style={{
-                color: labelColor,
-                fontWeight: isCurrent ? 600 : 500,
-              }}
-            >
-              {stage.label}
-            </span>
+            <div className="flex flex-col gap-0.5 min-w-0">
+              <span
+                className="text-[14px] leading-6"
+                style={{
+                  color: labelColor,
+                  fontWeight: isCurrent || isFailed ? 600 : 500,
+                }}
+              >
+                {stage.label}
+              </span>
+              {isFailed && errorMsg && (
+                <span
+                  className="text-[12px] leading-snug"
+                  style={{ color: "var(--red, #dc2626)" }}
+                >
+                  {errorMsg}
+                </span>
+              )}
+            </div>
           </li>
         );
       })}
