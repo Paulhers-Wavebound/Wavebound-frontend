@@ -161,6 +161,16 @@ export default function CreateView({
   const [linkUrl, setLinkUrl] = useState<string>("");
   const [linkExtracted, setLinkExtracted] = useState(false);
 
+  // Fan-brief wizard state. Renders a 3-knob picker (artist + source + count)
+  // before the BriefCard list. wizardDone flips when the user hits "Show
+  // briefs"; the breadcrumb's "Change filters" button flips it back.
+  const [briefArtistHandle, setBriefArtistHandle] = useState<string>("");
+  const [briefSource, setBriefSource] = useState<
+    "live_performance" | "podcasts" | ""
+  >("");
+  const [briefCount, setBriefCount] = useState(5);
+  const [wizardDone, setWizardDone] = useState(false);
+
   // Live fetch of pending fan briefs for this label. Shares the query key with
   // /label/fan-briefs so mutations in either route update both caches. The
   // fallback `PENDING_FAN_BRIEFS` keeps the preset usable when there's no
@@ -188,6 +198,60 @@ export default function CreateView({
 
   const livePendingBriefs = pendingBriefsQuery.data ?? [];
   const usingLiveBriefs = livePendingBriefs.length > 0;
+
+  // Label roster — populates the wizard's artist dropdown. Same shape as
+  // LabelRoster.tsx:51-71 but trimmed to the columns the picker needs and
+  // restricted to rows with a usable handle (briefs are joined by handle).
+  const labelArtistsQuery = useQuery({
+    queryKey: ["label-artists-v2-create", labelId],
+    enabled: !!labelId,
+    staleTime: 5 * 60_000,
+    queryFn: async (): Promise<
+      { id: string; artist_name: string; artist_handle: string }[]
+    > => {
+      const { data, error } = await supabase
+        .from("artist_intelligence")
+        .select("id, artist_name, artist_handle")
+        .eq("label_id", labelId!)
+        .not("artist_handle", "is", null)
+        .order("artist_name");
+      if (error) throw error;
+      return (data ?? []) as {
+        id: string;
+        artist_name: string;
+        artist_handle: string;
+      }[];
+    },
+  });
+  const labelArtists = labelArtistsQuery.data ?? [];
+
+  // Filter the pending pool by the wizard's selections, then cap at the
+  // requested clip count. Matches Live = content_type='live_performance';
+  // Podcasts = interview OR podcast.
+  const filteredBriefs = useMemo(() => {
+    if (!briefArtistHandle || !briefSource) return [];
+    return livePendingBriefs
+      .filter((b) => {
+        if (b.artist_handle !== briefArtistHandle) return false;
+        if (briefSource === "live_performance") {
+          return b.content_type === "live_performance";
+        }
+        return b.content_type === "interview" || b.content_type === "podcast";
+      })
+      .slice(0, briefCount);
+  }, [livePendingBriefs, briefArtistHandle, briefSource, briefCount]);
+
+  // Total matches before slicing — used in the breadcrumb counter.
+  const totalMatches = useMemo(() => {
+    if (!briefArtistHandle || !briefSource) return 0;
+    return livePendingBriefs.filter((b) => {
+      if (b.artist_handle !== briefArtistHandle) return false;
+      if (briefSource === "live_performance") {
+        return b.content_type === "live_performance";
+      }
+      return b.content_type === "interview" || b.content_type === "podcast";
+    }).length;
+  }, [livePendingBriefs, briefArtistHandle, briefSource]);
 
   // Approve a live brief: flip status to 'approved' on fan_briefs (backend
   // rendering fires off that), optimistically remove it from the pending
@@ -295,6 +359,18 @@ export default function CreateView({
     }
     onDraftConsumed();
   }, [draftAngleId, draftPreset, angles, onDraftConsumed]);
+
+  // Reset the fan-brief wizard each time the user re-enters the preset so
+  // the picker starts clean — keeps the fast "click Fan brief, see options"
+  // mental model rather than reviving stale filters from a prior visit.
+  useEffect(() => {
+    if (activePreset !== "fan_brief") {
+      setBriefArtistHandle("");
+      setBriefSource("");
+      setBriefCount(5);
+      setWizardDone(false);
+    }
+  }, [activePreset]);
 
   const selectedAngle = angleId
     ? angles.find((a) => a.id === angleId)
@@ -711,39 +787,240 @@ export default function CreateView({
                     Loading pending briefs…
                   </div>
                 ) : usingLiveBriefs ? (
-                  <>
-                    <div
-                      className="text-[11px] flex items-center gap-1.5"
-                      style={{ color: "var(--ink-tertiary)" }}
-                    >
-                      <span style={{ color: "#4aa07a" }}>●</span>
-                      Live · {livePendingBriefs.length} pending brief
-                      {livePendingBriefs.length === 1 ? "" : "s"} on this label
-                      · Approve to fire backend rendering and push to Review.
-                    </div>
-                    <div className="flex flex-col gap-4">
-                      {livePendingBriefs.map((brief) => (
+                  !wizardDone ? (
+                    /* Phase 1 — wizard: pick artist + source + clip count */
+                    <>
+                      <Field label="Artist">
+                        {labelArtistsQuery.isError ? (
+                          <input
+                            type="text"
+                            value={briefArtistHandle}
+                            onChange={(e) =>
+                              setBriefArtistHandle(e.target.value.trim())
+                            }
+                            placeholder="@handle (roster fetch failed — type manually)"
+                            className="w-full h-10 px-3 rounded-[10px] text-[13px] outline-none"
+                            style={{
+                              background: "var(--bg-subtle)",
+                              color: "var(--ink)",
+                              border: "1px solid var(--border)",
+                            }}
+                          />
+                        ) : labelArtistsQuery.isLoading ? (
+                          <div
+                            className="rounded-[10px] px-3 py-2 text-[12px] flex items-center gap-2"
+                            style={{
+                              background: "var(--bg-subtle)",
+                              border: "1px solid var(--border)",
+                              color: "var(--ink-tertiary)",
+                            }}
+                          >
+                            <Loader2 size={12} className="animate-spin" />
+                            Loading roster…
+                          </div>
+                        ) : labelArtists.length === 0 ? (
+                          <div
+                            className="rounded-[10px] px-3 py-2 text-[12px]"
+                            style={{
+                              background: "var(--bg-subtle)",
+                              border: "1px solid var(--border)",
+                              color: "var(--ink-tertiary)",
+                            }}
+                          >
+                            No artists in roster — see /label/admin to onboard.
+                          </div>
+                        ) : (
+                          <Select
+                            value={briefArtistHandle}
+                            onChange={setBriefArtistHandle}
+                            options={[
+                              { value: "", label: "— pick an artist —" },
+                              ...labelArtists.map((a) => ({
+                                value: a.artist_handle,
+                                label: `${a.artist_name} · @${a.artist_handle}`,
+                              })),
+                            ]}
+                          />
+                        )}
+                      </Field>
+
+                      <Field label="Source">
+                        <ChipRow
+                          options={[
+                            {
+                              k: "live_performance",
+                              label: "Live performance",
+                            },
+                            { k: "podcasts", label: "Podcasts" },
+                          ]}
+                          value={briefSource}
+                          onChange={(v) =>
+                            setBriefSource(v as "live_performance" | "podcasts")
+                          }
+                        />
+                      </Field>
+
+                      <Field label={`Clip count — up to ${briefCount}`}>
+                        <input
+                          type="range"
+                          min={1}
+                          max={20}
+                          value={briefCount}
+                          onChange={(e) =>
+                            setBriefCount(Number(e.target.value))
+                          }
+                          className="w-full"
+                          style={{ accentColor: "var(--accent)" }}
+                        />
                         <div
-                          key={brief.id}
+                          className="flex justify-between text-[10px] uppercase tracking-wide mt-1"
+                          style={{ color: "var(--ink-tertiary)" }}
+                        >
+                          <span>1</span>
+                          <span>20</span>
+                        </div>
+                      </Field>
+
+                      <div className="flex items-center justify-between gap-3 pt-1">
+                        <div
+                          className="text-[11px]"
+                          style={{ color: "var(--ink-tertiary)" }}
+                        >
+                          {!briefArtistHandle || !briefSource
+                            ? "Pick an artist and a source to continue."
+                            : `Will filter ${livePendingBriefs.length} pending brief${
+                                livePendingBriefs.length === 1 ? "" : "s"
+                              } on this label.`}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setWizardDone(true)}
+                          disabled={!briefArtistHandle || !briefSource}
+                          className="h-10 px-5 rounded-[10px] text-[14px] font-semibold disabled:opacity-40"
                           style={{
-                            opacity: mutatingBriefId === brief.id ? 0.5 : 1,
-                            pointerEvents:
-                              mutatingBriefId === brief.id ? "none" : "auto",
-                            transition: "opacity 0.15s",
+                            background: "var(--accent)",
+                            color: "#fff",
+                            border: "none",
                           }}
                         >
-                          <BriefCard
-                            brief={brief}
-                            mode="content"
-                            staticPreview
-                            onApprove={handleApproveBrief}
-                            onSkip={handleSkipBrief}
-                            onModifyHook={handleModifyBriefHook}
-                          />
+                          Show briefs
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    /* Phase 2 — filtered BriefCard list */
+                    <>
+                      <div
+                        className="rounded-[10px] px-3 py-2 flex items-center gap-2 flex-wrap"
+                        style={{
+                          background: "var(--bg-subtle)",
+                          border: "1px solid var(--border)",
+                        }}
+                      >
+                        <span
+                          className="px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide"
+                          style={{
+                            background: "var(--accent-light)",
+                            color: "var(--accent)",
+                          }}
+                        >
+                          @{briefArtistHandle}
+                        </span>
+                        <span
+                          className="px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide"
+                          style={{
+                            background: "var(--accent-light)",
+                            color: "var(--accent)",
+                          }}
+                        >
+                          {briefSource === "live_performance"
+                            ? "Live performance"
+                            : "Podcasts"}
+                        </span>
+                        <span
+                          className="text-[11px] font-['JetBrains_Mono',monospace] tabular-nums"
+                          style={{ color: "var(--ink-tertiary)" }}
+                        >
+                          up to {briefCount}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setWizardDone(false)}
+                          className="ml-auto h-7 px-3 rounded-[8px] text-[11px] font-semibold"
+                          style={{
+                            background: "transparent",
+                            color: "var(--ink-secondary)",
+                            border: "1px solid var(--border)",
+                          }}
+                        >
+                          Change filters
+                        </button>
+                      </div>
+
+                      <div
+                        className="text-[11px] flex items-center gap-1.5"
+                        style={{ color: "var(--ink-tertiary)" }}
+                      >
+                        <span style={{ color: "#4aa07a" }}>●</span>
+                        {briefSource === "live_performance"
+                          ? "Live performance"
+                          : "Podcasts"}{" "}
+                        · @{briefArtistHandle} · {filteredBriefs.length} of{" "}
+                        {totalMatches} pending brief
+                        {totalMatches === 1 ? "" : "s"} on this label.
+                      </div>
+
+                      {filteredBriefs.length === 0 ? (
+                        <div
+                          className="rounded-[10px] px-4 py-6 text-[13px] text-center"
+                          style={{
+                            background: "var(--bg-subtle)",
+                            border: "1px solid var(--border)",
+                            color: "var(--ink-tertiary)",
+                          }}
+                        >
+                          No{" "}
+                          {briefSource === "live_performance"
+                            ? "live-performance"
+                            : "podcast / interview"}{" "}
+                          briefs for @{briefArtistHandle} yet — seed via{" "}
+                          <code
+                            className="font-['JetBrains_Mono',monospace] text-[12px]"
+                            style={{ color: "var(--ink-secondary)" }}
+                          >
+                            scripts/fan-briefs/discover-live.ts @
+                            {briefArtistHandle}
+                          </code>
+                          , or change filters.
                         </div>
-                      ))}
-                    </div>
-                  </>
+                      ) : (
+                        <div className="flex flex-col gap-4">
+                          {filteredBriefs.map((brief) => (
+                            <div
+                              key={brief.id}
+                              style={{
+                                opacity: mutatingBriefId === brief.id ? 0.5 : 1,
+                                pointerEvents:
+                                  mutatingBriefId === brief.id
+                                    ? "none"
+                                    : "auto",
+                                transition: "opacity 0.15s",
+                              }}
+                            >
+                              <BriefCard
+                                brief={brief}
+                                mode="content"
+                                staticPreview
+                                onApprove={handleApproveBrief}
+                                onSkip={handleSkipBrief}
+                                onModifyHook={handleModifyBriefHook}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  )
                 ) : (
                   <>
                     <Field label="Pending brief (mock)">
