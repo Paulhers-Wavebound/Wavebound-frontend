@@ -111,8 +111,14 @@ export function useContentDashboardData(): ContentDashboardData {
         const rosterHandles = roster
           .map((r: any) => r.artist_handle)
           .filter(Boolean);
+        // Catalog joins on artist_name (not entity_id) because artist_content_dna
+        // is incomplete — roster artists without DNA entries still have catalog
+        // songs we want to surface.
+        const rosterArtistNames = roster
+          .map((r: any) => r.artist_name)
+          .filter(Boolean);
 
-        const [dnaRes, evoRes, pulseRes] = await Promise.all([
+        const [dnaRes, evoRes, pulseRes, catalogRes] = await Promise.all([
           supabase
             .from("artist_content_dna" as any)
             .select(
@@ -130,19 +136,28 @@ export function useContentDashboardData(): ContentDashboardData {
             .select("artist_handle, weekly_pulse, weekly_pulse_generated_at")
             .in("artist_handle", rosterHandles)
             .not("weekly_pulse", "is", null),
+          supabase
+            .from("catalog_tiktok_performance" as any)
+            .select(
+              "song_name, artist_name, tiktok_video_count, total_tiktok_plays, unique_creators, fan_videos, fan_to_artist_ratio, tiktok_status, cross_platform_gap, videos_last_7d, videos_last_30d, tiktok_music_id",
+            )
+            .in("artist_name", rosterArtistNames)
+            .gt("tiktok_video_count", 0)
+            .order("total_tiktok_plays", { ascending: false }),
         ]);
 
         setWeeklyPulseRaw(pulseRes.data || []);
+        setCatalogRaw(catalogRes.data || []);
 
         const dnaData = dnaRes.data || [];
         setContentDnaRaw(dnaData);
         setEvolutionRaw(evoRes.data || []);
 
-        // Phase 3: tiktok_video_summary uses entity_id from content DNA results
+        // Phase 3: tiktok_video_summary + sentiment use entity_id from content DNA
         const entityIds = dnaData.map((d: any) => d.entity_id).filter(Boolean);
 
         if (entityIds.length > 0) {
-          const [summaryRes, sentimentRes, catalogRes] = await Promise.all([
+          const [summaryRes, sentimentRes] = await Promise.all([
             supabase
               .from("tiktok_video_summary" as any)
               .select(
@@ -154,19 +169,9 @@ export function useContentDashboardData(): ContentDashboardData {
               .select("entity_id, sentiment_score, fan_energy")
               .in("entity_id", entityIds)
               .order("date", { ascending: false }),
-            supabase
-              .from("catalog_tiktok_performance" as any)
-              .select(
-                "song_name, artist_name, tiktok_video_count, total_tiktok_plays, unique_creators, fan_videos, fan_to_artist_ratio, tiktok_status, cross_platform_gap, videos_last_7d, videos_last_30d, tiktok_music_id",
-              )
-              .in("artist_entity_id", entityIds)
-              .gt("tiktok_video_count", 0)
-              .order("tiktok_video_count", { ascending: false })
-              .limit(20),
           ]);
           setVideoSummaryRaw(summaryRes.data || []);
           setSentimentRaw(sentimentRes.data || []);
-          setCatalogRaw(catalogRes.data || []);
         }
       }
 

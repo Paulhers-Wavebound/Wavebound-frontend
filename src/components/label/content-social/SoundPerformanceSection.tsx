@@ -101,6 +101,12 @@ export default function SoundPerformanceSection({
         >
           Sound Performance on TikTok
         </h2>
+        <span
+          className="text-[10px] font-medium tabular-nums"
+          style={{ color: "rgba(255,255,255,0.30)" }}
+        >
+          {songs.length}
+        </span>
         <InfoPopover
           text="How your catalog sounds perform on TikTok. Viral = explosive growth. Trending = strong upward momentum. Active = steady usage. Established = consistent baseline. Emerging = early traction. Cross-platform gaps show where TikTok buzz hasn't converted to Spotify streams (or vice versa)."
           width={340}
@@ -108,11 +114,14 @@ export default function SoundPerformanceSection({
       </div>
 
       <div
-        className="rounded-xl border border-white/[0.06] overflow-hidden"
+        className="rounded-xl border border-white/[0.06] overflow-hidden max-h-[720px] overflow-y-auto"
         style={{ background: "#1C1C1E" }}
       >
         <table className="w-full border-collapse">
-          <thead>
+          <thead
+            className="sticky top-0 z-10"
+            style={{ background: "#1C1C1E" }}
+          >
             <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
               <th className="text-left pl-4 pr-2 py-2.5 text-[10px] font-semibold tracking-wider uppercase text-white/30">
                 Song
@@ -132,7 +141,7 @@ export default function SoundPerformanceSection({
             </tr>
           </thead>
           <tbody>
-            {songs.slice(0, 10).map((song, i) => {
+            {songs.map((song, i) => {
               const status =
                 STATUS_STYLE[song.tiktok_status || ""] || STATUS_STYLE.active;
               const gap = song.cross_platform_gap
