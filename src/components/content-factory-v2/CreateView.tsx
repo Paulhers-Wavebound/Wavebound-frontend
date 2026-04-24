@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ChevronDown,
   FileText,
@@ -14,8 +14,10 @@ import {
   X,
 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useUserProfile } from "@/contexts/UserProfileContext";
+import { useLabelArtists } from "@/hooks/useLabelArtists";
 import { toast } from "@/hooks/use-toast";
 import BriefCard from "@/components/fan-briefs/BriefCard";
 import type { FanBrief } from "@/types/fanBriefs";
@@ -164,12 +166,25 @@ export default function CreateView({
   // Fan-brief wizard state. Renders a 3-knob picker (artist + source + count)
   // before the BriefCard list. wizardDone flips when the user hits "Show
   // briefs"; the breadcrumb's "Change filters" button flips it back.
-  const [briefArtistHandle, setBriefArtistHandle] = useState<string>("");
+  // Initial values are seeded from URL params so refresh/share preserves the
+  // selection — the sync useEffect below writes back as the user interacts.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [briefArtistHandle, setBriefArtistHandle] = useState<string>(
+    () => searchParams.get("fbArtist") ?? "",
+  );
   const [briefSource, setBriefSource] = useState<
     "live_performance" | "podcasts" | ""
-  >("");
-  const [briefCount, setBriefCount] = useState(5);
-  const [wizardDone, setWizardDone] = useState(false);
+  >(() => {
+    const v = searchParams.get("fbSource");
+    return v === "live_performance" || v === "podcasts" ? v : "";
+  });
+  const [briefCount, setBriefCount] = useState<number>(() => {
+    const v = Number(searchParams.get("fbCount"));
+    return Number.isFinite(v) && v >= 1 && v <= 20 ? v : 5;
+  });
+  const [wizardDone, setWizardDone] = useState<boolean>(
+    () => searchParams.get("fbDone") === "1",
+  );
 
   // Live fetch of pending fan briefs for this label. Shares the query key with
   // /label/fan-briefs so mutations in either route update both caches. The
@@ -199,30 +214,8 @@ export default function CreateView({
   const livePendingBriefs = pendingBriefsQuery.data ?? [];
   const usingLiveBriefs = livePendingBriefs.length > 0;
 
-  // Label roster — populates the wizard's artist dropdown. Same shape as
-  // LabelRoster.tsx:51-71 but trimmed to the columns the picker needs and
-  // restricted to rows with a usable handle (briefs are joined by handle).
-  const labelArtistsQuery = useQuery({
-    queryKey: ["label-artists-v2-create", labelId],
-    enabled: !!labelId,
-    staleTime: 5 * 60_000,
-    queryFn: async (): Promise<
-      { id: string; artist_name: string; artist_handle: string }[]
-    > => {
-      const { data, error } = await supabase
-        .from("artist_intelligence")
-        .select("id, artist_name, artist_handle")
-        .eq("label_id", labelId!)
-        .not("artist_handle", "is", null)
-        .order("artist_name");
-      if (error) throw error;
-      return (data ?? []) as {
-        id: string;
-        artist_name: string;
-        artist_handle: string;
-      }[];
-    },
-  });
+  // Label roster — populates the wizard's artist dropdown.
+  const labelArtistsQuery = useLabelArtists(labelId);
   const labelArtists = labelArtistsQuery.data ?? [];
 
   // Filter the pending pool by the wizard's selections, then cap at the
@@ -360,17 +353,59 @@ export default function CreateView({
     onDraftConsumed();
   }, [draftAngleId, draftPreset, angles, onDraftConsumed]);
 
-  // Reset the fan-brief wizard each time the user re-enters the preset so
-  // the picker starts clean — keeps the fast "click Fan brief, see options"
-  // mental model rather than reviving stale filters from a prior visit.
+  // Reset the fan-brief wizard ONLY when the user actively switches AWAY
+  // from the preset. Using a ref means the initial mount (activePreset=null)
+  // doesn't blow away state seeded from the URL — refresh/share works.
+  const wasFanBriefRef = useRef(activePreset === "fan_brief");
   useEffect(() => {
-    if (activePreset !== "fan_brief") {
+    if (wasFanBriefRef.current && activePreset !== "fan_brief") {
       setBriefArtistHandle("");
       setBriefSource("");
       setBriefCount(5);
       setWizardDone(false);
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          next.delete("fbArtist");
+          next.delete("fbSource");
+          next.delete("fbCount");
+          next.delete("fbDone");
+          return next;
+        },
+        { replace: true },
+      );
     }
-  }, [activePreset]);
+    wasFanBriefRef.current = activePreset === "fan_brief";
+  }, [activePreset, setSearchParams]);
+
+  // Sync wizard state → URL params so refresh keeps the user on Phase 2 and
+  // a copied URL lands somebody else there too (after they re-pick the
+  // preset). Defaults are dropped so the URL stays clean.
+  useEffect(() => {
+    if (activePreset !== "fan_brief") return;
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (briefArtistHandle) next.set("fbArtist", briefArtistHandle);
+        else next.delete("fbArtist");
+        if (briefSource) next.set("fbSource", briefSource);
+        else next.delete("fbSource");
+        if (briefCount !== 5) next.set("fbCount", String(briefCount));
+        else next.delete("fbCount");
+        if (wizardDone) next.set("fbDone", "1");
+        else next.delete("fbDone");
+        return next;
+      },
+      { replace: true },
+    );
+  }, [
+    activePreset,
+    briefArtistHandle,
+    briefSource,
+    briefCount,
+    wizardDone,
+    setSearchParams,
+  ]);
 
   const selectedAngle = angleId
     ? angles.find((a) => a.id === angleId)
@@ -860,7 +895,13 @@ export default function CreateView({
                         />
                       </Field>
 
-                      <Field label={`Clip count — up to ${briefCount}`}>
+                      <Field
+                        label={`Clip count — up to ${briefCount}${
+                          briefArtistHandle && briefSource
+                            ? ` (${totalMatches} available)`
+                            : ""
+                        }`}
+                      >
                         <input
                           type="range"
                           min={1}
@@ -894,7 +935,18 @@ export default function CreateView({
                         </div>
                         <button
                           type="button"
-                          onClick={() => setWizardDone(true)}
+                          onClick={() => {
+                            // Telemetry — early signal for which artists +
+                            // sources are getting reviewed most. Swap for a
+                            // real analytics call once instrumented.
+                            console.log("[fan-brief-wizard] show", {
+                              artist: briefArtistHandle,
+                              source: briefSource,
+                              count: briefCount,
+                              totalMatches,
+                            });
+                            setWizardDone(true);
+                          }}
                           disabled={!briefArtistHandle || !briefSource}
                           className="h-10 px-5 rounded-[10px] text-[14px] font-semibold disabled:opacity-40"
                           style={{
@@ -995,7 +1047,7 @@ export default function CreateView({
                         </div>
                       ) : (
                         <div className="flex flex-col gap-4">
-                          {filteredBriefs.map((brief) => (
+                          {filteredBriefs.map((brief, i) => (
                             <div
                               key={brief.id}
                               style={{
@@ -1014,6 +1066,9 @@ export default function CreateView({
                                 onApprove={handleApproveBrief}
                                 onSkip={handleSkipBrief}
                                 onModifyHook={handleModifyBriefHook}
+                                defaultWhyOpen={
+                                  i === 0 && briefSource === "live_performance"
+                                }
                               />
                             </div>
                           ))}

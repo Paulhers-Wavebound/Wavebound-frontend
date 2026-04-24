@@ -82,3 +82,15 @@ The wizard frames the question the user is actually answering ("which artist, wh
 3. **Surface clip count vs available** in the slider label. Currently reads "Clip count — up to 5"; a "(7 available)" suffix once an artist+source pair is picked would prevent the user from cranking the slider past what exists.
 4. **Extract `useLabelArtists` hook.** Same query now lives in `LabelRoster.tsx` (read into `setArtists` via `useEffect`) and `CreateView.tsx` (read via `useQuery`). When a third caller appears, extract to `src/hooks/useLabelArtists.ts` with React Query as the canonical mode.
 5. **Telemetry for wizard usage.** A simple `console.log` (or actual analytics call once instrumented) on `setWizardDone(true)` capturing artist + source + count would give Paul early signal on which artists/sources are getting reviewed most. Useful for prioritising backend pipeline runs.
+
+## Follow-up — all 5 recs shipped same session
+
+After Paul said "go for it, all recommended too":
+
+- **Rec 1 (URL persistence) ✓** — `useSearchParams` reads `fbArtist` / `fbSource` / `fbCount` / `fbDone` on initial state seed; a sync `useEffect` writes back as the user interacts. The reset effect now uses a ref (`wasFanBriefRef`) so it only fires when the user actively switches AWAY from the preset — initial mount with `activePreset=null` no longer wipes URL state. Defaults are deleted from the URL so it stays clean.
+- **Rec 2 (auto-expand first Live card) ✓** — added `defaultWhyOpen?: boolean` prop to `BriefCard`. CreateView passes `defaultWhyOpen={i === 0 && briefSource === 'live_performance'}` so the first card in a live-performance result set opens its "Why this moment" accordion automatically, surfacing the fan-comment evidence without an extra click. Non-live cards are unaffected (default false preserves existing behavior).
+- **Rec 3 (count vs available) ✓** — slider label now reads `Clip count — up to N (M available)` once both artist and source are chosen. Pre-selection state shows just `up to N`.
+- **Rec 4 (extract hook) ✓** — created `src/hooks/useLabelArtists.ts` wrapping the `artist_intelligence` React Query (key `["label-artists", labelId]`, `staleTime: 5 * 60_000`, restricted to non-null `artist_handle`). CreateView consumes it. `LabelRoster.tsx` left untouched — it has a different state shape with sortBy/freqWindow that complicates a swap; that's a separate refactor for next time LabelRoster gets edited. Hook is ready and discoverable when a third caller lands.
+- **Rec 5 (telemetry) ✓** — `console.log("[fan-brief-wizard] show", { artist, source, count, totalMatches })` on the Show-briefs click. Plain console for now — drop in an actual analytics call (`track("fan_brief_wizard_show", …)`) when the analytics layer is in.
+
+`npx tsc --noEmit` clean. `npm run build` green.

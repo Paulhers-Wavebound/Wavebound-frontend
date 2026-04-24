@@ -42,6 +42,8 @@ interface BriefCardProps {
   onExpand?: (id: string) => void;
   /** When provided, the ⓘ on live-brief cards opens the peak_evidence audit modal. */
   onOpenAudit?: (id: string) => void;
+  /** Open the "Why this moment" accordion by default (live briefs only). */
+  defaultWhyOpen?: boolean;
 }
 
 /**
@@ -130,6 +132,7 @@ export default function BriefCard({
   onToggleSelect,
   onExpand,
   onOpenAudit,
+  defaultWhyOpen = false,
 }: BriefCardProps) {
   const selectable = mode === "content" && !!onToggleSelect;
   const navigate = useNavigate();
@@ -138,7 +141,7 @@ export default function BriefCard({
   const [replayKey, setReplayKey] = useState(0);
   const [showSource, setShowSource] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [isWhyOpen, setIsWhyOpen] = useState(false);
+  const [isWhyOpen, setIsWhyOpen] = useState(defaultWhyOpen);
   const editRef = useRef<HTMLTextAreaElement>(null);
   const embedUrl = getEmbedUrl(brief);
   const badge = statusBadgeStyles[brief.status] ?? statusBadgeStyles.pending;
