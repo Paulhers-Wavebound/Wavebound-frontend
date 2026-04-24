@@ -23,11 +23,14 @@ interface DatabaseTableProps {
   pageSize: number;
 }
 
-const GROUP_ROW_H = 25; // height of the group header row
+const GROUP_ROW_H = 25;
 
+// Tint map for the top group-header row. Values are channel-equivalent
+// accent hues at low alpha; they render over either surface color
+// without clashing because the alpha is low.
 const GROUP_COLORS: Record<string, string> = {
-  Identity: "rgba(255,255,255,0.06)",
-  "Core Scores": "rgba(232,67,10,0.10)",
+  Identity: "transparent",
+  "Core Scores": "rgba(242,93,36,0.10)",
   "Rank & Tier": "rgba(191,90,242,0.08)",
   "Platform Trends": "rgba(10,132,255,0.08)",
   Catalog: "rgba(48,209,88,0.08)",
@@ -36,11 +39,10 @@ const GROUP_COLORS: Record<string, string> = {
   Radio: "rgba(255,214,10,0.08)",
   "Apple Music": "rgba(255,69,58,0.06)",
   "Sound Intel": "rgba(100,210,255,0.08)",
-  Other: "rgba(142,142,147,0.06)",
+  Other: "rgba(142,142,147,0.10)",
   "TikTok Profile": "rgba(255,69,58,0.06)",
 };
 
-// Sticky column width
 const STICKY_W = 200;
 
 function SkeletonRows({
@@ -53,7 +55,7 @@ function SkeletonRows({
   return (
     <>
       {Array.from({ length: count }).map((_, i) => (
-        <TableRow key={i} className="border-white/[0.04]">
+        <TableRow key={i} style={{ borderBottom: "1px solid var(--border)" }}>
           {columns.map((col, j) => (
             <TableCell
               key={col.key}
@@ -66,7 +68,7 @@ function SkeletonRows({
                       position: "sticky" as const,
                       left: 0,
                       zIndex: 1,
-                      background: "#1C1C1E",
+                      background: "var(--surface)",
                     }
                   : {}),
               }}
@@ -76,7 +78,7 @@ function SkeletonRows({
                 style={{
                   height: 14,
                   width: "70%",
-                  background: "rgba(255,255,255,0.06)",
+                  background: "var(--overlay-active)",
                 }}
               />
             </TableCell>
@@ -106,7 +108,8 @@ export default function DatabaseTable({
         overflow: "auto",
         willChange: "scroll-position",
         borderRadius: 8,
-        border: "1px solid rgba(255,255,255,0.06)",
+        border: "1px solid var(--border)",
+        background: "var(--surface)",
         position: "relative",
       }}
     >
@@ -120,44 +123,52 @@ export default function DatabaseTable({
       >
         {/* ── Column group headers (sticky on vertical scroll) ── */}
         <TableHeader>
-          <TableRow className="border-white/[0.06]">
-            {groupSpans.map((g, i) => (
-              <TableHead
-                key={`${g.group}-${i}`}
-                colSpan={g.span}
-                style={{
-                  background:
-                    i === 0
-                      ? "#1C1C1E"
-                      : (GROUP_COLORS[g.group] ?? "transparent"),
-                  color: "rgba(255,255,255,0.40)",
-                  fontSize: 10,
-                  fontWeight: 600,
-                  textTransform: "uppercase",
-                  letterSpacing: "0.08em",
-                  textAlign: "center",
-                  padding: "4px 8px",
-                  borderBottom: "1px solid rgba(255,255,255,0.06)",
-                  whiteSpace: "nowrap",
-                  height: GROUP_ROW_H,
-                  position: "sticky",
-                  top: 0,
-                  zIndex: i === 0 ? 5 : 4,
-                  ...(i === 0
-                    ? {
-                        left: 0,
-                        minWidth: STICKY_W,
-                      }
-                    : {}),
-                }}
-              >
-                {g.group}
-              </TableHead>
-            ))}
+          <TableRow style={{ borderBottom: "1px solid var(--border)" }}>
+            {groupSpans.map((g, i) => {
+              const tint = i === 0 ? null : GROUP_COLORS[g.group];
+              return (
+                <TableHead
+                  key={`${g.group}-${i}`}
+                  colSpan={g.span}
+                  style={{
+                    // Solid surface fill PLUS the tint stacked on top — using
+                    // background-color + background-image keeps the sticky
+                    // header opaque so scrolling rows can't bleed through
+                    // the low-alpha group tints.
+                    backgroundColor: "var(--surface)",
+                    backgroundImage:
+                      tint && tint !== "transparent"
+                        ? `linear-gradient(${tint}, ${tint})`
+                        : "none",
+                    color: "var(--ink-secondary)",
+                    fontSize: 10,
+                    fontWeight: 600,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.08em",
+                    textAlign: "center",
+                    padding: "4px 8px",
+                    borderBottom: "1px solid var(--border)",
+                    whiteSpace: "nowrap",
+                    height: GROUP_ROW_H,
+                    position: "sticky",
+                    top: 0,
+                    zIndex: i === 0 ? 5 : 4,
+                    ...(i === 0
+                      ? {
+                          left: 0,
+                          minWidth: STICKY_W,
+                        }
+                      : {}),
+                  }}
+                >
+                  {g.group}
+                </TableHead>
+              );
+            })}
           </TableRow>
 
           {/* ── Column headers (sticky below group row) ── */}
-          <TableRow className="border-white/[0.06]">
+          <TableRow style={{ borderBottom: "1px solid var(--border)" }}>
             {columns.map((col, i) => {
               const isSortable = !!col.sortKey;
               const isActive = col.sortKey === sortColumn;
@@ -169,17 +180,15 @@ export default function DatabaseTable({
                     width: col.width,
                     minWidth: col.width,
                     padding: "6px 8px",
-                    color: isActive
-                      ? "rgba(255,255,255,0.87)"
-                      : "rgba(255,255,255,0.55)",
+                    color: isActive ? "var(--ink)" : "var(--ink-secondary)",
                     fontWeight: 600,
                     fontSize: 11,
                     cursor: isSortable ? "pointer" : "default",
                     userSelect: "none",
                     whiteSpace: "nowrap",
                     textAlign: col.align ?? "left",
-                    background: "#1C1C1E",
-                    borderBottom: "1px solid rgba(255,255,255,0.08)",
+                    background: "var(--surface)",
+                    borderBottom: "1px solid var(--border)",
                     position: "sticky",
                     top: GROUP_ROW_H,
                     zIndex: i === 0 ? 5 : 4,
@@ -220,7 +229,7 @@ export default function DatabaseTable({
                 style={{
                   textAlign: "center",
                   padding: 40,
-                  color: "rgba(255,255,255,0.30)",
+                  color: "var(--ink-tertiary)",
                 }}
               >
                 No artists found
@@ -230,8 +239,16 @@ export default function DatabaseTable({
             rows.map((row) => (
               <TableRow
                 key={row.entity_id}
-                className="border-white/[0.04] hover:bg-white/[0.03]"
-                style={{ height: 32 }}
+                style={{
+                  height: 32,
+                  borderBottom: "1px solid var(--border)",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = "var(--overlay-hover)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = "transparent";
+                }}
               >
                 {columns.map((col, i) => (
                   <TableCell
@@ -250,7 +267,7 @@ export default function DatabaseTable({
                             position: "sticky" as const,
                             left: 0,
                             zIndex: 1,
-                            background: "#1C1C1E",
+                            background: "var(--surface)",
                             fontWeight: 500,
                             cursor: "pointer",
                           }
@@ -265,10 +282,20 @@ export default function DatabaseTable({
                     {i === 0 ? (
                       <span
                         style={{
-                          color: "rgba(255,255,255,0.87)",
+                          color: "var(--ink)",
                           borderBottom: "1px solid transparent",
+                          transition: "color 120ms, border-color 120ms",
                         }}
-                        className="hover:text-[#e8430a] hover:border-b hover:border-[#e8430a]"
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.color = "var(--accent)";
+                          e.currentTarget.style.borderBottomColor =
+                            "var(--accent)";
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.color = "var(--ink)";
+                          e.currentTarget.style.borderBottomColor =
+                            "transparent";
+                        }}
                       >
                         {row.canonical_name ?? "—"}
                       </span>

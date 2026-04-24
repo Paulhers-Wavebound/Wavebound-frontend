@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   Search,
   ChevronLeft,
@@ -6,6 +7,7 @@ import {
   Download,
   Columns3,
   Check,
+  X,
 } from "lucide-react";
 import {
   Popover,
@@ -19,9 +21,15 @@ import {
   COLUMNS,
   filterColumns,
 } from "@/components/label/database/columns";
+import { TIER_CONFIG } from "@/types/artistIntelligence";
 
 const PAGE_SIZES = [50, 100, 250, 500] as const;
 type PageSize = (typeof PAGE_SIZES)[number];
+const DEFAULT_PAGE_SIZE: PageSize = 100;
+const DEFAULT_SORT_COLUMN = "artist_score";
+
+// Tier display order (high to low)
+const TIER_ORDER = ["elite", "strong", "developing", "emerging", "new"];
 
 // ── CSV export helper ──
 function exportCsv(
@@ -50,22 +58,48 @@ function exportCsv(
 }
 
 export default function ArtistDatabase() {
-  const [page, setPage] = useState(0);
-  const [pageSize, setPageSize] = useState<PageSize>(50);
-  const [search, setSearch] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [sortColumn, setSortColumn] = useState("artist_score");
-  const [sortAsc, setSortAsc] = useState(false);
-  const [hiddenGroups, setHiddenGroups] = useState<Set<string>>(new Set());
+  const [params, setParams] = useSearchParams();
 
-  // Debounce search input
+  // ── URL-backed state ──
+  const page = Math.max(0, Number(params.get("page") ?? "0") || 0);
+  const pageSizeRaw = Number(params.get("size") ?? DEFAULT_PAGE_SIZE);
+  const pageSize = (
+    PAGE_SIZES.includes(pageSizeRaw as PageSize)
+      ? pageSizeRaw
+      : DEFAULT_PAGE_SIZE
+  ) as PageSize;
+  const sortColumn = params.get("sort") ?? DEFAULT_SORT_COLUMN;
+  const sortAsc = params.get("dir") === "asc";
+  const search = params.get("q") ?? "";
+  const tiers = useMemo(() => {
+    const raw = params.get("tiers");
+    if (!raw) return [] as string[];
+    return raw
+      .split(",")
+      .map((t) => t.trim())
+      .filter((t) => TIER_ORDER.includes(t));
+  }, [params]);
+  const minScoreRaw = Number(params.get("minScore") ?? 0);
+  const minScore =
+    Number.isFinite(minScoreRaw) && minScoreRaw > 0
+      ? Math.min(100, Math.max(0, minScoreRaw))
+      : null;
+
+  // Local search input (debounced into URL, kept in sync on external URL changes)
+  const [searchInput, setSearchInput] = useState(search);
   useEffect(() => {
-    const t = setTimeout(() => {
-      setDebouncedSearch(search);
-      setPage(0);
-    }, 300);
-    return () => clearTimeout(t);
+    setSearchInput(search);
   }, [search]);
+
+  // Local min-score input — debounced → URL to avoid a query per keystroke
+  const [minScoreInput, setMinScoreInput] = useState<string>(
+    minScore != null ? String(minScore) : "",
+  );
+  useEffect(() => {
+    setMinScoreInput(minScore != null ? String(minScore) : "");
+  }, [minScore]);
+
+  const [hiddenGroups, setHiddenGroups] = useState<Set<string>>(new Set());
 
   const {
     rows,
@@ -79,7 +113,9 @@ export default function ArtistDatabase() {
     pageSize,
     sortColumn,
     sortAsc,
-    search: debouncedSearch,
+    search,
+    tiers,
+    minScore,
   });
 
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
@@ -91,20 +127,142 @@ export default function ArtistDatabase() {
     [hiddenGroups],
   );
 
+  const updateParams = useCallback(
+    (
+      updates: Record<string, string | null>,
+      opts: { resetPage?: boolean } = {},
+    ) => {
+      setParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          for (const [k, v] of Object.entries(updates)) {
+            if (v === null) next.delete(k);
+            else next.set(k, v);
+          }
+          if (opts.resetPage) next.delete("page");
+          return next;
+        },
+        { replace: true },
+      );
+    },
+    [setParams],
+  );
+
+  // Debounce search input → URL
+  useEffect(() => {
+    if (searchInput === search) return;
+    const t = setTimeout(() => {
+      updateParams({ q: searchInput || null }, { resetPage: true });
+    }, 300);
+    return () => clearTimeout(t);
+  }, [searchInput, search, updateParams]);
+
+  // Debounce min-score input → URL
+  useEffect(() => {
+    const parsed = Number(minScoreInput);
+    const nextVal =
+      minScoreInput === "" || !Number.isFinite(parsed) || parsed <= 0
+        ? null
+        : Math.min(100, Math.max(0, parsed));
+    if (nextVal === minScore) return;
+    const t = setTimeout(() => {
+      updateParams(
+        { minScore: nextVal == null ? null : String(nextVal) },
+        { resetPage: true },
+      );
+    }, 400);
+    return () => clearTimeout(t);
+  }, [minScoreInput, minScore, updateParams]);
+
+  const toggleTier = useCallback(
+    (tier: string) => {
+      const active = tiers.includes(tier);
+      const nextTiers = active
+        ? tiers.filter((t) => t !== tier)
+        : [...tiers, tier];
+      updateParams(
+        { tiers: nextTiers.length === 0 ? null : nextTiers.join(",") },
+        { resetPage: true },
+      );
+    },
+    [tiers, updateParams],
+  );
+
+  const hasActiveFilters =
+    tiers.length > 0 || minScore != null || search !== "";
+
+  const clearFilters = useCallback(() => {
+    updateParams({ tiers: null, minScore: null, q: null }, { resetPage: true });
+    setSearchInput("");
+    setMinScoreInput("");
+  }, [updateParams]);
+
   const handleSort = (col: string) => {
     if (col === sortColumn) {
-      setSortAsc((prev) => !prev);
+      updateParams({ dir: sortAsc ? null : "asc" }, { resetPage: true });
     } else {
-      setSortColumn(col);
-      setSortAsc(false);
+      updateParams(
+        { sort: col === DEFAULT_SORT_COLUMN ? null : col, dir: null },
+        { resetPage: true },
+      );
     }
-    setPage(0);
   };
 
   const handlePageSizeChange = (size: PageSize) => {
-    setPageSize(size);
-    setPage(0);
+    updateParams(
+      { size: size === DEFAULT_PAGE_SIZE ? null : String(size) },
+      { resetPage: true },
+    );
   };
+
+  const goToPage = useCallback(
+    (p: number) => {
+      const bounded = Math.max(0, Math.min(totalPages - 1, p));
+      if (bounded === page) return;
+      updateParams({ page: bounded === 0 ? null : String(bounded) });
+    },
+    [page, totalPages, updateParams],
+  );
+
+  // If filters narrow the result set so that the current page is out of
+  // range, snap back to the last valid page. Only runs once counts settle
+  // to avoid thrashing while counts are loading.
+  useEffect(() => {
+    if (isCountLoading || isLoading) return;
+    if (page > 0 && page >= totalPages) {
+      updateParams({
+        page: totalPages - 1 === 0 ? null : String(totalPages - 1),
+      });
+    }
+  }, [isCountLoading, isLoading, page, totalPages, updateParams]);
+
+  // Keyboard navigation (← / →) — skip when typing in inputs
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
+      const target = e.target as HTMLElement | null;
+      if (target) {
+        const tag = target.tagName;
+        if (
+          tag === "INPUT" ||
+          tag === "TEXTAREA" ||
+          tag === "SELECT" ||
+          target.isContentEditable
+        ) {
+          return;
+        }
+      }
+      if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        goToPage(page - 1);
+      } else if (e.key === "ArrowRight") {
+        e.preventDefault();
+        goToPage(page + 1);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [page, goToPage]);
 
   const toggleGroup = useCallback((group: string) => {
     setHiddenGroups((prev) => {
@@ -124,7 +282,6 @@ export default function ArtistDatabase() {
     [totalCount],
   );
 
-  // Toggleable groups (everything except Identity which is always shown)
   const toggleableGroups = COLUMN_GROUPS.filter((g) => g !== "Identity");
 
   return (
@@ -151,7 +308,7 @@ export default function ArtistDatabase() {
             style={{
               fontSize: 22,
               fontWeight: 700,
-              color: "rgba(255,255,255,0.87)",
+              color: "var(--ink)",
               margin: 0,
             }}
           >
@@ -163,7 +320,7 @@ export default function ArtistDatabase() {
                 fontFamily: "'JetBrains Mono', monospace",
                 fontSize: 28,
                 fontWeight: 700,
-                color: "#e8430a",
+                color: "var(--accent)",
                 letterSpacing: "-0.02em",
               }}
             >
@@ -173,7 +330,7 @@ export default function ArtistDatabase() {
           <span
             style={{
               fontSize: 13,
-              color: "rgba(255,255,255,0.40)",
+              color: "var(--ink-tertiary)",
               fontWeight: 500,
             }}
           >
@@ -183,7 +340,7 @@ export default function ArtistDatabase() {
             <span
               style={{
                 fontSize: 11,
-                color: "rgba(255,255,255,0.25)",
+                color: "var(--ink-faint)",
                 fontFamily: "'JetBrains Mono', monospace",
                 marginLeft: "auto",
               }}
@@ -211,24 +368,24 @@ export default function ArtistDatabase() {
                 left: 10,
                 top: "50%",
                 transform: "translateY(-50%)",
-                color: "rgba(255,255,255,0.30)",
+                color: "var(--ink-tertiary)",
                 pointerEvents: "none",
               }}
             />
             <input
               type="text"
               placeholder="Search artists…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
               style={{
                 width: "100%",
                 height: 32,
                 paddingLeft: 32,
                 paddingRight: 12,
                 borderRadius: 6,
-                border: "1px solid rgba(255,255,255,0.08)",
-                background: "#2C2C2E",
-                color: "rgba(255,255,255,0.87)",
+                border: "1px solid var(--border)",
+                background: "var(--surface)",
+                color: "var(--ink)",
                 fontSize: 12,
                 outline: "none",
               }}
@@ -246,9 +403,9 @@ export default function ArtistDatabase() {
                   alignItems: "center",
                   gap: 6,
                   borderRadius: 6,
-                  border: "1px solid rgba(255,255,255,0.08)",
-                  background: "#2C2C2E",
-                  color: "rgba(255,255,255,0.55)",
+                  border: "1px solid var(--border)",
+                  background: "var(--surface)",
+                  color: "var(--ink-secondary)",
                   fontSize: 12,
                   cursor: "pointer",
                   whiteSpace: "nowrap",
@@ -259,7 +416,7 @@ export default function ArtistDatabase() {
                 {hiddenGroups.size > 0 && (
                   <span
                     style={{
-                      background: "#e8430a",
+                      background: "var(--accent)",
                       color: "#fff",
                       borderRadius: 8,
                       padding: "0 5px",
@@ -277,15 +434,15 @@ export default function ArtistDatabase() {
               align="start"
               className="w-56 p-2"
               style={{
-                background: "#2C2C2E",
-                border: "1px solid rgba(255,255,255,0.08)",
+                background: "var(--surface)",
+                border: "1px solid var(--border)",
               }}
             >
               <div
                 style={{
                   fontSize: 10,
                   fontWeight: 600,
-                  color: "rgba(255,255,255,0.35)",
+                  color: "var(--ink-tertiary)",
                   textTransform: "uppercase",
                   letterSpacing: "0.06em",
                   padding: "4px 8px 6px",
@@ -299,6 +456,12 @@ export default function ArtistDatabase() {
                   <button
                     key={group}
                     onClick={() => toggleGroup(group)}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = "var(--overlay-hover)";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = "transparent";
+                    }}
                     style={{
                       display: "flex",
                       alignItems: "center",
@@ -308,14 +471,11 @@ export default function ArtistDatabase() {
                       borderRadius: 4,
                       border: "none",
                       background: "transparent",
-                      color: visible
-                        ? "rgba(255,255,255,0.87)"
-                        : "rgba(255,255,255,0.30)",
+                      color: visible ? "var(--ink)" : "var(--ink-tertiary)",
                       fontSize: 12,
                       cursor: "pointer",
                       textAlign: "left",
                     }}
-                    className="hover:bg-white/[0.06]"
                   >
                     <div
                       style={{
@@ -324,8 +484,8 @@ export default function ArtistDatabase() {
                         borderRadius: 3,
                         border: visible
                           ? "none"
-                          : "1px solid rgba(255,255,255,0.15)",
-                        background: visible ? "#e8430a" : "transparent",
+                          : "1px solid var(--border-hover)",
+                        background: visible ? "var(--accent)" : "transparent",
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
@@ -352,12 +512,10 @@ export default function ArtistDatabase() {
               alignItems: "center",
               gap: 6,
               borderRadius: 6,
-              border: "1px solid rgba(255,255,255,0.08)",
-              background: "#2C2C2E",
+              border: "1px solid var(--border)",
+              background: "var(--surface)",
               color:
-                rows.length === 0
-                  ? "rgba(255,255,255,0.20)"
-                  : "rgba(255,255,255,0.55)",
+                rows.length === 0 ? "var(--ink-faint)" : "var(--ink-secondary)",
               fontSize: 12,
               cursor: rows.length === 0 ? "default" : "pointer",
               whiteSpace: "nowrap",
@@ -377,7 +535,7 @@ export default function ArtistDatabase() {
               alignItems: "center",
               gap: 6,
               fontSize: 12,
-              color: "rgba(255,255,255,0.40)",
+              color: "var(--ink-tertiary)",
             }}
           >
             <span>Rows</span>
@@ -390,9 +548,9 @@ export default function ArtistDatabase() {
                 height: 28,
                 padding: "0 8px",
                 borderRadius: 4,
-                border: "1px solid rgba(255,255,255,0.08)",
-                background: "#2C2C2E",
-                color: "rgba(255,255,255,0.87)",
+                border: "1px solid var(--border)",
+                background: "var(--surface)",
+                color: "var(--ink)",
                 fontSize: 12,
                 cursor: "pointer",
               }}
@@ -410,7 +568,7 @@ export default function ArtistDatabase() {
             <span
               style={{
                 fontSize: 12,
-                color: "rgba(255,255,255,0.40)",
+                color: "var(--ink-tertiary)",
                 fontFamily: "'JetBrains Mono', monospace",
                 whiteSpace: "nowrap",
               }}
@@ -422,8 +580,9 @@ export default function ArtistDatabase() {
           {/* Pagination arrows */}
           <div style={{ display: "flex", gap: 2 }}>
             <button
-              onClick={() => setPage((p) => Math.max(0, p - 1))}
+              onClick={() => goToPage(page - 1)}
               disabled={page === 0}
+              title="Previous page (←)"
               style={{
                 width: 28,
                 height: 28,
@@ -431,20 +590,18 @@ export default function ArtistDatabase() {
                 alignItems: "center",
                 justifyContent: "center",
                 borderRadius: 4,
-                border: "1px solid rgba(255,255,255,0.08)",
-                background: page === 0 ? "transparent" : "#2C2C2E",
-                color:
-                  page === 0
-                    ? "rgba(255,255,255,0.15)"
-                    : "rgba(255,255,255,0.55)",
+                border: "1px solid var(--border)",
+                background: page === 0 ? "transparent" : "var(--surface)",
+                color: page === 0 ? "var(--ink-faint)" : "var(--ink-secondary)",
                 cursor: page === 0 ? "default" : "pointer",
               }}
             >
               <ChevronLeft size={14} />
             </button>
             <button
-              onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+              onClick={() => goToPage(page + 1)}
               disabled={page >= totalPages - 1}
+              title="Next page (→)"
               style={{
                 width: 28,
                 height: 28,
@@ -452,12 +609,13 @@ export default function ArtistDatabase() {
                 alignItems: "center",
                 justifyContent: "center",
                 borderRadius: 4,
-                border: "1px solid rgba(255,255,255,0.08)",
-                background: page >= totalPages - 1 ? "transparent" : "#2C2C2E",
+                border: "1px solid var(--border)",
+                background:
+                  page >= totalPages - 1 ? "transparent" : "var(--surface)",
                 color:
                   page >= totalPages - 1
-                    ? "rgba(255,255,255,0.15)"
-                    : "rgba(255,255,255,0.55)",
+                    ? "var(--ink-faint)"
+                    : "var(--ink-secondary)",
                 cursor: page >= totalPages - 1 ? "default" : "pointer",
               }}
             >
@@ -472,16 +630,158 @@ export default function ArtistDatabase() {
                 width: 6,
                 height: 6,
                 borderRadius: 3,
-                background: "#e8430a",
+                background: "var(--accent)",
                 animation: "pulse 1s infinite",
               }}
             />
           )}
         </div>
+
+        {/* ── Filter row ── */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            padding: "0 0 12px",
+            flexWrap: "wrap",
+          }}
+        >
+          {/* Tier chips */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              fontSize: 11,
+              fontWeight: 600,
+              color: "var(--ink-tertiary)",
+              textTransform: "uppercase",
+              letterSpacing: "0.06em",
+            }}
+          >
+            Tier
+          </div>
+          <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+            {TIER_ORDER.map((tier) => {
+              const cfg = TIER_CONFIG[tier];
+              const active = tiers.includes(tier);
+              return (
+                <button
+                  key={tier}
+                  onClick={() => toggleTier(tier)}
+                  style={{
+                    padding: "3px 10px",
+                    borderRadius: 999,
+                    border: `1px solid ${active ? cfg.color : "var(--border)"}`,
+                    background: active ? cfg.bg : "transparent",
+                    color: active ? cfg.color : "var(--ink-secondary)",
+                    fontSize: 11,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    whiteSpace: "nowrap",
+                    transition: "background 120ms, color 120ms",
+                  }}
+                >
+                  {cfg.label}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Separator */}
+          <div
+            style={{
+              width: 1,
+              height: 20,
+              background: "var(--border)",
+              margin: "0 4px",
+            }}
+          />
+
+          {/* Min score */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              fontSize: 12,
+              color: "var(--ink-tertiary)",
+            }}
+          >
+            <label
+              htmlFor="vault-min-score"
+              style={{
+                fontSize: 11,
+                fontWeight: 600,
+                color: "var(--ink-tertiary)",
+                textTransform: "uppercase",
+                letterSpacing: "0.06em",
+              }}
+            >
+              Min Score
+            </label>
+            <input
+              id="vault-min-score"
+              type="number"
+              inputMode="numeric"
+              min={0}
+              max={100}
+              step={1}
+              placeholder="0"
+              value={minScoreInput}
+              onChange={(e) => setMinScoreInput(e.target.value)}
+              style={{
+                width: 64,
+                height: 28,
+                padding: "0 8px",
+                borderRadius: 6,
+                border: "1px solid var(--border)",
+                background: "var(--surface)",
+                color: "var(--ink)",
+                fontSize: 12,
+                outline: "none",
+                fontFamily: "'JetBrains Mono', monospace",
+              }}
+            />
+          </div>
+
+          {hasActiveFilters && (
+            <button
+              onClick={clearFilters}
+              style={{
+                height: 28,
+                padding: "0 10px",
+                display: "flex",
+                alignItems: "center",
+                gap: 4,
+                borderRadius: 6,
+                border: "1px solid var(--border)",
+                background: "transparent",
+                color: "var(--ink-secondary)",
+                fontSize: 11,
+                fontWeight: 500,
+                cursor: "pointer",
+                marginLeft: "auto",
+              }}
+            >
+              <X size={12} />
+              Clear filters
+            </button>
+          )}
+        </div>
       </div>
 
       {/* ── Table ── */}
-      <div style={{ flex: 1, overflow: "hidden", padding: "0 24px 16px" }}>
+      <div
+        style={{
+          flex: 1,
+          minHeight: 0,
+          display: "flex",
+          flexDirection: "column",
+          padding: "0 24px 16px",
+        }}
+      >
         <DatabaseTable
           rows={rows}
           columns={visibleColumns}

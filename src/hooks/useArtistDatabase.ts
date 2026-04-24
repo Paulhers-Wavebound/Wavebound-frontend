@@ -118,6 +118,25 @@ export interface UseArtistDatabaseParams {
   sortColumn: string;
   sortAsc: boolean;
   search: string;
+  tiers?: string[];
+  minScore?: number | null;
+}
+
+// Apply the user filters (search / tier / min score) to a PostgREST query.
+// Used by both the count query and the paginated list query so they stay
+// in sync.
+function applyFilters(
+  q: any,
+  {
+    search,
+    tiers,
+    minScore,
+  }: { search: string; tiers?: string[]; minScore?: number | null },
+) {
+  if (search) q = q.ilike("canonical_name", `%${search}%`);
+  if (tiers && tiers.length > 0) q = q.in("tier", tiers);
+  if (minScore != null && minScore > 0) q = q.gte("artist_score", minScore);
+  return q;
 }
 
 export function useArtistDatabase({
@@ -126,15 +145,17 @@ export function useArtistDatabase({
   sortColumn,
   sortAsc,
   search,
+  tiers,
+  minScore,
 }: UseArtistDatabaseParams) {
   // ---- Count query (cached aggressively) ----
   const countQuery = useQuery({
-    queryKey: ["artist-database-count", search],
+    queryKey: ["artist-database-count", search, tiers, minScore],
     queryFn: async () => {
       let q = (supabase as any)
         .from("artist_score")
         .select("*", { count: "exact", head: true });
-      if (search) q = q.ilike("canonical_name", `%${search}%`);
+      q = applyFilters(q, { search, tiers, minScore });
       const { count, error } = await q;
       if (error) throw error;
       return (count as number) ?? 0;
@@ -146,10 +167,19 @@ export function useArtistDatabase({
   const offset = page * pageSize;
 
   const scoreQuery = useQuery({
-    queryKey: ["artist-database", page, pageSize, sortColumn, sortAsc, search],
+    queryKey: [
+      "artist-database",
+      page,
+      pageSize,
+      sortColumn,
+      sortAsc,
+      search,
+      tiers,
+      minScore,
+    ],
     queryFn: async () => {
       let q = (supabase as any).from("artist_score").select("*");
-      if (search) q = q.ilike("canonical_name", `%${search}%`);
+      q = applyFilters(q, { search, tiers, minScore });
       q = q.order(sortColumn, { ascending: sortAsc });
       q = q.range(offset, offset + pageSize - 1);
       const { data, error } = await q;
