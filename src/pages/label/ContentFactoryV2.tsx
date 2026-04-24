@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { Compass, Factory, Inbox } from "lucide-react";
 import AnglesView from "@/components/content-factory-v2/AnglesView";
 import CreateView from "@/components/content-factory-v2/CreateView";
@@ -14,6 +15,9 @@ import type {
   OutputType,
   QueueItem,
 } from "@/components/content-factory-v2/types";
+import type { FanBrief } from "@/types/fanBriefs";
+import { useUserProfile } from "@/contexts/UserProfileContext";
+import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 
 type TabKey = "angles" | "create" | "review";
@@ -46,6 +50,8 @@ export default function ContentFactoryV2() {
   const [params, setParams] = useSearchParams();
   const tabFromUrl = params.get("tab");
   const activeTab: TabKey = isTabKey(tabFromUrl) ? tabFromUrl : "review";
+  const { labelId } = useUserProfile();
+  const queryClient = useQueryClient();
 
   const setActiveTab = useCallback(
     (tab: TabKey) => {
@@ -136,15 +142,46 @@ export default function ContentFactoryV2() {
   }, []);
 
   const handleKillWithFeedback = useCallback(
-    (itemId: string, reason: KillReason, note: string) => {
+    async (itemId: string, reason: KillReason, note: string) => {
       // TODO: feeds back into artist's Autopilot priors
+      const item = queue.find((q) => q.id === itemId);
       setQueue((prev) => prev.filter((q) => q.id !== itemId));
+
+      // When the queue item was sourced from a live fan_briefs row, cascade
+      // the kill to the backend so it doesn't come back on the next sync.
+      // Interview briefs previously approved will flip from 'approved' →
+      // 'archived' (matches the Delete path in /label/fan-briefs clips tab).
+      if (item?.fanBriefId) {
+        const { error } = await supabase
+          .from("fan_briefs")
+          .update({ status: "archived" })
+          .eq("id", item.fanBriefId);
+        if (error) {
+          toast({
+            title: "Kill saved locally — backend sync failed",
+            description: error.message,
+            variant: "destructive",
+          });
+        } else {
+          // Drop the brief from the pending-briefs cache so CreateView and
+          // /label/fan-briefs stop showing it.
+          queryClient.setQueryData<FanBrief[]>(
+            ["fan-briefs", labelId, "content"],
+            (prev) => (prev ?? []).filter((b) => b.id !== item.fanBriefId),
+          );
+          queryClient.setQueryData<FanBrief[]>(
+            ["fan-briefs", labelId, "clips"],
+            (prev) => (prev ?? []).filter((b) => b.id !== item.fanBriefId),
+          );
+        }
+      }
+
       toast({
         title: "Killed with feedback",
         description: `Reason: ${reason.replace("_", " ")}${note ? ` · "${note.slice(0, 48)}"` : ""}`,
       });
     },
-    [],
+    [queue, labelId, queryClient],
   );
 
   const tabTitle = useMemo(() => {

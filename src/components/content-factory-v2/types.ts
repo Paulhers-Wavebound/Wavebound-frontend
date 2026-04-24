@@ -74,6 +74,13 @@ export interface QueueItem {
   createdAt: string;
   scheduledFor?: string;
   angleId?: string;
+  // Set when the item originated from a live /label/fan-briefs row. Lets
+  // Review's Kill-with-feedback cascade the archive back to fan_briefs, and
+  // lets QueueCard fall back to the brief's own artist when it isn't in
+  // MOCK_ARTISTS (live briefs can come from artists outside the v2 mock set).
+  fanBriefId?: string;
+  artistDisplayName?: string;
+  artistDisplayHandle?: string;
 }
 
 export type AngleFamilyFilter = "all" | AngleFamily;

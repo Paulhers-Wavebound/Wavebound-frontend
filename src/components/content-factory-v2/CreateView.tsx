@@ -13,9 +13,12 @@ import {
   Sparkles,
   X,
 } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useUserProfile } from "@/contexts/UserProfileContext";
+import { toast } from "@/hooks/use-toast";
+import BriefCard from "@/components/fan-briefs/BriefCard";
+import type { FanBrief } from "@/types/fanBriefs";
 import type { Angle, OutputType, QueueItem } from "./types";
 import {
   ANGLE_FAMILY_COLOR,
@@ -24,19 +27,28 @@ import {
   OUTPUT_TYPE_LABEL,
 } from "./mockData";
 
-// Read-only shape of a pending brief as we use it in the Create picker.
-// Kept local (not imported from src/types/fanBriefs.ts) so v2 stays fully
-// decoupled from the live /label/fan-briefs route until the merge-path
-// decision is made.
-interface PendingBriefRow {
-  id: string;
-  hook_text: string;
-  artist_handle: string;
-  source_title: string | null;
-  confidence_score: number;
-  content_type: string | null;
-  render_style: string | null;
-}
+// Shared with /label/fan-briefs. Kept inline here rather than extracted to a
+// util so the two routes stay independently editable during the v2 prototype
+// phase; align signatures when the merge-path PR lands (see
+// docs/handoffs/2026-04-23_factory-v2-merge-path.md).
+const BRIEFS_SELECT = `
+  *,
+  content_segments (
+    peak_evidence,
+    hook_source,
+    content_catalog (
+      live_venue,
+      content_type,
+      title,
+      duration_seconds
+    )
+  )
+`;
+const pendingBriefsQueryKey = (labelId: string | null) => [
+  "fan-briefs",
+  labelId,
+  "content",
+];
 
 interface CreateViewProps {
   angles: Angle[];
@@ -115,6 +127,9 @@ export default function CreateView({
   const [selectedAvatar, setSelectedAvatar] = useState<string>("av-native");
   const [tuneOpen, setTuneOpen] = useState(false);
 
+  // Track the brief being mutated so the right BriefCard shows a pending state.
+  const [mutatingBriefId, setMutatingBriefId] = useState<string | null>(null);
+
   // Preset-specific form state (kept simple for mock)
   const [angleId, setAngleId] = useState<string>("");
   const [aspectRatio, setAspectRatio] = useState<"9:16" | "1:1" | "16:9">(
@@ -146,67 +161,125 @@ export default function CreateView({
   const [linkUrl, setLinkUrl] = useState<string>("");
   const [linkExtracted, setLinkExtracted] = useState(false);
 
-  // Read-only live fetch of pending fan briefs for this label. Decoupled on
-  // purpose from /label/fan-briefs — see merge-path handoff for wiring plan.
+  // Live fetch of pending fan briefs for this label. Shares the query key with
+  // /label/fan-briefs so mutations in either route update both caches. The
+  // fallback `PENDING_FAN_BRIEFS` keeps the preset usable when there's no
+  // label scope or zero pending briefs.
   const { labelId } = useUserProfile();
+  const queryClient = useQueryClient();
   const pendingBriefsQuery = useQuery({
-    queryKey: ["v2-pending-fan-briefs", labelId],
+    queryKey: pendingBriefsQueryKey(labelId),
     enabled: !!labelId,
-    staleTime: 30_000,
-    refetchOnWindowFocus: false,
-    queryFn: async (): Promise<PendingBriefRow[]> => {
+    refetchInterval: 30_000,
+    staleTime: 15_000,
+    queryFn: async (): Promise<FanBrief[]> => {
       const { data, error } = await supabase
         .from("fan_briefs")
-        .select(
-          "id, hook_text, artist_handle, source_title, confidence_score, content_type, render_style",
-        )
+        .select(BRIEFS_SELECT)
         .eq("label_id", labelId!)
         .eq("status", "pending")
         .is("rendered_clip_url", null)
         .order("confidence_score", { ascending: false })
         .limit(20);
       if (error) throw error;
-      return (data ?? []) as PendingBriefRow[];
+      return (data ?? []) as FanBrief[];
     },
   });
 
   const livePendingBriefs = pendingBriefsQuery.data ?? [];
   const usingLiveBriefs = livePendingBriefs.length > 0;
 
-  // Options shown in the picker: prefer live, fall back to mock when there are
-  // no pending briefs for the label (or no labelId at all). Mock keeps the
-  // preset usable for Paul's own account with no scope.
-  const briefOptions = useMemo(() => {
-    if (usingLiveBriefs) {
-      return livePendingBriefs.map((b) => {
-        const hook = b.hook_text ?? "";
-        const short = hook.length > 60 ? `${hook.slice(0, 60)}…` : hook;
-        return {
-          id: b.id,
-          title: `@${b.artist_handle} — ${short || "(no hook)"}`,
-          hook,
-          isLive: true as const,
-        };
+  // Approve a live brief: flip status to 'approved' on fan_briefs (backend
+  // rendering fires off that), optimistically remove it from the pending
+  // cache, and push a matching item into the v2 Review queue tagged with the
+  // brief id so Kill-with-feedback can cascade an archive back.
+  const handleApproveBrief = async (briefId: string) => {
+    const brief = livePendingBriefs.find((b) => b.id === briefId);
+    if (!brief) return;
+    setMutatingBriefId(briefId);
+    const approvedAt = new Date().toISOString();
+    const { error } = await supabase
+      .from("fan_briefs")
+      .update({ status: "approved", approved_at: approvedAt })
+      .eq("id", briefId);
+    setMutatingBriefId(null);
+    if (error) {
+      toast({
+        title: "Failed to approve",
+        description: error.message,
+        variant: "destructive",
       });
+      return;
     }
-    return PENDING_FAN_BRIEFS.map((b) => ({
-      id: b.id,
-      title: b.title,
-      hook: "",
-      isLive: false as const,
-    }));
-  }, [usingLiveBriefs, livePendingBriefs]);
+    queryClient.setQueryData<FanBrief[]>(
+      pendingBriefsQueryKey(labelId),
+      (prev) => (prev ?? []).filter((b) => b.id !== briefId),
+    );
+    const hook = brief.modified_hook || brief.hook_text;
+    const short = hook.length > 56 ? `${hook.slice(0, 56)}…` : hook;
+    onGenerate({
+      id: `q-fb-${briefId}`,
+      artistId: `fb-${brief.artist_id}`,
+      artistDisplayName: `@${brief.artist_handle}`,
+      artistDisplayHandle: brief.artist_handle,
+      title: `Fan brief · @${brief.artist_handle} — ${short || "(no hook)"}`,
+      outputType: "fan_brief",
+      source: "fan_brief",
+      status: "pending",
+      risk: "low",
+      riskNotes: [],
+      thumbKind: "brief",
+      createdAt: "just now",
+      fanBriefId: briefId,
+    });
+    toast({
+      title: "Brief approved — rendering",
+      description: "Queued into Review. Schedule it when ready.",
+    });
+  };
 
-  const briefOptionsIndex = useMemo(
-    () => new Map(briefOptions.map((b) => [b.id, b])),
-    [briefOptions],
-  );
+  const handleSkipBrief = async (briefId: string) => {
+    setMutatingBriefId(briefId);
+    const { error } = await supabase
+      .from("fan_briefs")
+      .update({ status: "skipped" })
+      .eq("id", briefId);
+    setMutatingBriefId(null);
+    if (error) {
+      toast({
+        title: "Failed to skip",
+        description: error.message,
+        variant: "destructive",
+      });
+      return;
+    }
+    queryClient.setQueryData<FanBrief[]>(
+      pendingBriefsQueryKey(labelId),
+      (prev) => (prev ?? []).filter((b) => b.id !== briefId),
+    );
+  };
 
-  // When the user picks a brief, seed the edit textarea with its hook.
-  const handleFanBriefPick = (id: string) => {
-    setFanBriefId(id);
-    const opt = briefOptionsIndex.get(id);
-    setFanBriefEdit(opt?.hook ?? "");
+  const handleModifyBriefHook = async (briefId: string, newHook: string) => {
+    const { error } = await supabase
+      .from("fan_briefs")
+      .update({ modified_hook: newHook })
+      .eq("id", briefId);
+    if (error) {
+      toast({
+        title: "Failed to save hook",
+        description: error.message,
+        variant: "destructive",
+      });
+      return;
+    }
+    queryClient.setQueryData<FanBrief[]>(
+      pendingBriefsQueryKey(labelId),
+      (prev) =>
+        (prev ?? []).map((b) =>
+          b.id === briefId ? { ...b, modified_hook: newHook } : b,
+        ),
+    );
+    toast({ title: "Hook saved" });
   };
 
   // Hydrate from a draft (when user hits "Send to Create" in Angles)
@@ -622,152 +695,114 @@ export default function CreateView({
               </>
             )}
 
-            {/* Fan brief */}
+            {/* Fan brief — live: inline BriefCard list; mock fallback: simple picker */}
             {activePreset === "fan_brief" && (
               <>
-                <Field label="Pending brief">
-                  {pendingBriefsQuery.isLoading ? (
-                    <div
-                      className="rounded-[10px] px-3 py-2 text-[12px] flex items-center gap-2"
-                      style={{
-                        background: "var(--bg-subtle)",
-                        border: "1px solid var(--border)",
-                        color: "var(--ink-tertiary)",
-                      }}
-                    >
-                      <Loader2 size={12} className="animate-spin" />
-                      Loading pending briefs…
-                    </div>
-                  ) : (
-                    <Select
-                      value={fanBriefId}
-                      onChange={handleFanBriefPick}
-                      options={[
-                        {
-                          value: "",
-                          label: usingLiveBriefs
-                            ? `— pick from ${livePendingBriefs.length} pending —`
-                            : "— pick a pending brief —",
-                        },
-                        ...briefOptions.map((b) => ({
-                          value: b.id,
-                          label: b.title,
-                        })),
-                      ]}
-                    />
-                  )}
-                </Field>
-
-                {/* Selected brief context — only when a live brief is picked */}
-                {usingLiveBriefs &&
-                  fanBriefId &&
-                  (() => {
-                    const real = livePendingBriefs.find(
-                      (b) => b.id === fanBriefId,
-                    );
-                    if (!real) return null;
-                    return (
-                      <div
-                        className="rounded-[10px] p-3 flex flex-col gap-1"
-                        style={{
-                          background: "var(--bg-subtle)",
-                          border: "1px solid var(--border)",
-                        }}
-                      >
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span
-                            className="px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide"
-                            style={{
-                              background: "var(--accent-light)",
-                              color: "var(--accent)",
-                            }}
-                          >
-                            {real.content_type === "live_performance"
-                              ? "Live"
-                              : "Interview"}
-                          </span>
-                          {real.render_style === "karaoke" && (
-                            <span
-                              className="px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide"
-                              style={{
-                                background: "rgba(217,164,74,0.14)",
-                                color: "#d9a44a",
-                              }}
-                            >
-                              Karaoke
-                            </span>
-                          )}
-                          <span
-                            className="text-[11px] font-['JetBrains_Mono',monospace] tabular-nums"
-                            style={{ color: "var(--ink-tertiary)" }}
-                          >
-                            conf {real.confidence_score}%
-                          </span>
-                          <span
-                            className="text-[11px] font-['JetBrains_Mono',monospace] ml-auto"
-                            style={{ color: "var(--ink-tertiary)" }}
-                          >
-                            @{real.artist_handle}
-                          </span>
-                        </div>
-                        {real.source_title && (
-                          <div
-                            className="text-[12px] italic"
-                            style={{ color: "var(--ink-tertiary)" }}
-                          >
-                            from: {real.source_title}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })()}
-
-                <Field label="Edit hook / caption">
-                  <textarea
-                    value={fanBriefEdit}
-                    onChange={(e) => setFanBriefEdit(e.target.value)}
-                    placeholder={
-                      usingLiveBriefs
-                        ? "Pick a brief to load its synthesized hook, then edit."
-                        : "Live fan-brief edit surface — reuses the existing Fan Briefs flow in the merged version."
-                    }
-                    className="w-full min-h-[80px] px-3 py-2 rounded-[10px] text-[14px] outline-none resize-y"
+                {pendingBriefsQuery.isLoading ? (
+                  <div
+                    className="rounded-[10px] px-3 py-2 text-[12px] flex items-center gap-2"
                     style={{
                       background: "var(--bg-subtle)",
-                      color: "var(--ink)",
                       border: "1px solid var(--border)",
+                      color: "var(--ink-tertiary)",
                     }}
-                  />
-                </Field>
-
-                <div
-                  className="text-[11px] flex items-center gap-1.5"
-                  style={{ color: "var(--ink-tertiary)" }}
-                >
-                  {pendingBriefsQuery.isError ? (
-                    <>
-                      <span style={{ color: "#d9a44a" }}>●</span>
-                      Couldn't fetch live briefs — showing mock. See console.
-                    </>
-                  ) : usingLiveBriefs ? (
-                    <>
+                  >
+                    <Loader2 size={12} className="animate-spin" />
+                    Loading pending briefs…
+                  </div>
+                ) : usingLiveBriefs ? (
+                  <>
+                    <div
+                      className="text-[11px] flex items-center gap-1.5"
+                      style={{ color: "var(--ink-tertiary)" }}
+                    >
                       <span style={{ color: "#4aa07a" }}>●</span>
-                      Live · {livePendingBriefs.length} pending briefs on this
-                      label · read-only, approve/kill still deferred to
-                      /label/fan-briefs until the merge-path lands.
-                    </>
-                  ) : labelId ? (
-                    <>
-                      <span style={{ color: "var(--ink-tertiary)" }}>●</span>
-                      No pending briefs for this label — showing mock titles.
-                    </>
-                  ) : (
-                    <>
-                      <span style={{ color: "var(--ink-tertiary)" }}>●</span>
-                      No label scope — showing mock titles.
-                    </>
-                  )}
-                </div>
+                      Live · {livePendingBriefs.length} pending brief
+                      {livePendingBriefs.length === 1 ? "" : "s"} on this label
+                      · Approve to fire backend rendering and push to Review.
+                    </div>
+                    <div className="flex flex-col gap-4">
+                      {livePendingBriefs.map((brief) => (
+                        <div
+                          key={brief.id}
+                          style={{
+                            opacity: mutatingBriefId === brief.id ? 0.5 : 1,
+                            pointerEvents:
+                              mutatingBriefId === brief.id ? "none" : "auto",
+                            transition: "opacity 0.15s",
+                          }}
+                        >
+                          <BriefCard
+                            brief={brief}
+                            mode="content"
+                            staticPreview
+                            onApprove={handleApproveBrief}
+                            onSkip={handleSkipBrief}
+                            onModifyHook={handleModifyBriefHook}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <Field label="Pending brief (mock)">
+                      <Select
+                        value={fanBriefId}
+                        onChange={(id) => {
+                          setFanBriefId(id);
+                          setFanBriefEdit("");
+                        }}
+                        options={[
+                          { value: "", label: "— pick a mock brief —" },
+                          ...PENDING_FAN_BRIEFS.map((b) => ({
+                            value: b.id,
+                            label: b.title,
+                          })),
+                        ]}
+                      />
+                    </Field>
+                    <Field label="Edit hook / caption">
+                      <textarea
+                        value={fanBriefEdit}
+                        onChange={(e) => setFanBriefEdit(e.target.value)}
+                        placeholder="Mock-only — live /label/fan-briefs renders inline with real peak_evidence when a scoped session is active."
+                        className="w-full min-h-[80px] px-3 py-2 rounded-[10px] text-[14px] outline-none resize-y"
+                        style={{
+                          background: "var(--bg-subtle)",
+                          color: "var(--ink)",
+                          border: "1px solid var(--border)",
+                        }}
+                      />
+                    </Field>
+                    <div
+                      className="text-[11px] flex items-center gap-1.5"
+                      style={{ color: "var(--ink-tertiary)" }}
+                    >
+                      {pendingBriefsQuery.isError ? (
+                        <>
+                          <span style={{ color: "#d9a44a" }}>●</span>
+                          Couldn't fetch live briefs — showing mock. See
+                          console.
+                        </>
+                      ) : labelId ? (
+                        <>
+                          <span style={{ color: "var(--ink-tertiary)" }}>
+                            ●
+                          </span>
+                          No pending briefs for this label — showing mock.
+                        </>
+                      ) : (
+                        <>
+                          <span style={{ color: "var(--ink-tertiary)" }}>
+                            ●
+                          </span>
+                          No label scope — showing mock.
+                        </>
+                      )}
+                    </div>
+                  </>
+                )}
               </>
             )}
 
@@ -840,34 +875,37 @@ export default function CreateView({
               </>
             )}
 
-            {/* Footer — Tune + Generate */}
-            <div className="flex items-center justify-end gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => setTuneOpen(true)}
-                className="h-10 px-4 rounded-[10px] text-[13px] font-semibold flex items-center gap-2"
-                style={{
-                  background: "transparent",
-                  color: "var(--ink)",
-                  border: "1px solid var(--border)",
-                }}
-              >
-                <Settings2 size={14} />
-                Tune
-              </button>
-              <button
-                type="button"
-                onClick={handleGenerate}
-                className="h-10 px-5 rounded-[10px] text-[14px] font-semibold"
-                style={{
-                  background: "var(--accent)",
-                  color: "#fff",
-                  border: "none",
-                }}
-              >
-                Generate
-              </button>
-            </div>
+            {/* Footer — Tune + Generate. Hidden for live fan-brief mode
+                since Approve lives on each BriefCard. */}
+            {!(activePreset === "fan_brief" && usingLiveBriefs) && (
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setTuneOpen(true)}
+                  className="h-10 px-4 rounded-[10px] text-[13px] font-semibold flex items-center gap-2"
+                  style={{
+                    background: "transparent",
+                    color: "var(--ink)",
+                    border: "1px solid var(--border)",
+                  }}
+                >
+                  <Settings2 size={14} />
+                  Tune
+                </button>
+                <button
+                  type="button"
+                  onClick={handleGenerate}
+                  className="h-10 px-5 rounded-[10px] text-[14px] font-semibold"
+                  style={{
+                    background: "var(--accent)",
+                    color: "#fff",
+                    border: "none",
+                  }}
+                >
+                  Generate
+                </button>
+              </div>
+            )}
           </section>
         )}
 

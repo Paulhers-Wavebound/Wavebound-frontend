@@ -327,6 +327,10 @@ function QueueCard({
   onKill: () => void;
 }) {
   const artist = artistById(item.artistId);
+  const artistName = artist?.name ?? item.artistDisplayName ?? "Unknown artist";
+  const artistHandle =
+    artist?.handle ??
+    (item.artistDisplayHandle ? `@${item.artistDisplayHandle}` : "");
   const risk = RISK_COLOR[item.risk];
 
   return (
@@ -417,7 +421,8 @@ function QueueCard({
           {item.title}
         </div>
         <div className="text-[12px]" style={{ color: "var(--ink-tertiary)" }}>
-          {artist?.name} · {artist?.handle}
+          {artistName}
+          {artistHandle && ` · ${artistHandle}`}
         </div>
 
         {item.riskNotes.length > 0 && (
