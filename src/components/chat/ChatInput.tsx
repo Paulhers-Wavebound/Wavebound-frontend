@@ -72,6 +72,14 @@ const ROLE_LABELS: Record<ChatRole, string> = {
   executive: "Executive",
 };
 
+export type ChatModel = "claude-opus-4-7" | "claude-sonnet-4-6" | "gpt-5.5";
+
+const MODEL_LABELS: Record<ChatModel, string> = {
+  "claude-opus-4-7": "Opus 4.7",
+  "claude-sonnet-4-6": "Sonnet 4.6",
+  "gpt-5.5": "GPT-5.5",
+};
+
 interface ChatInputProps {
   onSubmit: (text: string) => void;
   onCancel: () => void;
@@ -83,6 +91,8 @@ interface ChatInputProps {
   onImageRemove?: () => void;
   activeRole?: ChatRole;
   onRoleChange?: (role: ChatRole) => void;
+  activeModel?: ChatModel;
+  onModelChange?: (model: ChatModel) => void;
 }
 
 export default function ChatInput({
@@ -96,12 +106,16 @@ export default function ChatInput({
   onImageRemove,
   activeRole,
   onRoleChange,
+  activeModel,
+  onModelChange,
 }: ChatInputProps) {
   const [input, setInput] = useState("");
   const [roleOpen, setRoleOpen] = useState(false);
+  const [modelOpen, setModelOpen] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const roleRef = useRef<HTMLDivElement>(null);
+  const modelRef = useRef<HTMLDivElement>(null);
 
   // Close role dropdown on outside click
   useEffect(() => {
@@ -114,6 +128,18 @@ export default function ChatInput({
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, [roleOpen]);
+
+  // Close model dropdown on outside click
+  useEffect(() => {
+    if (!modelOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (modelRef.current && !modelRef.current.contains(e.target as Node)) {
+        setModelOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [modelOpen]);
 
   // Populate input from prefill (e.g. navigating from Expansion Radar)
   useEffect(() => {
@@ -313,8 +339,62 @@ export default function ChatInput({
               )}
             </div>
 
-            {/* Right: role dropdown + send */}
+            {/* Right: model dropdown + role dropdown + send */}
             <div className="flex items-center gap-2">
+              {/* Model dropdown — picks the LLM the agent uses (Opus / Sonnet / GPT-5.5) */}
+              {activeModel && onModelChange && (
+                <div ref={modelRef} className="relative">
+                  <button
+                    onClick={() => setModelOpen((p) => !p)}
+                    className="flex items-center gap-1 px-2 py-1 rounded-lg text-[13px] transition-colors hover:bg-white/[0.06]"
+                    style={{ color: T.textSecondary }}
+                  >
+                    {MODEL_LABELS[activeModel]}
+                    <ChevronDown
+                      className={cn(
+                        "w-3.5 h-3.5 transition-transform duration-150",
+                        modelOpen && "rotate-180",
+                      )}
+                    />
+                  </button>
+                  {modelOpen && (
+                    <div
+                      className="absolute bottom-full right-0 mb-1 py-1 rounded-xl min-w-[160px] z-50"
+                      style={{
+                        background: "#2C2C2E",
+                        border: "1px solid rgba(255,255,255,0.1)",
+                        boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
+                      }}
+                    >
+                      {(Object.keys(MODEL_LABELS) as ChatModel[]).map((m) => (
+                        <button
+                          key={m}
+                          onClick={() => {
+                            onModelChange(m);
+                            setModelOpen(false);
+                          }}
+                          className="flex items-center justify-between w-full px-3 py-2 text-[13px] transition-colors hover:bg-white/[0.06]"
+                          style={{
+                            color:
+                              m === activeModel
+                                ? "rgba(255,255,255,0.87)"
+                                : T.textSecondary,
+                          }}
+                        >
+                          {MODEL_LABELS[m]}
+                          {m === activeModel && (
+                            <Check
+                              className="w-3.5 h-3.5"
+                              style={{ color: T.accent }}
+                            />
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Role dropdown — Claude model-selector style */}
               {activeRole && onRoleChange && (
                 <div ref={roleRef} className="relative">

@@ -23,6 +23,7 @@ export async function streamChatMessage(
     session_id: string;
     role?: string;
     image?: { data: string; media_type: string };
+    model?: string;
   },
   callbacks: StreamCallbacks,
   signal?: AbortSignal,
@@ -43,6 +44,7 @@ export async function streamChatMessage(
       session_id: payload.session_id,
       ...(payload.role ? { role: payload.role } : {}),
       ...(payload.image ? { image: payload.image } : {}),
+      ...(payload.model ? { model: payload.model } : {}),
     }),
     signal,
   });

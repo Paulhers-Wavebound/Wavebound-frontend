@@ -59,6 +59,7 @@ import {
 import { useLocation } from "react-router-dom";
 import ChatInput, {
   type PendingImage,
+  type ChatModel,
   validateImageFile,
   fileToBase64,
 } from "@/components/chat/ChatInput";
@@ -215,6 +216,18 @@ export default function LabelAssistant() {
     } catch {}
     return "executive";
   });
+  const [activeModel, setActiveModel] = useState<ChatModel>(() => {
+    try {
+      const saved = localStorage.getItem("wavebound_label_chat_model");
+      if (
+        saved === "claude-opus-4-7" ||
+        saved === "claude-sonnet-4-6" ||
+        saved === "gpt-5.5"
+      )
+        return saved;
+    } catch {}
+    return "claude-opus-4-7";
+  });
 
   const abortRef = useRef<AbortController | null>(null);
   const streamingMsgRef = useRef<string>("");
@@ -244,6 +257,14 @@ export default function LabelAssistant() {
     },
     [],
   );
+
+  // ── Model switcher ──
+  const handleModelChange = useCallback((newModel: ChatModel) => {
+    setActiveModel(newModel);
+    try {
+      localStorage.setItem("wavebound_label_chat_model", newModel);
+    } catch {}
+  }, []);
 
   // ── Sidebar drag resize ──
   const handleDragStart = useCallback(
@@ -455,6 +476,7 @@ export default function LabelAssistant() {
             message: trimmed,
             session_id: sid!,
             role: activeRole,
+            model: activeModel,
             ...(pendingImage
               ? {
                   image: {
@@ -494,6 +516,7 @@ export default function LabelAssistant() {
       addMessage,
       checkRateLimit,
       activeRole,
+      activeModel,
       pendingImage,
     ],
   );
@@ -976,6 +999,8 @@ export default function LabelAssistant() {
             onImageRemove={() => setPendingImage(null)}
             activeRole={activeRole}
             onRoleChange={handleRoleChange}
+            activeModel={activeModel}
+            onModelChange={handleModelChange}
           />
 
           {/* Drag-and-drop overlay */}
