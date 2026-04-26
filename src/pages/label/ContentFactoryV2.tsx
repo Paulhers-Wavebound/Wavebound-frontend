@@ -1219,6 +1219,21 @@ export default function ContentFactoryV2() {
 
       const writerMessage = `Make a cartoon for ${artistName}. Pick the most compelling, factually-grounded story angle from their dossier — viral moment, hidden lore, fan obsession, chart breakthrough, anything that hooks in 3 words. Run the dossier tools first.`;
 
+      // Same key the Tune drawer in CreateView writes to. Reading at dispatch
+      // time avoids prop-drilling the model preference through 4 layers.
+      let scriptModel: string | undefined;
+      try {
+        const saved = window.localStorage.getItem("wavebound_cf_script_model");
+        if (
+          saved === "claude-opus-4-7" ||
+          saved === "claude-sonnet-4-6" ||
+          saved === "gpt-5.5"
+        )
+          scriptModel = saved;
+      } catch {
+        /* localStorage disabled — fall back to backend default (Opus 4.7) */
+      }
+
       for (const item of newItems) {
         const sessionId = crypto.randomUUID();
         void streamChatMessage(
@@ -1226,6 +1241,7 @@ export default function ContentFactoryV2() {
             message: writerMessage,
             session_id: sessionId,
             role: "cartoon_writer",
+            ...(scriptModel ? { model: scriptModel } : {}),
           },
           {
             onJobId: (jobId) => {
