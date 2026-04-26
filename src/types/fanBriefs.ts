@@ -1,5 +1,10 @@
 export type BriefContentType = "interview" | "live_performance" | "podcast";
 export type RenderStyle = "talking_head" | "karaoke" | "banter";
+export type RenderErrorCode =
+  | "yt_blocked"
+  | "geo_blocked"
+  | "download_failed"
+  | "render_failed";
 
 /**
  * Shape of a fan comment used to evidence a live-performance peak. Populated by
@@ -16,7 +21,7 @@ export interface PeakComment {
 /**
  * Crowd-sourced evidence backing a live_performance brief. Stored on
  * content_segments.peak_evidence (not on fan_briefs itself) — read via the
- * nested join in LabelFanBriefs.
+ * nested join in ContentFactoryV2.
  */
 export interface PeakEvidence {
   source: "comments";
@@ -72,6 +77,17 @@ export interface FanBrief {
   clip_duration_seconds: number | null;
   rendered_clip_url: string | null;
 
+  /**
+   * Terminal render-failure code written by the backend render-clip.ts when
+   * yt-dlp / ffmpeg / upload errors out. NULL = renderable (worker will
+   * still try). Set to NULL via the FE Retry button or manual SQL to
+   * re-queue.
+   *
+   * Codes: 'yt_blocked' | 'geo_blocked' | 'download_failed' | 'render_failed'.
+   */
+  render_error?: RenderErrorCode | null;
+  render_error_at?: string | null;
+
   status:
     | "pending"
     | "approved"
@@ -84,6 +100,16 @@ export interface FanBrief {
   modified_hook: string | null;
 
   created_at: string;
+
+  /**
+   * Free-form jsonb scratch space the pipeline stores classifier outputs in,
+   * and where the v2 Review tab persists `scheduled_for` so a scheduled brief
+   * survives a refresh without a dedicated column.
+   */
+  generation_context?: {
+    scheduled_for?: string;
+    [key: string]: unknown;
+  } | null;
 
   /** Nested result of select(`*, content_segments(peak_evidence, content_catalog(live_venue, ...))`). */
   content_segments?: BriefSegmentJoin | null;

@@ -21,7 +21,6 @@ import {
   Music,
   Megaphone,
   Radar,
-  Sparkles,
   HelpCircle,
   Settings,
   Sun,
@@ -135,7 +134,6 @@ const ROUTE_MAP: Record<string, string> = {
   "/label/sound-intelligence/compare": "Compare",
   "/label/amplification": "Paid Amplification",
   "/label/expansion-radar": "Expansion Radar",
-  "/label/fan-briefs": "Fan Briefs",
   "/label/settings": "Settings",
   "/label/help": "Help",
   "/label/admin/health": "System Health",
@@ -306,7 +304,6 @@ const NAV_COMMANDS: NavCommand[] = [
     icon: Megaphone,
   },
   { label: "Expansion Radar", path: "/label/expansion-radar", icon: Radar },
-  { label: "Fan Briefs", path: "/label/fan-briefs", icon: Sparkles },
   {
     label: "The Pulse",
     path: "/label/admin/pulse",

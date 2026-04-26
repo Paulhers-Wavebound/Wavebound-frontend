@@ -13,7 +13,6 @@ import {
   Shield,
   ChevronsUpDown,
   Check,
-  Sparkles,
   Radar,
   Brain,
   HeartPulse,
@@ -48,7 +47,6 @@ const FEATURE_TO_NAV: Record<string, string> = {
   "sound-intelligence": "sound-intelligence",
   "paid-amplification": "amplification",
   "expansion-radar": "expansion-radar",
-  "fan-briefs": "fan-briefs",
   intelligence: "intelligence",
 };
 
@@ -115,13 +113,6 @@ const getMainNav = (isAdmin: boolean, labelId: string | null) => {
       icon: Database,
       path: "/label/database",
       isNew: true as const,
-    },
-    {
-      id: "fan-briefs",
-      label: "Fan Briefs",
-      icon: Sparkles,
-      path: "/label/fan-briefs",
-      ...tag("fan-briefs"),
     },
     {
       id: "content-factory",

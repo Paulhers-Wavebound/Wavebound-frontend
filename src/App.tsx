@@ -22,7 +22,6 @@ const LabelAmplification = lazy(
 const LabelArtistProfile = lazy(
   () => import("./pages/label/LabelArtistProfile"),
 );
-const LabelFanBriefs = lazy(() => import("./pages/label/LabelFanBriefs"));
 const ContentAssistant = lazy(() => import("./pages/ContentAssistant"));
 const TikTokAudit = lazy(() => import("./pages/TikTokAudit"));
 const ThePulse = lazy(() => import("./pages/label/ThePulse"));
@@ -124,7 +123,6 @@ import PreviewGate from "./components/coming-soon/PreviewGate";
 import SoundIntelligencePreview from "./pages/label/previews/SoundIntelligencePreview";
 import PaidAmplificationPreview from "./pages/label/previews/PaidAmplificationPreview";
 
-import FanBriefsPreview from "./pages/label/previews/FanBriefsPreview";
 import { OfflineDetector } from "./components/OfflineDetector";
 import CoreKeepAlive from "@/components/routing/CoreKeepAlive";
 
@@ -377,17 +375,6 @@ const App = () => {
                                     <Route
                                       path="database"
                                       element={<ArtistDatabase />}
-                                    />
-                                    <Route
-                                      path="fan-briefs"
-                                      element={
-                                        <PreviewGate
-                                          featureId="fan-briefs"
-                                          preview={<FanBriefsPreview />}
-                                        >
-                                          <LabelFanBriefs />
-                                        </PreviewGate>
-                                      }
                                     />
                                     <Route
                                       path="content-factory"
