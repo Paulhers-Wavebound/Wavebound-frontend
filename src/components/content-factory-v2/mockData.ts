@@ -604,7 +604,7 @@ export const OUTPUT_TYPE_LABEL: Record<OutputType, string> = {
   tour_recap: "Tour recap",
   fan_brief: "Fan brief edit",
   link_video: "Lyric Overlay",
-  cartoon: "Cartoon",
+  cartoon: "Story",
 };
 
 export const QUEUE_SOURCE_LABEL: Record<QueueSource, string> = {

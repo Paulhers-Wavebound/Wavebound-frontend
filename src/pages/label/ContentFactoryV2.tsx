@@ -998,7 +998,7 @@ export default function ContentFactoryV2() {
                   ...q,
                   status: "failed",
                   jobError:
-                    "Cartoon stalled — pipeline didn't finish in 45 min. The video may still finish later.",
+                    "Story stalled — pipeline didn't finish in 45 min. The video may still finish later.",
                   cartoonStage: undefined,
                 }
               : q,
@@ -1179,7 +1179,7 @@ export default function ContentFactoryV2() {
       if (!labelId) {
         toast({
           title: "No label session",
-          description: "Cartoon generation requires a logged-in label.",
+          description: "Story generation requires a logged-in label.",
           variant: "destructive",
         });
         return;
@@ -1194,14 +1194,16 @@ export default function ContentFactoryV2() {
         return;
       }
 
-      const { artistName, artistHandle, count, voiceId, voiceSettings } = input;
+      const { artistName, artistHandle, count, voiceId, voiceSettings, subFormat } =
+        input;
+      const isRealfootage = subFormat === "realfootage";
       const now = new Date().toISOString();
       const newItems: QueueItem[] = Array.from({ length: count }, () => ({
         id: `q-cartoon-${crypto.randomUUID()}`,
         artistId: `cartoon-${artistHandle}`,
         artistDisplayName: artistName,
         artistDisplayHandle: artistHandle,
-        title: `Cartoon · ${artistName}`,
+        title: `${isRealfootage ? "Real edit" : "Cartoon"} · ${artistName}`,
         outputType: "cartoon",
         source: "human",
         status: "generating",
@@ -1212,12 +1214,22 @@ export default function ContentFactoryV2() {
         cartoonStage: "script",
         cartoonVoiceId: voiceId,
         cartoonVoiceSettings: voiceSettings,
+        // Optimistic — vo-dispatch's response confirms it but the UI can show
+        // the right "Real edit" label from the moment the placeholder lands.
+        cartoonFormat: subFormat,
       }));
 
       setQueue((prev) => [...newItems, ...prev]);
       setActiveTab("assets");
 
-      const writerMessage = `Make a cartoon for ${artistName}. Pick the most compelling, factually-grounded story angle from their dossier — viral moment, hidden lore, fan obsession, chart breakthrough, anything that hooks in 3 words. Run the dossier tools first.`;
+      // The cartoon_writer prompt produces the same JSON shape for both sub-
+      // formats; the only contract difference is the top-level `format` field
+      // which content-factory-vo-dispatch reads to route to cartoon-vo vs
+      // realfootage-vo. We pass the hint in the user message so the writer
+      // tags the JSON correctly.
+      const writerMessage = isRealfootage
+        ? `Make a 60-second real-footage story for ${artistName}. Pick the most compelling, factually-grounded story angle from their dossier — viral moment, hidden lore, fan obsession, chart breakthrough, anything that hooks in 3 words. Run the dossier tools first. IMPORTANT: include "format": "realfootage" at the top level of the fenced JSON output so the renderer routes to the real-footage pipeline.`
+        : `Make a cartoon for ${artistName}. Pick the most compelling, factually-grounded story angle from their dossier — viral moment, hidden lore, fan obsession, chart breakthrough, anything that hooks in 3 words. Run the dossier tools first.`;
 
       // Same key the Tune drawer in CreateView writes to. Reading at dispatch
       // time avoids prop-drilling the model preference through 4 layers.

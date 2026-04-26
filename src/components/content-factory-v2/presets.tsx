@@ -24,8 +24,8 @@ export const PRESETS: PresetConfig[] = [
   // Live presets — real generation pipelines wired. Surfaced first.
   {
     key: "cartoon",
-    label: "Cartoon",
-    description: "60s Image-Zoom cartoon — script + VO + render",
+    label: "Story",
+    description: "60s vertical doc — pick Cartoon or Real edit",
     icon: Smile,
     status: "live",
   },
