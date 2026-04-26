@@ -1,9 +1,15 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { useQueryClient } from "@tanstack/react-query";
-import { Compass, Factory, Inbox } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import type { RealtimeChannel } from "@supabase/supabase-js";
+import { Compass, Factory, Inbox, Loader2 } from "lucide-react";
 import AnglesView from "@/components/content-factory-v2/AnglesView";
 import CreateView from "@/components/content-factory-v2/CreateView";
+import type {
+  CreateJobInput,
+  LinkVideoJobInput,
+} from "@/components/content-factory-v2/CreateView";
+import type { CartoonGenerateInput } from "@/components/content-factory-v2/CartoonPanel";
 import ReviewView from "@/components/content-factory-v2/ReviewView";
 import {
   INITIAL_QUEUE,
@@ -15,9 +21,30 @@ import type {
   OutputType,
   QueueItem,
 } from "@/components/content-factory-v2/types";
+import {
+  buildCartoonItemFromScript,
+  type CartoonScriptRow,
+  deriveCartoonItemState,
+  itemFromSnapshot,
+  loadCartoonRuns,
+  reconcileCartoonItem,
+  saveCartoonRuns,
+  snapshotFromItem,
+} from "@/components/content-factory-v2/cartoonReconciler";
+import {
+  buildLinkVideoItemFromJob,
+  type CfJobRow,
+  deriveLinkVideoItemState,
+  linkVideoItemFromSnapshot,
+  linkVideoSnapshotFromItem,
+  loadLinkVideoRuns,
+  reconcileLinkVideoItem,
+  saveLinkVideoRuns,
+} from "@/components/content-factory-v2/linkVideoReconciler";
 import type { FanBrief } from "@/types/fanBriefs";
 import { useUserProfile } from "@/contexts/UserProfileContext";
 import { supabase } from "@/integrations/supabase/client";
+import { streamChatMessage } from "@/services/chatJobService";
 import { toast } from "@/hooks/use-toast";
 
 type TabKey = "angles" | "create" | "review";
@@ -72,6 +99,227 @@ export default function ContentFactoryV2() {
 
   const pendingCount = queue.filter((q) => q.status === "pending").length;
 
+  // DB-backed source for the Review queue. Pulls every approved fan_brief for
+  // this label and merges them into the in-memory queue (deduped by
+  // fanBriefId). Solves the "I refreshed mid-job and lost my placeholders"
+  // case: the briefs land in fan_briefs at status='approved' regardless of
+  // FE state, and this query surfaces them next time the user opens v2.
+  const approvedBriefsQuery = useQuery({
+    queryKey: ["fan-briefs-v2-approved", labelId],
+    enabled: !!labelId,
+    staleTime: 30_000,
+    // Refetch every 30s so renderedClipUrl populated by the render-worker
+    // after approval shows up in the queue without a manual refresh. The
+    // merge effect below patches the existing item in place rather than
+    // re-adding, so this is cheap.
+    refetchInterval: 30_000,
+    queryFn: async (): Promise<FanBrief[]> => {
+      const { data, error } = await supabase
+        .from("fan_briefs")
+        .select(
+          "id, artist_id, artist_handle, content_type, hook_text, modified_hook, created_at, status, source_url, youtube_timestamp_url, rendered_clip_url, generation_context, render_error, render_error_at",
+        )
+        .eq("label_id", labelId!)
+        .eq("status", "approved")
+        .order("created_at", { ascending: false })
+        .limit(50);
+      if (error) throw error;
+      return (data ?? []) as FanBrief[];
+    },
+  });
+
+  // Merge fetched briefs into the queue. Two paths:
+  //   • New brief id → prepend a fresh QueueItem at status='pending'.
+  //   • Existing brief id (placeholder reconciled or earlier fetch) → patch
+  //     in-place to pick up render-worker-populated fields (renderedClipUrl,
+  //     thumbnailUrl, sourceUrl) and any modified_hook updates. Preserves
+  //     in-session state — status, scheduledFor, jobError stay put.
+  useEffect(() => {
+    const briefs = approvedBriefsQuery.data;
+    if (!briefs || briefs.length === 0) return;
+    setQueue((prev) => {
+      const briefById = new Map(briefs.map((b) => [b.id, b]));
+      let mutated = false;
+
+      // Pass 1: patch existing items.
+      const patched = prev.map((q) => {
+        if (!q.fanBriefId) return q;
+        const brief = briefById.get(q.fanBriefId);
+        if (!brief) return q;
+        const hook = brief.modified_hook || brief.hook_text;
+        const short = hook.length > 56 ? `${hook.slice(0, 56)}…` : hook;
+        const nextRenderedClipUrl = brief.rendered_clip_url ?? undefined;
+        const nextSourceUrl =
+          brief.youtube_timestamp_url ?? brief.source_url ?? undefined;
+        const nextThumb = youtubeThumbnailFromUrl(brief.source_url);
+        const nextTitle = `Fan brief · @${brief.artist_handle} — ${short || "(no hook)"}`;
+        // If a previous session persisted a schedule slot, reflect that
+        // state — but only adopt it when the local item is still pending.
+        // A locally-killed item shouldn't get resurrected by a stale row.
+        const persistedSlot = brief.generation_context?.scheduled_for;
+        const adoptScheduled =
+          q.status === "pending" && typeof persistedSlot === "string";
+        const nextStatus = adoptScheduled ? "scheduled" : q.status;
+        const nextScheduledFor = adoptScheduled
+          ? persistedSlot
+          : q.scheduledFor;
+        const nextApprovedAt = brief.created_at ?? q.approvedAtIso;
+        const nextRenderError = brief.render_error ?? undefined;
+        const nextRenderStalled = computeRenderStalled(
+          nextStatus,
+          nextRenderedClipUrl,
+          nextApprovedAt,
+          nextRenderError,
+        );
+        const changed =
+          q.renderedClipUrl !== nextRenderedClipUrl ||
+          q.sourceUrl !== nextSourceUrl ||
+          q.thumbnailUrl !== nextThumb ||
+          q.title !== nextTitle ||
+          q.status !== nextStatus ||
+          q.scheduledFor !== nextScheduledFor ||
+          q.approvedAtIso !== nextApprovedAt ||
+          q.renderStalled !== nextRenderStalled ||
+          q.renderError !== nextRenderError;
+        if (!changed) return q;
+        mutated = true;
+        return {
+          ...q,
+          renderedClipUrl: nextRenderedClipUrl,
+          sourceUrl: nextSourceUrl,
+          thumbnailUrl: nextThumb,
+          title: nextTitle,
+          status: nextStatus,
+          scheduledFor: nextScheduledFor,
+          approvedAtIso: nextApprovedAt,
+          renderStalled: nextRenderStalled,
+          renderError: nextRenderError,
+        };
+      });
+
+      // Pass 2: prepend brand-new briefs.
+      const existingBriefIds = new Set(
+        patched.filter((q) => q.fanBriefId).map((q) => q.fanBriefId!),
+      );
+      const additions: QueueItem[] = [];
+      for (const brief of briefs) {
+        if (existingBriefIds.has(brief.id)) continue;
+        const hook = brief.modified_hook || brief.hook_text;
+        const short = hook.length > 56 ? `${hook.slice(0, 56)}…` : hook;
+        const persistedSlot = brief.generation_context?.scheduled_for;
+        const startScheduled = typeof persistedSlot === "string";
+        const startStatus: QueueItem["status"] = startScheduled
+          ? "scheduled"
+          : "pending";
+        const startRenderedClipUrl = brief.rendered_clip_url ?? undefined;
+        const startRenderError = brief.render_error ?? undefined;
+        additions.push({
+          id: `q-fb-${brief.id}`,
+          artistId: `fb-${brief.artist_handle}`,
+          artistDisplayHandle: brief.artist_handle,
+          artistDisplayName: `@${brief.artist_handle}`,
+          title: `Fan brief · @${brief.artist_handle} — ${short || "(no hook)"}`,
+          outputType: "fan_brief",
+          source: "fan_brief",
+          status: startStatus,
+          scheduledFor: startScheduled ? persistedSlot : undefined,
+          risk: "low",
+          riskNotes: [],
+          thumbKind: "brief",
+          createdAt: relativeTime(brief.created_at),
+          fanBriefId: brief.id,
+          thumbnailUrl: youtubeThumbnailFromUrl(brief.source_url),
+          sourceUrl:
+            brief.youtube_timestamp_url ?? brief.source_url ?? undefined,
+          renderedClipUrl: startRenderedClipUrl,
+          approvedAtIso: brief.created_at,
+          renderError: startRenderError,
+          renderStalled: computeRenderStalled(
+            startStatus,
+            startRenderedClipUrl,
+            brief.created_at,
+            startRenderError,
+          ),
+        });
+      }
+
+      if (!mutated && additions.length === 0) return prev;
+      return additions.length > 0 ? [...additions, ...patched] : patched;
+    });
+  }, [approvedBriefsQuery.data]);
+
+  // Refresh resilience: pull any fan_brief_jobs still in flight for this
+  // label and rebuild placeholder QueueItems for them. Without this, a hard
+  // refresh while a 4-min pipeline run is going wipes the in-memory queue
+  // and leaves the user with no progress signal until the briefs land at
+  // status='approved'. We reconstruct the placeholders from requested_count
+  // and let the channel-subscribe + reconcile flow take it from there.
+  //
+  // Caps: only jobs <1h old, max 10. Older jobs are functionally dead from
+  // the user's perspective — the briefs (if any) will surface via
+  // approvedBriefsQuery anyway.
+  const activeJobsQuery = useQuery({
+    queryKey: ["fan-brief-jobs-active", labelId],
+    enabled: !!labelId,
+    staleTime: 30_000,
+    queryFn: async () => {
+      const cutoff = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+      const { data, error } = await supabase
+        .from("fan_brief_jobs")
+        .select(
+          "id, artist_handle, source, requested_count, status, current_stage, created_at",
+        )
+        .eq("label_id", labelId!)
+        .not("status", "in", "(complete,failed)")
+        .gte("created_at", cutoff)
+        .order("created_at", { ascending: false })
+        .limit(10);
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
+  useEffect(() => {
+    const jobs = activeJobsQuery.data;
+    if (!jobs || jobs.length === 0) return;
+    setQueue((prev) => {
+      const knownJobIds = new Set(
+        prev.filter((q) => q.fanBriefJobId).map((q) => q.fanBriefJobId!),
+      );
+      const additions: QueueItem[] = [];
+      for (const job of jobs) {
+        if (knownJobIds.has(job.id)) continue;
+        const sourceLabel =
+          job.source === "live_performance" ? "live performance" : "podcast";
+        const stage =
+          (job.current_stage as string | null) ||
+          statusFallbackLabel((job.status as string) ?? "queued");
+        const count = Math.max(1, Math.min(20, job.requested_count ?? 1));
+        for (let i = 0; i < count; i++) {
+          additions.push({
+            id: `q-job-${job.id}-${i}`,
+            artistId: `fb-${job.artist_handle}`,
+            artistDisplayName: `@${job.artist_handle}`,
+            artistDisplayHandle: job.artist_handle,
+            title: `Generating ${sourceLabel} brief · @${job.artist_handle}`,
+            outputType: "fan_brief",
+            source: "fan_brief",
+            status: "generating",
+            risk: "low",
+            riskNotes: [],
+            thumbKind: "brief",
+            createdAt: relativeTime(job.created_at),
+            fanBriefJobId: job.id,
+            jobIndex: i,
+            jobStage: stage,
+          });
+        }
+      }
+      if (additions.length === 0) return prev;
+      return [...additions, ...prev];
+    });
+  }, [activeJobsQuery.data]);
+
   // Angles handlers
   const handleToggleFavorite = useCallback((angleId: string) => {
     setAngles((prev) =>
@@ -120,36 +368,1243 @@ export default function ContentFactoryV2() {
     });
   }, []);
 
-  // Bulk-create handler — used by the fan-brief wizard's Create button. One
-  // setQueue, one toast, hop the user straight into Review so they can see
-  // their freshly-rendered batch land. Skips the per-item toast spam that
-  // calling handleGenerate in a loop would produce.
-  const handleBulkCreate = useCallback(
-    (items: QueueItem[]) => {
-      if (items.length === 0) return;
-      setQueue((prev) => [...items, ...prev]);
+  // On-demand fan-brief job handoff. The wizard POSTed to the edge function
+  // and got back a jobId; we push N placeholder QueueItems with status
+  // 'generating' and the same fanBriefJobId so the Realtime subscription
+  // below can flip them as the worker progresses.
+  const handleCreateJob = useCallback(
+    ({ jobId, count, artistHandle, source }: CreateJobInput) => {
+      const sourceLabel =
+        source === "live_performance" ? "live performance" : "podcast";
+      const placeholders: QueueItem[] = Array.from(
+        { length: count },
+        (_, i) => ({
+          id: `q-job-${jobId}-${i}`,
+          artistId: `fb-${artistHandle}`,
+          artistDisplayName: `@${artistHandle}`,
+          artistDisplayHandle: artistHandle,
+          title: `Generating ${sourceLabel} brief · @${artistHandle}`,
+          outputType: "fan_brief",
+          source: "fan_brief",
+          status: "generating",
+          risk: "low",
+          riskNotes: [],
+          thumbKind: "brief",
+          createdAt: "just now",
+          fanBriefJobId: jobId,
+          jobIndex: i,
+          jobStage: "Queued — worker picks up within 60s.",
+        }),
+      );
+      setQueue((prev) => [...placeholders, ...prev]);
       setActiveTab("review");
       toast({
-        title: `Created ${items.length} brief${items.length === 1 ? "" : "s"} — rendering`,
-        description: "Schedule them under Review when ready.",
+        title: `Discovering ${count} ${sourceLabel} brief${count === 1 ? "" : "s"}`,
+        description: `for @${artistHandle} — pipeline runs 3–8 min.`,
+      });
+    },
+    [setActiveTab],
+  );
+
+  // Realtime reconciliation for in-flight on-demand fan-brief jobs. The
+  // backend updates fan_brief_jobs as the pipeline progresses; we listen
+  // per-jobId and flip placeholder QueueItems to real briefs (status flips
+  // generating → pending) or red-failed states. Channels live in a ref so
+  // this effect can re-run on queue changes without thrashing subscriptions.
+  const channelsRef = useRef<Map<string, RealtimeChannel>>(new Map());
+  // Settled job IDs — once a job reaches a terminal state (complete/failed,
+  // or our local 20-min timeout) we record it here so a stray Realtime/poll
+  // double-fire doesn't re-toast or re-mutate the queue.
+  const settledJobsRef = useRef<Set<string>>(new Set());
+  // Per-job consecutive fetch error counts. After MAX_RECONCILE_ERRORS the
+  // job's placeholders flip to failed so the user isn't staring at a stuck
+  // "Queued…" forever when the DB read keeps erroring (RLS regression,
+  // network, etc.).
+  const jobErrorCountsRef = useRef<Map<string, number>>(new Map());
+
+  const reconcileJobUpdate = useCallback(
+    async (jobId: string, row: Record<string, unknown>) => {
+      const status = row.status as string;
+      const stage = (row.current_stage as string | null) ?? null;
+      const errorMessage = (row.error_message as string | null) ?? null;
+      // Defensive parse: DB column is text[] but a malformed row (manual
+      // edit, codec bug) could land as null/string/garbage. Coerce to a
+      // clean string[] so .length / indexed access don't blow up.
+      const producedBriefIds: string[] = Array.isArray(row.produced_brief_ids)
+        ? row.produced_brief_ids.filter(
+            (x): x is string => typeof x === "string",
+          )
+        : [];
+      const createdAtRaw = row.created_at as string | null | undefined;
+      const createdAtMs = createdAtRaw ? Date.parse(createdAtRaw) : NaN;
+
+      const isTerminal = status === "complete" || status === "failed";
+
+      // Stale-job timeout: a row that's still in flight after 20 minutes is
+      // almost certainly orphaned (worker crash, flock held forever). Mark
+      // the placeholders failed locally — if the worker eventually finishes,
+      // the produced briefs surface via approvedBriefsQuery anyway.
+      const STALE_AFTER_MS = 20 * 60 * 1000;
+      if (
+        !isTerminal &&
+        Number.isFinite(createdAtMs) &&
+        Date.now() - createdAtMs > STALE_AFTER_MS &&
+        !settledJobsRef.current.has(jobId)
+      ) {
+        settledJobsRef.current.add(jobId);
+        setQueue((prev) => {
+          if (
+            !prev.some(
+              (q) => q.fanBriefJobId === jobId && q.status === "generating",
+            )
+          ) {
+            return prev;
+          }
+          return prev.map((q) =>
+            q.fanBriefJobId === jobId && q.status === "generating"
+              ? {
+                  ...q,
+                  status: "failed",
+                  jobError:
+                    "Job timed out — pipeline didn't report back. The briefs may still land later.",
+                  jobStage: undefined,
+                }
+              : q,
+          );
+        });
+        toast({
+          title: "Job timed out",
+          description:
+            "The pipeline hasn't reported back in 20 minutes. The briefs may still arrive — check Review later.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Idempotent terminal reconcile: skip if we've already toasted+swapped
+      // for this jobId. Realtime + poll + visibility-refetch can all race to
+      // call us with the same final row.
+      if (isTerminal && settledJobsRef.current.has(jobId)) return;
+
+      if (status === "complete") {
+        if (producedBriefIds.length === 0) {
+          settledJobsRef.current.add(jobId);
+          setQueue((prev) => {
+            if (
+              !prev.some(
+                (q) => q.fanBriefJobId === jobId && q.status === "generating",
+              )
+            ) {
+              return prev;
+            }
+            return prev.map((q) =>
+              q.fanBriefJobId === jobId && q.status === "generating"
+                ? {
+                    ...q,
+                    status: "failed",
+                    jobError:
+                      stage ||
+                      "Pipeline completed but produced no briefs. Try a different artist or source.",
+                    jobStage: undefined,
+                  }
+                : q,
+            );
+          });
+          toast({
+            title: "No briefs generated",
+            description:
+              stage || "Pipeline ran but found no usable peaks for that pick.",
+            variant: "destructive",
+          });
+          return;
+        }
+
+        const { data: briefs, error } = await supabase
+          .from("fan_briefs")
+          .select(
+            "id, artist_id, artist_handle, hook_text, modified_hook, source_url, youtube_timestamp_url, rendered_clip_url, created_at, render_error",
+          )
+          .in("id", producedBriefIds);
+
+        if (error) {
+          console.error("[fan-brief-reconcile] fetch briefs failed", {
+            jobId,
+            error,
+          });
+          toast({
+            title: "Briefs ready — fetch failed",
+            description: error.message,
+            variant: "destructive",
+          });
+          return;
+        }
+
+        // Mark settled BEFORE the setQueue mutation so a racing concurrent
+        // reconcile bails at the idempotent check above.
+        settledJobsRef.current.add(jobId);
+
+        setQueue((prev) => {
+          // Race guard: if no generating placeholder exists for this job,
+          // a concurrent reconcile already swapped them. No-op.
+          if (
+            !prev.some(
+              (q) => q.fanBriefJobId === jobId && q.status === "generating",
+            )
+          ) {
+            return prev;
+          }
+          const reconciled = prev.flatMap((q) => {
+            if (q.fanBriefJobId !== jobId) return [q];
+            const briefId = producedBriefIds[q.jobIndex ?? 0];
+            if (!briefId) return []; // drop surplus placeholder (got fewer briefs than requested)
+            const brief = briefs?.find((b) => b.id === briefId);
+            if (!brief) return [q];
+            const hook = brief.modified_hook || brief.hook_text;
+            const short = hook.length > 56 ? `${hook.slice(0, 56)}…` : hook;
+            const reconciledRenderedClipUrl =
+              brief.rendered_clip_url ?? undefined;
+            const reconciledBriefAny = brief as {
+              created_at?: string;
+              render_error?: QueueItem["renderError"] | null;
+            };
+            const reconciledRenderError =
+              reconciledBriefAny.render_error ?? undefined;
+            return [
+              {
+                ...q,
+                status: "pending" as const,
+                fanBriefId: brief.id,
+                artistDisplayHandle: brief.artist_handle,
+                artistDisplayName: `@${brief.artist_handle}`,
+                title: `Fan brief · @${brief.artist_handle} — ${short || "(no hook)"}`,
+                jobStage: undefined,
+                thumbnailUrl: youtubeThumbnailFromUrl(brief.source_url),
+                sourceUrl:
+                  brief.youtube_timestamp_url ?? brief.source_url ?? undefined,
+                renderedClipUrl: reconciledRenderedClipUrl,
+                approvedAtIso: reconciledBriefAny.created_at,
+                renderError: reconciledRenderError,
+                renderStalled: computeRenderStalled(
+                  "pending",
+                  reconciledRenderedClipUrl,
+                  reconciledBriefAny.created_at,
+                  reconciledRenderError,
+                ),
+              },
+            ];
+          });
+          // Dedupe by fanBriefId — the approvedBriefsQuery may have raced
+          // ahead and seeded a brief that just got reconciled here. Keep
+          // the first occurrence (which is now the reconciled placeholder
+          // since placeholders were prepended on Create).
+          const seen = new Set<string>();
+          return reconciled.filter((q) => {
+            if (!q.fanBriefId) return true;
+            if (seen.has(q.fanBriefId)) return false;
+            seen.add(q.fanBriefId);
+            return true;
+          });
+        });
+
+        // Make sure the next refetch picks up these brief IDs as already-
+        // surfaced (the merge effect dedupes by fanBriefId so this is mostly
+        // belt-and-suspenders, but it also keeps the cache fresh).
+        queryClient.invalidateQueries({
+          queryKey: ["fan-briefs-v2-approved", labelId],
+        });
+
+        toast({
+          title: `${briefs?.length ?? 0} brief${(briefs?.length ?? 0) === 1 ? "" : "s"} ready`,
+          description: stage || "Now in Review — schedule when ready.",
+        });
+        return;
+      }
+
+      if (status === "failed") {
+        settledJobsRef.current.add(jobId);
+        setQueue((prev) => {
+          if (
+            !prev.some(
+              (q) => q.fanBriefJobId === jobId && q.status === "generating",
+            )
+          ) {
+            return prev;
+          }
+          return prev.map((q) =>
+            q.fanBriefJobId === jobId && q.status === "generating"
+              ? {
+                  ...q,
+                  status: "failed",
+                  jobError: errorMessage ?? "Pipeline failed",
+                  jobStage: undefined,
+                }
+              : q,
+          );
+        });
+        toast({
+          title: "Generation failed",
+          description: errorMessage ?? "Pipeline error",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // discovering / mining / synthesizing — just update the stage label.
+      const stageLabel = stage ?? statusFallbackLabel(status);
+      setQueue((prev) =>
+        prev.map((q) =>
+          q.fanBriefJobId === jobId ? { ...q, jobStage: stageLabel } : q,
+        ),
+      );
+    },
+    [labelId, queryClient],
+  );
+
+  // Pull the current row for a job and reconcile. Used to catch up after a
+  // Realtime miss (WS race on subscribe, silent disconnect, throttled hidden
+  // tab). Reconciler handles complete/failed/in-flight uniformly.
+  const MAX_RECONCILE_ERRORS = 3;
+  const fetchAndReconcileJob = useCallback(
+    async (jobId: string) => {
+      const { data, error } = await supabase
+        .from("fan_brief_jobs")
+        .select(
+          "status, current_stage, error_message, produced_brief_ids, created_at",
+        )
+        .eq("id", jobId)
+        .maybeSingle();
+      if (error || !data) {
+        const nextCount = (jobErrorCountsRef.current.get(jobId) ?? 0) + 1;
+        jobErrorCountsRef.current.set(jobId, nextCount);
+        console.error("[fan-brief-reconcile] fetch failed", {
+          jobId,
+          attempt: nextCount,
+          error,
+        });
+        if (
+          nextCount >= MAX_RECONCILE_ERRORS &&
+          !settledJobsRef.current.has(jobId)
+        ) {
+          settledJobsRef.current.add(jobId);
+          setQueue((prev) =>
+            prev.map((q) =>
+              q.fanBriefJobId === jobId && q.status === "generating"
+                ? {
+                    ...q,
+                    status: "failed",
+                    jobError:
+                      "Couldn't reach job status. The briefs may still land — please refresh.",
+                    jobStage: undefined,
+                  }
+                : q,
+            ),
+          );
+          toast({
+            title: "Job status unreachable",
+            description:
+              "Lost contact with the briefs service. Refresh to retry.",
+            variant: "destructive",
+          });
+        }
+        return;
+      }
+      // Reset the error counter on a successful read.
+      jobErrorCountsRef.current.delete(jobId);
+      await reconcileJobUpdate(jobId, data as Record<string, unknown>);
+    },
+    [reconcileJobUpdate],
+  );
+
+  useEffect(() => {
+    const activeJobIds = new Set<string>();
+    for (const q of queue) {
+      if (q.status === "generating" && q.fanBriefJobId) {
+        activeJobIds.add(q.fanBriefJobId);
+      }
+    }
+
+    // Subscribe to any newly-active jobs.
+    for (const jobId of activeJobIds) {
+      if (channelsRef.current.has(jobId)) continue;
+      const channel = supabase
+        .channel(`fan-brief-job-${jobId}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "UPDATE",
+            schema: "public",
+            table: "fan_brief_jobs",
+            filter: `id=eq.${jobId}`,
+          },
+          (payload) => {
+            void reconcileJobUpdate(
+              jobId,
+              payload.new as Record<string, unknown>,
+            );
+          },
+        )
+        .subscribe((status) => {
+          // Catch-up fetch the moment we're subscribed — closes the race
+          // where the worker advanced before our channel was live.
+          if (status === "SUBSCRIBED") {
+            void fetchAndReconcileJob(jobId);
+            return;
+          }
+          // Non-SUBSCRIBED terminal statuses indicate Realtime is degraded.
+          // Log so we can diagnose; the 15s polling below covers correctness.
+          if (
+            status === "CHANNEL_ERROR" ||
+            status === "TIMED_OUT" ||
+            status === "CLOSED"
+          ) {
+            console.warn("[fan-brief-realtime] subscription degraded", {
+              jobId,
+              status,
+            });
+          }
+        });
+      channelsRef.current.set(jobId, channel);
+    }
+
+    // Drop subscriptions whose jobs have settled (no longer in 'generating').
+    for (const [jobId, channel] of channelsRef.current.entries()) {
+      if (!activeJobIds.has(jobId)) {
+        supabase.removeChannel(channel);
+        channelsRef.current.delete(jobId);
+      }
+    }
+
+    // Polling fallback: Realtime can drop silently (network blip, browser
+    // throttling a hidden tab) and there's no way to detect it. Re-fetch
+    // every 15s while any job is active so stuck placeholders self-heal.
+    if (activeJobIds.size === 0) return;
+    const interval = window.setInterval(() => {
+      for (const jobId of activeJobIds) void fetchAndReconcileJob(jobId);
+    }, 15_000);
+
+    // Also catch up the moment the tab regains focus.
+    const onVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      for (const jobId of activeJobIds) void fetchAndReconcileJob(jobId);
+    };
+    document.addEventListener("visibilitychange", onVisible);
+
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [queue, reconcileJobUpdate, fetchAndReconcileJob]);
+
+  // Unmount: drop every channel that the per-job effect didn't get to drain.
+  // Logs if anything's left — that's a leak signal and worth seeing.
+  useEffect(() => {
+    const channels = channelsRef.current;
+    return () => {
+      if (channels.size > 0) {
+        console.warn("[fan-brief-realtime] unmount draining channels", {
+          remaining: channels.size,
+        });
+      }
+      for (const channel of channels.values()) {
+        supabase.removeChannel(channel);
+      }
+      channels.clear();
+    };
+  }, []);
+
+  // ── Cartoon pipeline orchestration ──────────────────────────────────────
+  // Hydrates cartoon QueueItems from localStorage on label change so the user
+  // sees in-flight + completed runs after a refresh; persists every state
+  // change back so the list stays current.
+  const queueRef = useRef(queue);
+  useEffect(() => {
+    queueRef.current = queue;
+  }, [queue]);
+
+  useEffect(() => {
+    if (!labelId) return;
+    const snapshots = loadCartoonRuns(labelId);
+    if (snapshots.length === 0) return;
+    setQueue((prev) => {
+      const existingIds = new Set(prev.map((q) => q.id));
+      const additions = snapshots
+        .filter((s) => !existingIds.has(s.itemId))
+        .map(itemFromSnapshot);
+      if (additions.length === 0) return prev;
+      return [...additions, ...prev];
+    });
+  }, [labelId]);
+
+  useEffect(() => {
+    if (!labelId) return;
+    const snapshots = queue
+      .map(snapshotFromItem)
+      .filter((s): s is NonNullable<typeof s> => s !== null);
+    saveCartoonRuns(labelId, snapshots);
+  }, [labelId, queue]);
+
+  // DB-backed rehydrate for cartoons. localStorage is a best-effort cache;
+  // it loses runs when HMR / refresh hits before the SSE first event lands
+  // (the placeholder gets persisted without `cartoonChatJobId`, so the
+  // reconciler can't pick up where it left off). cartoon_scripts has
+  // label_id + source_chat_job_id, so we can rebuild the placeholder from
+  // the DB regardless of FE state.
+  //
+  // Window: last 24h, max 50 rows. Older runs are functionally historical;
+  // if the user wants those they belong in a feed, not Review.
+  const recentCartoonScriptsQuery = useQuery({
+    queryKey: ["cartoon-scripts-recent", labelId],
+    enabled: !!labelId,
+    staleTime: 30_000,
+    // Initial fetch always runs (it's how we discover orphans). Periodic
+    // polling only when something is in flight — the moment all cartoons
+    // hit a terminal state, polling stops and starts again on next push.
+    refetchInterval: queue.some(
+      (q) => q.outputType === "cartoon" && q.status === "generating",
+    )
+      ? 30_000
+      : false,
+    queryFn: async (): Promise<CartoonScriptRow[]> => {
+      const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      const { data, error } = await supabase
+        .from("cartoon_scripts")
+        .select(
+          "id, status, label_id, artist_handle, artist_name, source_chat_job_id, script_json, created_at, cartoon_videos(id, status, final_url)",
+        )
+        .eq("label_id", labelId!)
+        .gte("created_at", cutoff)
+        .order("created_at", { ascending: false })
+        .limit(50);
+      if (error) throw error;
+      return (data ?? []) as unknown as CartoonScriptRow[];
+    },
+  });
+
+  // Merge DB rows into the queue. Three paths:
+  //   • Existing item matched by cartoonScriptId → patch any fields that
+  //     advanced (status, stage, finalUrl, jobError).
+  //   • Existing item with cartoonChatJobId but no cartoonScriptId yet
+  //     (mid-script-phase placeholder) → patch in cartoonScriptId so the
+  //     reconciler graduates from chat_jobs to cartoon_scripts watching.
+  //   • DB row with no in-memory match → prepend a fresh QueueItem. This
+  //     is the recovery path after HMR / refresh wiped the placeholder.
+  //
+  // Items locally killed (status='scheduled' or absent because user
+  // dismissed) aren't resurrected: we only patch by ID match.
+  useEffect(() => {
+    const scripts = recentCartoonScriptsQuery.data;
+    if (!scripts || scripts.length === 0) return;
+    setQueue((prev) => {
+      let mutated = false;
+      const claimed = new Set<string>();
+
+      const patched = prev.map((q) => {
+        if (q.outputType !== "cartoon") return q;
+
+        let row: CartoonScriptRow | undefined;
+        if (q.cartoonScriptId) {
+          row = scripts.find((s) => s.id === q.cartoonScriptId);
+        }
+        if (!row && q.cartoonChatJobId) {
+          row = scripts.find(
+            (s) => s.source_chat_job_id === q.cartoonChatJobId,
+          );
+        }
+        if (!row) return q;
+        claimed.add(row.id);
+
+        const derived = deriveCartoonItemState(row);
+        // Don't downgrade locally-scheduled items back to pending.
+        const nextStatus =
+          q.status === "scheduled" ? "scheduled" : derived.status;
+        const nextHook = row.script_json?.hook_title ?? q.cartoonHook;
+        const nextScriptId = q.cartoonScriptId ?? row.id;
+        const nextChatJobId =
+          q.cartoonChatJobId ?? row.source_chat_job_id ?? undefined;
+        const nextThumb = derived.thumbnailUrl ?? q.thumbnailUrl;
+        const changed =
+          q.cartoonScriptId !== nextScriptId ||
+          q.cartoonChatJobId !== nextChatJobId ||
+          q.cartoonStage !== derived.stage ||
+          q.cartoonStageDetail !== derived.stageDetail ||
+          q.cartoonFinalUrl !== derived.finalUrl ||
+          q.renderedClipUrl !== derived.finalUrl ||
+          q.cartoonHook !== nextHook ||
+          q.jobError !== derived.jobError ||
+          q.status !== nextStatus ||
+          q.thumbnailUrl !== nextThumb;
+        if (!changed) return q;
+        mutated = true;
+        return {
+          ...q,
+          cartoonScriptId: nextScriptId,
+          cartoonChatJobId: nextChatJobId,
+          cartoonStage: derived.stage,
+          cartoonStageDetail: derived.stageDetail,
+          cartoonFinalUrl: derived.finalUrl,
+          renderedClipUrl: derived.finalUrl ?? q.renderedClipUrl,
+          cartoonHook: nextHook,
+          jobError: derived.jobError,
+          status: nextStatus,
+          thumbnailUrl: nextThumb,
+        };
+      });
+
+      const additions: QueueItem[] = [];
+      for (const row of scripts) {
+        if (claimed.has(row.id)) continue;
+        additions.push(buildCartoonItemFromScript(row));
+      }
+
+      if (!mutated && additions.length === 0) return prev;
+      return additions.length > 0 ? [...additions, ...patched] : patched;
+    });
+  }, [recentCartoonScriptsQuery.data]);
+
+  // Process-local gate against double-firing cartoon-vo when a Realtime
+  // UPDATE event and a polling tick race after chat_jobs flips to complete.
+  // setQueue alone can't gate this — there's a render delay between the
+  // setQueue call and queueRef catching up, so concurrent reconciles read
+  // the old item with `cartoonVoCallInFlight` still false. A synchronous
+  // Set<itemId> is the only thing that closes the window.
+  const cartoonReconcileLocksRef = useRef<Set<string>>(new Set());
+
+  // Single-item reconciler — reads chat_jobs / cartoon_scripts /
+  // cartoon_videos and applies the resulting patch to the QueueItem.
+  const reconcileCartoon = useCallback(async (item: QueueItem) => {
+    if (cartoonReconcileLocksRef.current.has(item.id)) return;
+    cartoonReconcileLocksRef.current.add(item.id);
+    try {
+      const patch = await reconcileCartoonItem(item);
+      if (!patch) return;
+      setQueue((prev) =>
+        prev.map((q) => {
+          if (q.id !== item.id) return q;
+          const next = { ...q, ...patch } as QueueItem;
+          delete next.cartoonVoCallInFlight;
+          return next;
+        }),
+      );
+    } finally {
+      cartoonReconcileLocksRef.current.delete(item.id);
+    }
+  }, []);
+
+  const fetchAndReconcileCartoonById = useCallback(
+    async (itemId: string) => {
+      const item = queueRef.current.find((q) => q.id === itemId);
+      if (!item || item.outputType !== "cartoon") return;
+      if (item.status !== "generating") return;
+
+      // Stale-cartoon timeout: cartoons take 15-20 min end-to-end, so 45
+      // minutes of no progress is solid "this run is dead" territory. Mark
+      // failed locally so the user isn't watching a stuck spinner forever.
+      const CARTOON_STALE_MS = 45 * 60 * 1000;
+      const startedMs = Date.parse(item.createdAt);
+      if (
+        Number.isFinite(startedMs) &&
+        Date.now() - startedMs > CARTOON_STALE_MS
+      ) {
+        setQueue((prev) =>
+          prev.map((q) =>
+            q.id === itemId && q.status === "generating"
+              ? {
+                  ...q,
+                  status: "failed",
+                  jobError:
+                    "Cartoon stalled — pipeline didn't finish in 45 min. The video may still finish later.",
+                  cartoonStage: undefined,
+                }
+              : q,
+          ),
+        );
+        return;
+      }
+
+      await reconcileCartoon(item);
+    },
+    [reconcileCartoon],
+  );
+
+  // Realtime channels keyed per cartoon item, swapped when the lifecycle
+  // moves from chat_jobs (script phase) to cartoon_scripts (render phase).
+  const cartoonChannelsRef = useRef<Map<string, RealtimeChannel>>(new Map());
+
+  useEffect(() => {
+    const activeCartoons = queue.filter(
+      (q) => q.outputType === "cartoon" && q.status === "generating",
+    );
+
+    const desiredKeys = new Set<string>();
+    for (const item of activeCartoons) {
+      if (item.cartoonScriptId) {
+        desiredKeys.add(`script-${item.id}-${item.cartoonScriptId}`);
+      } else if (item.cartoonChatJobId) {
+        desiredKeys.add(`chat-${item.id}-${item.cartoonChatJobId}`);
+      }
+    }
+
+    for (const item of activeCartoons) {
+      if (item.cartoonScriptId) {
+        const key = `script-${item.id}-${item.cartoonScriptId}`;
+        if (cartoonChannelsRef.current.has(key)) continue;
+        const ch = supabase
+          .channel(`cf-cartoon-${item.id}-${item.cartoonScriptId}`)
+          .on(
+            "postgres_changes",
+            {
+              event: "UPDATE",
+              schema: "public",
+              table: "cartoon_scripts",
+              filter: `id=eq.${item.cartoonScriptId}`,
+            },
+            () => void fetchAndReconcileCartoonById(item.id),
+          )
+          .on(
+            "postgres_changes",
+            {
+              event: "UPDATE",
+              schema: "public",
+              table: "cartoon_videos",
+              filter: `script_id=eq.${item.cartoonScriptId}`,
+            },
+            () => void fetchAndReconcileCartoonById(item.id),
+          )
+          .on(
+            "postgres_changes",
+            {
+              event: "INSERT",
+              schema: "public",
+              table: "cartoon_videos",
+              filter: `script_id=eq.${item.cartoonScriptId}`,
+            },
+            () => void fetchAndReconcileCartoonById(item.id),
+          )
+          .subscribe((status) => {
+            if (status === "SUBSCRIBED") {
+              void fetchAndReconcileCartoonById(item.id);
+              return;
+            }
+            if (
+              status === "CHANNEL_ERROR" ||
+              status === "TIMED_OUT" ||
+              status === "CLOSED"
+            ) {
+              console.warn("[cartoon-realtime] script subscription degraded", {
+                itemId: item.id,
+                scriptId: item.cartoonScriptId,
+                status,
+              });
+            }
+          });
+        cartoonChannelsRef.current.set(key, ch);
+      } else if (item.cartoonChatJobId) {
+        const key = `chat-${item.id}-${item.cartoonChatJobId}`;
+        if (cartoonChannelsRef.current.has(key)) continue;
+        const ch = supabase
+          .channel(`cf-cartoon-chat-${item.id}-${item.cartoonChatJobId}`)
+          .on(
+            "postgres_changes",
+            {
+              event: "UPDATE",
+              schema: "public",
+              table: "chat_jobs",
+              filter: `id=eq.${item.cartoonChatJobId}`,
+            },
+            () => void fetchAndReconcileCartoonById(item.id),
+          )
+          .subscribe((status) => {
+            if (status === "SUBSCRIBED") {
+              void fetchAndReconcileCartoonById(item.id);
+              return;
+            }
+            if (
+              status === "CHANNEL_ERROR" ||
+              status === "TIMED_OUT" ||
+              status === "CLOSED"
+            ) {
+              console.warn(
+                "[cartoon-realtime] chat-job subscription degraded",
+                {
+                  itemId: item.id,
+                  chatJobId: item.cartoonChatJobId,
+                  status,
+                },
+              );
+            }
+          });
+        cartoonChannelsRef.current.set(key, ch);
+      }
+    }
+
+    // Tear down any channels whose item no longer needs them (lifecycle
+    // moved on, or the run completed/failed).
+    for (const [key, ch] of cartoonChannelsRef.current.entries()) {
+      if (!desiredKeys.has(key)) {
+        supabase.removeChannel(ch);
+        cartoonChannelsRef.current.delete(key);
+      }
+    }
+
+    if (activeCartoons.length === 0) return;
+
+    // Polling fallback every 15s + visibility-change catch-up — Realtime can
+    // drop silently (network blip, hidden-tab throttling), this is the safety
+    // net that keeps stuck items moving.
+    const interval = window.setInterval(() => {
+      for (const item of activeCartoons) {
+        void fetchAndReconcileCartoonById(item.id);
+      }
+    }, 15_000);
+    const onVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      for (const item of activeCartoons) {
+        void fetchAndReconcileCartoonById(item.id);
+      }
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [queue, fetchAndReconcileCartoonById]);
+
+  useEffect(() => {
+    const channels = cartoonChannelsRef.current;
+    return () => {
+      if (channels.size > 0) {
+        console.warn("[cartoon-realtime] unmount draining channels", {
+          remaining: channels.size,
+        });
+      }
+      for (const ch of channels.values()) {
+        supabase.removeChannel(ch);
+      }
+      channels.clear();
+    };
+  }, []);
+
+  // Wizard handoff — pushes N placeholder cartoon QueueItems to Review with
+  // status='generating', kicks off one SSE label-chat stream per run, and
+  // captures `chat_job_id` from the first SSE event into the matching item.
+  // The reconciler picks up from there.
+  const handleCartoonGenerate = useCallback(
+    async (input: CartoonGenerateInput) => {
+      if (!labelId) {
+        toast({
+          title: "No label session",
+          description: "Cartoon generation requires a logged-in label.",
+          variant: "destructive",
+        });
+        return;
+      }
+      const session = (await supabase.auth.getSession()).data.session;
+      if (!session) {
+        toast({
+          title: "Session expired",
+          description: "Please refresh and sign in again.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const { artistName, artistHandle, count, voiceId, voiceSettings } = input;
+      const now = new Date().toISOString();
+      const newItems: QueueItem[] = Array.from({ length: count }, () => ({
+        id: `q-cartoon-${crypto.randomUUID()}`,
+        artistId: `cartoon-${artistHandle}`,
+        artistDisplayName: artistName,
+        artistDisplayHandle: artistHandle,
+        title: `Cartoon · ${artistName}`,
+        outputType: "cartoon",
+        source: "human",
+        status: "generating",
+        risk: "low",
+        riskNotes: [],
+        thumbKind: "video",
+        createdAt: now,
+        cartoonStage: "script",
+        cartoonVoiceId: voiceId,
+        cartoonVoiceSettings: voiceSettings,
+      }));
+
+      setQueue((prev) => [...newItems, ...prev]);
+      setActiveTab("review");
+
+      const writerMessage = `Make a cartoon for ${artistName}. Pick the most compelling, factually-grounded story angle from their dossier — viral moment, hidden lore, fan obsession, chart breakthrough, anything that hooks in 3 words. Run the dossier tools first.`;
+
+      for (const item of newItems) {
+        const sessionId = crypto.randomUUID();
+        void streamChatMessage(
+          {
+            message: writerMessage,
+            session_id: sessionId,
+            role: "cartoon_writer",
+          },
+          {
+            onJobId: (jobId) => {
+              setQueue((prev) =>
+                prev.map((q) =>
+                  q.id === item.id ? { ...q, cartoonChatJobId: jobId } : q,
+                ),
+              );
+            },
+            onError: (err) => {
+              setQueue((prev) =>
+                prev.map((q) =>
+                  q.id === item.id
+                    ? {
+                        ...q,
+                        status: "failed",
+                        jobError: err || "Script stream errored",
+                      }
+                    : q,
+                ),
+              );
+            },
+          },
+          undefined,
+          "label-chat",
+        ).catch((err) => {
+          setQueue((prev) =>
+            prev.map((q) =>
+              q.id === item.id
+                ? {
+                    ...q,
+                    status: "failed",
+                    jobError:
+                      err instanceof Error
+                        ? err.message
+                        : "Script stream failed",
+                  }
+                : q,
+            ),
+          );
+        });
+      }
+
+      toast({
+        title: `Generating ${count} cartoon${count === 1 ? "" : "s"}`,
+        description: `for ${artistName} — script first, end-to-end ~15-20 min.`,
+      });
+    },
+    [labelId, setActiveTab],
+  );
+
+  // ── Lyric Overlay (link_video) pipeline orchestration ──────────────────
+  // Mirrors the cartoon plumbing: hydrate from sessionStorage on label
+  // change, persist back on queue change, poll content-factory-status every
+  // 3s for in-flight items. The legacy /label/content-factory page used a
+  // 3s interval too — the pipeline reports stage transitions at that
+  // cadence and the UI feels live.
+
+  // Rehydrate in-flight link_video runs after a refresh. Only pulls back
+  // jobs younger than 30 min (legacy ACTIVE_JOB_MAX_AGE_MS) so we don't
+  // resurrect stale placeholders forever.
+  useEffect(() => {
+    if (!labelId) return;
+    const snapshots = loadLinkVideoRuns(labelId);
+    if (snapshots.length === 0) return;
+    const MAX_AGE_MS = 30 * 60 * 1000;
+    const fresh = snapshots.filter((s) => {
+      const t = Date.parse(s.startedAt);
+      return Number.isFinite(t) && Date.now() - t < MAX_AGE_MS;
+    });
+    if (fresh.length === 0) {
+      saveLinkVideoRuns(labelId, []);
+      return;
+    }
+    if (fresh.length !== snapshots.length) {
+      saveLinkVideoRuns(labelId, fresh);
+    }
+    setQueue((prev) => {
+      const existingIds = new Set(prev.map((q) => q.id));
+      const additions = fresh
+        .filter((s) => !existingIds.has(s.itemId))
+        .map(linkVideoItemFromSnapshot);
+      if (additions.length === 0) return prev;
+      return [...additions, ...prev];
+    });
+  }, [labelId]);
+
+  useEffect(() => {
+    if (!labelId) return;
+    const snapshots = queue
+      .map(linkVideoSnapshotFromItem)
+      .filter((s): s is NonNullable<typeof s> => s !== null);
+    saveLinkVideoRuns(labelId, snapshots);
+  }, [labelId, queue]);
+
+  // DB-backed rehydrate for link_video. sessionStorage is the instant
+  // best-effort cache; `cf_jobs` is the canonical source of truth. Same
+  // architecture as `recentCartoonScriptsQuery` — a hard refresh, HMR, or
+  // a fresh tab can never orphan a run.
+  //
+  // Window: last 24h, max 50. Older runs are functionally historical.
+  const recentCfJobsQuery = useQuery({
+    queryKey: ["cf-jobs-recent", labelId],
+    enabled: !!labelId,
+    staleTime: 30_000,
+    // Same gating as cartoon: initial fetch always runs (orphan discovery),
+    // periodic polling only when at least one link_video item is generating.
+    refetchInterval: queue.some(
+      (q) => q.outputType === "link_video" && q.status === "generating",
+    )
+      ? 30_000
+      : false,
+    queryFn: async (): Promise<CfJobRow[]> => {
+      const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      const { data, error } = await supabase
+        .from("cf_jobs")
+        .select(
+          "id, label_id, artist_handle, ref_tiktok_url, status, error, final_url, cost_cents, created_at, updated_at",
+        )
+        .eq("label_id", labelId!)
+        .gte("created_at", cutoff)
+        .order("created_at", { ascending: false })
+        .limit(50);
+      if (error) throw error;
+      return (data ?? []) as unknown as CfJobRow[];
+    },
+  });
+
+  // Merge cf_jobs rows into the queue. Two paths:
+  //   • Existing item matched by linkVideoJobId → patch any fields that
+  //     advanced (status, stage, finalUrl, jobError, cost).
+  //   • DB row with no in-memory match → prepend a fresh QueueItem. This
+  //     is the recovery path after refresh/HMR wiped the placeholder.
+  // Locally-`scheduled` items aren't downgraded.
+  useEffect(() => {
+    const jobs = recentCfJobsQuery.data;
+    if (!jobs || jobs.length === 0) return;
+    setQueue((prev) => {
+      let mutated = false;
+      const claimed = new Set<string>();
+
+      const patched = prev.map((q) => {
+        if (q.outputType !== "link_video" || !q.linkVideoJobId) return q;
+        const row = jobs.find((j) => j.id === q.linkVideoJobId);
+        if (!row) return q;
+        claimed.add(row.id);
+
+        const derived = deriveLinkVideoItemState(row);
+        const nextStatus =
+          q.status === "scheduled" ? "scheduled" : derived.status;
+        const nextRendered = derived.renderedClipUrl ?? q.renderedClipUrl;
+        const changed =
+          q.linkVideoStage !== derived.linkVideoStage ||
+          q.jobStage !== derived.jobStage ||
+          q.jobError !== derived.jobError ||
+          q.linkVideoCostCents !== (row.cost_cents ?? undefined) ||
+          q.renderedClipUrl !== nextRendered ||
+          q.linkVideoRefUrl !== (row.ref_tiktok_url ?? q.linkVideoRefUrl) ||
+          q.status !== nextStatus;
+        if (!changed) return q;
+        mutated = true;
+        return {
+          ...q,
+          status: nextStatus,
+          linkVideoStage: derived.linkVideoStage,
+          linkVideoCostCents: row.cost_cents ?? undefined,
+          linkVideoRefUrl: row.ref_tiktok_url ?? q.linkVideoRefUrl,
+          renderedClipUrl: nextRendered,
+          jobStage: derived.jobStage,
+          jobError: derived.jobError,
+        };
+      });
+
+      const additions: QueueItem[] = [];
+      for (const row of jobs) {
+        if (claimed.has(row.id)) continue;
+        additions.push(buildLinkVideoItemFromJob(row));
+      }
+
+      if (!mutated && additions.length === 0) return prev;
+      return additions.length > 0 ? [...additions, ...patched] : patched;
+    });
+  }, [recentCfJobsQuery.data]);
+
+  // Single-item reconciler. Same shape as reconcileCartoon but no Realtime
+  // channel — content-factory-status is the canonical read path.
+  const reconcileLinkVideo = useCallback(async (item: QueueItem) => {
+    const patch = await reconcileLinkVideoItem(item);
+    if (!patch) return;
+    setQueue((prev) =>
+      prev.map((q) => (q.id === item.id ? { ...q, ...patch } : q)),
+    );
+  }, []);
+
+  const fetchAndReconcileLinkVideoById = useCallback(
+    async (itemId: string) => {
+      const item = queueRef.current.find((q) => q.id === itemId);
+      if (!item || item.outputType !== "link_video") return;
+      if (item.status !== "generating") return;
+
+      // Stale-job timeout: legacy pipeline finishes in 4–8 min typical, so
+      // 30 min is a clear "this run is dead" signal. Mark failed locally so
+      // the user isn't watching a stuck spinner forever.
+      const STALE_MS = 30 * 60 * 1000;
+      const startedMs = Date.parse(item.createdAt);
+      if (Number.isFinite(startedMs) && Date.now() - startedMs > STALE_MS) {
+        setQueue((prev) =>
+          prev.map((q) =>
+            q.id === itemId && q.status === "generating"
+              ? {
+                  ...q,
+                  status: "failed",
+                  jobError:
+                    "Job stalled — pipeline didn't finish in 30 min. The MP4 may still finish later.",
+                  linkVideoStage: "error",
+                  jobStage: undefined,
+                }
+              : q,
+          ),
+        );
+        return;
+      }
+
+      await reconcileLinkVideo(item);
+    },
+    [reconcileLinkVideo],
+  );
+
+  // 3s polling tick across every in-flight link_video item, plus a
+  // visibility-change catch-up so a hidden tab catches up on focus instead
+  // of relying on the wall-clock tick.
+  useEffect(() => {
+    const active = queue.filter(
+      (q) => q.outputType === "link_video" && q.status === "generating",
+    );
+    if (active.length === 0) return;
+
+    const interval = window.setInterval(() => {
+      for (const item of active) {
+        void fetchAndReconcileLinkVideoById(item.id);
+      }
+    }, 3_000);
+    const onVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      for (const item of active) {
+        void fetchAndReconcileLinkVideoById(item.id);
+      }
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [queue, fetchAndReconcileLinkVideoById]);
+
+  // Wizard handoff — push one placeholder QueueItem to Review with
+  // status='generating', flip to the Review tab, let the polling tick own
+  // the lifecycle from here.
+  const handleLinkVideoJob = useCallback(
+    ({ jobId, artistHandle, refUrl }: LinkVideoJobInput) => {
+      const placeholder: QueueItem = {
+        id: `q-linkvideo-${jobId}`,
+        artistId: `linkvideo-${artistHandle}`,
+        artistDisplayName: `@${artistHandle}`,
+        artistDisplayHandle: artistHandle,
+        title: `Lyric Overlay · @${artistHandle}`,
+        outputType: "link_video",
+        source: "human",
+        status: "generating",
+        risk: "low",
+        riskNotes: [],
+        thumbKind: "link",
+        createdAt: new Date().toISOString(),
+        linkVideoJobId: jobId,
+        linkVideoRefUrl: refUrl,
+        linkVideoStage: "pending",
+        jobStage: "Queued — pipeline picking up.",
+      };
+      setQueue((prev) => [placeholder, ...prev]);
+      setActiveTab("review");
+      toast({
+        title: "Generating from TikTok ref",
+        description: `for @${artistHandle} — pipeline runs ~4–8 min.`,
       });
     },
     [setActiveTab],
   );
 
   // Review handlers
-  const handleApproveSchedule = useCallback((itemId: string) => {
-    const when = mockScheduleSlot();
-    setQueue((prev) =>
-      prev.map((q) =>
-        q.id === itemId ? { ...q, status: "scheduled", scheduledFor: when } : q,
-      ),
-    );
-    toast({
-      title: "Approved & scheduled",
-      description: `Drops ${when} · find it under Scheduled.`,
-    });
-  }, []);
+  // Schedule slot is mock for now (the v1 release-cadence engine isn't wired
+  // yet), but for fan-brief items we persist it to fan_briefs.generation_context.scheduled_for
+  // so the schedule survives a refresh. Other output types (cartoon, etc.)
+  // still mutate in-memory only — they have their own persistence layers.
+  const handleApproveSchedule = useCallback(
+    async (itemId: string) => {
+      const when = mockScheduleSlot();
+      const item = queue.find((q) => q.id === itemId);
+      const fanBriefId = item?.fanBriefId;
+
+      // Optimistically update local state so the card moves to Scheduled
+      // immediately; revert on backend failure.
+      setQueue((prev) =>
+        prev.map((q) =>
+          q.id === itemId
+            ? { ...q, status: "scheduled", scheduledFor: when }
+            : q,
+        ),
+      );
+      toast({
+        title: "Approved & scheduled",
+        description: `Drops ${when} · find it under Scheduled.`,
+      });
+
+      if (!fanBriefId) return;
+
+      // Read current generation_context, merge scheduled_for, write back. We
+      // can't use a Postgres jsonb operator from the JS client, so we do a
+      // read-modify-write — fine for a single-user-action mutation.
+      const { data: current, error: readErr } = await supabase
+        .from("fan_briefs")
+        .select("generation_context")
+        .eq("id", fanBriefId)
+        .maybeSingle();
+      if (readErr) {
+        console.error(
+          "[approve-schedule] failed to read generation_context",
+          readErr,
+        );
+      }
+      const merged = {
+        ...((current?.generation_context as Record<string, unknown>) ?? {}),
+        scheduled_for: when,
+      };
+      const { error: writeErr } = await supabase
+        .from("fan_briefs")
+        .update({ generation_context: merged })
+        .eq("id", fanBriefId);
+      if (writeErr) {
+        console.error(
+          "[approve-schedule] failed to persist scheduled_for",
+          writeErr,
+        );
+        // Revert optimistic update so the user sees the failure rather
+        // than thinking it stuck.
+        setQueue((prev) =>
+          prev.map((q) =>
+            q.id === itemId
+              ? { ...q, status: "pending", scheduledFor: undefined }
+              : q,
+          ),
+        );
+        toast({
+          title: "Schedule didn't persist",
+          description: writeErr.message,
+          variant: "destructive",
+        });
+        return;
+      }
+      // Refresh the cached briefs so a refetch sees the updated slot.
+      queryClient.invalidateQueries({
+        queryKey: ["fan-briefs-v2-approved", labelId],
+      });
+    },
+    [queue, queryClient, labelId],
+  );
 
   const handleSendToTune = useCallback((_itemId: string) => {
     toast({
@@ -157,6 +1612,60 @@ export default function ContentFactoryV2() {
       description: "Would open Tune drawer in v1.",
     });
   }, []);
+
+  // Retry a stalled fan-brief render. Clears render_error/render_error_at on
+  // fan_briefs so the worker's Realtime UPDATE handler re-queues it. The
+  // worker's same-row check (status=approved AND no clip AND no render_error)
+  // will fire automatically. If retry will probably fail (yt_blocked /
+  // geo_blocked), the user is choosing to try anyway — could work if the
+  // worker's IP situation changed since the original failure.
+  const handleRetryRender = useCallback(
+    async (itemId: string) => {
+      const item = queue.find((q) => q.id === itemId);
+      if (!item?.fanBriefId) return;
+
+      // Optimistic clear so the card flips out of the failed state
+      // immediately. The next 30s refetch will reflect either a fresh
+      // render or a re-tagged render_error.
+      setQueue((prev) =>
+        prev.map((q) =>
+          q.id === itemId
+            ? { ...q, renderError: undefined, renderStalled: false }
+            : q,
+        ),
+      );
+      toast({
+        title: "Retrying render",
+        description: "Worker will pick this back up within a few seconds.",
+      });
+
+      const { error } = await supabase
+        .from("fan_briefs")
+        .update({ render_error: null, render_error_at: null })
+        .eq("id", item.fanBriefId);
+      if (error) {
+        console.error("[retry-render] failed to clear render_error", error);
+        // Revert the optimistic update.
+        setQueue((prev) =>
+          prev.map((q) =>
+            q.id === itemId
+              ? { ...q, renderError: item.renderError, renderStalled: true }
+              : q,
+          ),
+        );
+        toast({
+          title: "Retry failed",
+          description: error.message,
+          variant: "destructive",
+        });
+        return;
+      }
+      queryClient.invalidateQueries({
+        queryKey: ["fan-briefs-v2-approved", labelId],
+      });
+    },
+    [queue, queryClient, labelId],
+  );
 
   const handleKillWithFeedback = useCallback(
     async (itemId: string, reason: KillReason, note: string) => {
@@ -166,8 +1675,6 @@ export default function ContentFactoryV2() {
 
       // When the queue item was sourced from a live fan_briefs row, cascade
       // the kill to the backend so it doesn't come back on the next sync.
-      // Interview briefs previously approved will flip from 'approved' →
-      // 'archived' (matches the Delete path in /label/fan-briefs clips tab).
       if (item?.fanBriefId) {
         const { error } = await supabase
           .from("fan_briefs")
@@ -179,17 +1686,6 @@ export default function ContentFactoryV2() {
             description: error.message,
             variant: "destructive",
           });
-        } else {
-          // Drop the brief from the pending-briefs cache so CreateView and
-          // /label/fan-briefs stop showing it.
-          queryClient.setQueryData<FanBrief[]>(
-            ["fan-briefs", labelId, "content"],
-            (prev) => (prev ?? []).filter((b) => b.id !== item.fanBriefId),
-          );
-          queryClient.setQueryData<FanBrief[]>(
-            ["fan-briefs", labelId, "clips"],
-            (prev) => (prev ?? []).filter((b) => b.id !== item.fanBriefId),
-          );
         }
       }
 
@@ -201,6 +1697,40 @@ export default function ContentFactoryV2() {
     [queue, labelId, queryClient],
   );
 
+  // Aggregate generating placeholders by fanBriefJobId so the global "Active
+  // jobs" strip can render one card per job instead of one per placeholder.
+  // The user clicks a card to jump straight to Review.
+  const activeJobs = useMemo(() => {
+    const byJob = new Map<
+      string,
+      {
+        jobId: string;
+        artistHandle: string;
+        source: OutputType;
+        count: number;
+        stage: string;
+      }
+    >();
+    for (const q of queue) {
+      if (q.status !== "generating" || !q.fanBriefJobId) continue;
+      const existing = byJob.get(q.fanBriefJobId);
+      if (existing) {
+        existing.count += 1;
+        // Prefer a non-default stage label if any placeholder has one.
+        if (q.jobStage && !existing.stage) existing.stage = q.jobStage;
+      } else {
+        byJob.set(q.fanBriefJobId, {
+          jobId: q.fanBriefJobId,
+          artistHandle: q.artistDisplayHandle ?? "—",
+          source: q.outputType,
+          count: 1,
+          stage: q.jobStage ?? "Working…",
+        });
+      }
+    }
+    return Array.from(byJob.values());
+  }, [queue]);
+
   const tabTitle = useMemo(() => {
     switch (activeTab) {
       case "angles":
@@ -211,6 +1741,14 @@ export default function ContentFactoryV2() {
         return "Review";
     }
   }, [activeTab]);
+
+  const cartoonsInFlight = useMemo(
+    () =>
+      queue.filter(
+        (q) => q.outputType === "cartoon" && q.status === "generating",
+      ).length,
+    [queue],
+  );
 
   return (
     <div
@@ -293,6 +1831,81 @@ export default function ContentFactoryV2() {
           })}
         </div>
 
+        {/* Active jobs strip — visible across all tabs while a fan-brief
+            pipeline run is in flight. Click a card to jump to Review. */}
+        {activeJobs.length > 0 && (
+          <div className="mb-6">
+            <div className="flex items-center justify-between mb-2 font-['DM_Sans',sans-serif]">
+              <div
+                className="text-[11px] font-semibold uppercase tracking-wide flex items-center gap-2"
+                style={{ color: "var(--ink-secondary)" }}
+              >
+                <Loader2
+                  size={12}
+                  className="animate-spin"
+                  color="var(--accent)"
+                />
+                Active jobs · {activeJobs.length}
+              </div>
+              <div
+                className="text-[11px] font-['JetBrains_Mono',monospace]"
+                style={{ color: "var(--ink-tertiary)" }}
+              >
+                click to open in Review
+              </div>
+            </div>
+            <div
+              className="grid gap-2"
+              style={{
+                gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
+              }}
+            >
+              {activeJobs.map((job) => (
+                <button
+                  key={job.jobId}
+                  type="button"
+                  onClick={() => setActiveTab("review")}
+                  className="text-left rounded-2xl px-4 py-3 transition-colors flex items-start gap-3"
+                  style={{
+                    background: "var(--surface)",
+                    borderTop: "0.5px solid var(--card-edge)",
+                    borderLeft: "2px solid var(--accent)",
+                    fontFamily: '"DM Sans", sans-serif',
+                  }}
+                >
+                  <div
+                    className="w-9 h-9 rounded-full flex items-center justify-center shrink-0"
+                    style={{
+                      background: "var(--accent-light)",
+                    }}
+                  >
+                    <Loader2
+                      size={16}
+                      color="var(--accent)"
+                      className="animate-spin"
+                    />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div
+                      className="text-[13px] font-semibold truncate"
+                      style={{ color: "var(--ink)" }}
+                    >
+                      @{job.artistHandle} · {job.count} brief
+                      {job.count === 1 ? "" : "s"}
+                    </div>
+                    <div
+                      className="text-[11px] truncate"
+                      style={{ color: "var(--ink-tertiary)" }}
+                    >
+                      {job.stage}
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Tab content */}
         {activeTab === "angles" && (
           <AnglesView
@@ -311,7 +1924,10 @@ export default function ContentFactoryV2() {
             draftPreset={draftPreset}
             onDraftConsumed={handleDraftConsumed}
             onGenerate={handleGenerate}
-            onBulkCreate={handleBulkCreate}
+            onCreateJob={handleCreateJob}
+            onCartoonGenerate={handleCartoonGenerate}
+            cartoonsInFlight={cartoonsInFlight}
+            onLinkVideoJob={handleLinkVideoJob}
           />
         )}
 
@@ -321,11 +1937,87 @@ export default function ContentFactoryV2() {
             onApproveSchedule={handleApproveSchedule}
             onSendToTune={handleSendToTune}
             onKillWithFeedback={handleKillWithFeedback}
+            onRetryRender={handleRetryRender}
           />
         )}
       </div>
     </div>
   );
+}
+
+// Pull a YouTube video ID out of any common URL shape (watch?v=, youtu.be/,
+// shorts/, embed/) and return its hqdefault thumbnail. Returns undefined if
+// the URL doesn't look like YouTube.
+function youtubeThumbnailFromUrl(
+  url: string | null | undefined,
+): string | undefined {
+  if (!url) return undefined;
+  const m =
+    url.match(/[?&]v=([A-Za-z0-9_-]{11})/) ||
+    url.match(/youtu\.be\/([A-Za-z0-9_-]{11})/) ||
+    url.match(/youtube\.com\/(?:shorts|embed)\/([A-Za-z0-9_-]{11})/);
+  if (!m) return undefined;
+  return `https://i.ytimg.com/vi/${m[1]}/hqdefault.jpg`;
+}
+
+// Compact relative-time string for QueueCard's createdAt slot.
+function relativeTime(iso: string | null | undefined): string {
+  if (!iso) return "just now";
+  const ms = Date.now() - new Date(iso).getTime();
+  if (ms < 60_000) return "just now";
+  const min = Math.floor(ms / 60_000);
+  if (min < 60) return `${min}m ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h ago`;
+  const day = Math.floor(hr / 24);
+  if (day < 7) return `${day}d ago`;
+  return new Date(iso).toLocaleDateString();
+}
+
+// Friendly fallback when the worker hasn't set a current_stage yet.
+function statusFallbackLabel(status: string): string {
+  switch (status) {
+    case "queued":
+      return "Queued — worker picks up within 60s.";
+    case "discovering":
+      return "Finding videos and fetching fan comments…";
+    case "mining":
+      return "Mining peak fan-comment moments…";
+    case "synthesizing":
+      return "Writing briefs (Claude Opus)…";
+    default:
+      return status;
+  }
+}
+
+// Time after approval at which we give up on the render-worker and surface
+// a "this didn't work" state to the user. Renders normally take 3–5 min;
+// 10 min with no clip means the worker had its chance and didn't deliver
+// (yt-dlp block, geo fence, dead worker, classifier mistag — doesn't matter
+// which from the FE's perspective).
+const RENDER_STALLED_AFTER_MS = 10 * 60 * 1000;
+
+// True when a fan-brief is approved but the render-worker has failed to
+// produce a clip. Drives the red-border + "couldn't render" UI. Two paths
+// flip this on:
+//   • Explicit: `render_error` is set on the row (yt_blocked, geo_blocked,
+//     download_failed, render_failed) — definitive backend signal.
+//   • Implicit: time-based fallback — approved >10min with no clip and no
+//     render_error yet. Worker had its chance.
+// Recomputed at every merge tick (~30s) so it self-heals if a clip lands.
+function computeRenderStalled(
+  status: QueueItem["status"],
+  renderedClipUrl: string | undefined,
+  approvedAtIso: string | null | undefined,
+  renderError: string | undefined,
+): boolean {
+  if (renderedClipUrl) return false;
+  if (status !== "pending" && status !== "scheduled") return false;
+  if (renderError) return true;
+  if (!approvedAtIso) return false;
+  const approvedMs = Date.parse(approvedAtIso);
+  if (!Number.isFinite(approvedMs)) return false;
+  return Date.now() - approvedMs > RENDER_STALLED_AFTER_MS;
 }
 
 // Mock scheduler — picks the next plausible slot (morning or evening) a day or

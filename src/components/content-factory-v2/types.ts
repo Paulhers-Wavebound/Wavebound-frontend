@@ -14,7 +14,8 @@ export type OutputType =
   | "self_help"
   | "tour_recap"
   | "fan_brief"
-  | "link_video";
+  | "link_video"
+  | "cartoon";
 
 export interface Artist {
   id: string;
@@ -59,7 +60,7 @@ export interface Angle {
   killed?: boolean;
 }
 
-export type QueueStatus = "pending" | "scheduled";
+export type QueueStatus = "generating" | "pending" | "scheduled" | "failed";
 
 export interface QueueItem {
   id: string;
@@ -74,13 +75,99 @@ export interface QueueItem {
   createdAt: string;
   scheduledFor?: string;
   angleId?: string;
-  // Set when the item originated from a live /label/fan-briefs row. Lets
-  // Review's Kill-with-feedback cascade the archive back to fan_briefs, and
-  // lets QueueCard fall back to the brief's own artist when it isn't in
+  // Set when the item originated from a live fan_briefs row. Lets Review's
+  // Kill-with-feedback cascade the archive back to fan_briefs, and lets
+  // QueueCard fall back to the brief's own artist when it isn't in
   // MOCK_ARTISTS (live briefs can come from artists outside the v2 mock set).
   fanBriefId?: string;
   artistDisplayName?: string;
   artistDisplayHandle?: string;
+  // On-demand fan-brief job tracking. Set on items created by the wizard's
+  // Create button; cleared once the placeholder is reconciled into a real
+  // brief. fanBriefJobId links N placeholders to one fan_brief_jobs row;
+  // jobIndex orders them so produced_brief_ids[i] swaps cleanly.
+  fanBriefJobId?: string;
+  jobIndex?: number;
+  jobStage?: string;
+  jobError?: string;
+  // YouTube (or rendered-clip) thumbnail. Set for fan-brief items derived
+  // from a real video; the placeholder/spinner shows when absent.
+  thumbnailUrl?: string;
+  // YouTube source URL (with ?t=<seconds> jump-to-peak when available) —
+  // shown as a secondary "view source" path when the rendered edit isn't
+  // ready yet.
+  sourceUrl?: string;
+  // The rendered 9:16 MP4 in fan-brief-clips storage. When set, clicking
+  // the thumbnail opens an inline player with hook overlay + karaoke caps.
+  // When null, the brief is approved but render-clip.ts hasn't run yet.
+  renderedClipUrl?: string;
+  // Raw ISO timestamp of when the brief landed at status='approved'. Used
+  // to compute renderStalled below — kept separate from `createdAt`
+  // (which is a display string like "5m ago") so we don't have to
+  // re-parse a localized format every tick.
+  approvedAtIso?: string;
+  // Set true when the brief has been approved >10 min with no
+  // renderedClipUrl OR when fan_briefs.render_error is explicitly set by
+  // the backend worker. UI flag — drives the "didn't work" treatment.
+  // Recomputed at every approvedBriefsQuery refetch so it self-heals
+  // when a clip eventually does land.
+  renderStalled?: boolean;
+  // Explicit terminal-failure code from fan_briefs.render_error. When
+  // set, takes precedence over the time-based stalled heuristic and
+  // drives more specific UI copy (yt_blocked → "YouTube blocked",
+  // geo_blocked → "not available in our region", etc.).
+  renderError?:
+    | "yt_blocked"
+    | "geo_blocked"
+    | "download_failed"
+    | "render_failed";
+
+  // Cartoon pipeline tracking (Image-Zoom Cartoon format). Set on items with
+  // outputType='cartoon'. While generating, cartoonStage advances Script → VO
+  // → Images → Video and the QueueCard shows a 5-stage pill timeline. When
+  // status flips to 'pending', cartoonFinalUrl is set and the same MP4 plays
+  // through renderedClipUrl + the BriefViewerModal.
+  cartoonChatJobId?: string;
+  cartoonScriptId?: string;
+  // ElevenLabs voice ID + tuned settings the user picked at creation time.
+  // The reconciler forwards both to content-factory-cartoon-vo so the script
+  // row gets voice_id_used set and the call uses the matching settings.
+  cartoonVoiceId?: string;
+  cartoonVoiceSettings?: {
+    stability: number;
+    style: number;
+    use_speaker_boost: boolean;
+  };
+  cartoonStage?: "script" | "vo" | "images" | "video";
+  // Sub-state for the current stage. Set when the cartoon is sitting at a
+  // backend handoff (e.g. status='vo_complete' waiting for the image-render
+  // worker to pick it up — the backend serializes image rendering, so N>1
+  // cartoons spend real time queued here). Without this, the timeline freezes
+  // on the active pill and looks stalled.
+  cartoonStageDetail?: string;
+  cartoonHook?: string;
+  cartoonFinalUrl?: string;
+  // True while content-factory-cartoon-vo is being POSTed, so the polling
+  // tick doesn't fire it twice.
+  cartoonVoCallInFlight?: boolean;
+
+  // Lyric Overlay (link_video) pipeline tracking (TikTok ref → 9:16 MP4 via
+  // content-factory-generate). Set on items with outputType='link_video'.
+  // Polled via content-factory-status until terminal; the final MP4 lands in
+  // renderedClipUrl so Review's inline player just works.
+  linkVideoJobId?: string;
+  linkVideoStage?:
+    | "pending"
+    | "ingested"
+    | "decomposed"
+    | "transcribed"
+    | "lyrics_fixed"
+    | "cast"
+    | "rendering"
+    | "done"
+    | "error";
+  linkVideoRefUrl?: string;
+  linkVideoCostCents?: number;
 }
 
 export type AngleFamilyFilter = "all" | AngleFamily;
