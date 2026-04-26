@@ -3,6 +3,7 @@ import { Loader2 } from "lucide-react";
 import { useUserProfile } from "@/contexts/UserProfileContext";
 import { useLabelArtists } from "@/hooks/useLabelArtists";
 import { toast } from "@/hooks/use-toast";
+import { Button } from "@/components/ui/button";
 
 const COST_PER_CARTOON_USD = 8;
 // Capped at 1 while ElevenLabs is on the 5-concurrent tier. Each cartoon
@@ -284,20 +285,16 @@ export default function CartoonPanel({
                 selectedArtist?.artist_name ?? `@${artistHandle}`
               }. End-to-end runs ~15-20 min — items land in Review.`}
         </div>
-        <button
+        <Button
           type="button"
+          variant="cta"
           onClick={handleGenerate}
           disabled={generateDisabled}
-          className="h-10 px-5 rounded-[10px] text-[14px] font-semibold disabled:opacity-40 flex items-center gap-2"
-          style={{
-            background: "var(--accent)",
-            color: "#fff",
-            border: "none",
-          }}
+          className="px-5 text-[14px]"
         >
           {isSubmitting && <Loader2 size={14} className="animate-spin" />}
           {isSubmitting ? "Submitting…" : "Generate"}
-        </button>
+        </Button>
       </div>
     </div>
   );

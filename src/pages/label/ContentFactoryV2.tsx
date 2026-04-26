@@ -2,8 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { RealtimeChannel } from "@supabase/supabase-js";
-import { Compass, Factory, Inbox, Loader2 } from "lucide-react";
-import AnglesView from "@/components/content-factory-v2/AnglesView";
+import { Factory, Inbox, Loader2, Sparkles } from "lucide-react";
+import ExploreView from "@/components/content-factory-v2/ExploreView";
 import CreateView from "@/components/content-factory-v2/CreateView";
 import type {
   CreateJobInput,
@@ -11,12 +11,8 @@ import type {
 } from "@/components/content-factory-v2/CreateView";
 import type { CartoonGenerateInput } from "@/components/content-factory-v2/CartoonPanel";
 import ReviewView from "@/components/content-factory-v2/ReviewView";
-import {
-  INITIAL_QUEUE,
-  MOCK_ANGLES,
-} from "@/components/content-factory-v2/mockData";
+import { INITIAL_QUEUE } from "@/components/content-factory-v2/mockData";
 import type {
-  Angle,
   KillReason,
   OutputType,
   QueueItem,
@@ -47,36 +43,43 @@ import { supabase } from "@/integrations/supabase/client";
 import { streamChatMessage } from "@/services/chatJobService";
 import { toast } from "@/hooks/use-toast";
 
-type TabKey = "angles" | "create" | "review";
+type TabKey = "explore" | "create" | "assets";
 
 const TABS: {
   key: TabKey;
   label: string;
   icon: React.ComponentType<{ size?: number; color?: string }>;
 }[] = [
-  { key: "angles", label: "Angles", icon: Compass },
+  { key: "explore", label: "Explore", icon: Sparkles },
   { key: "create", label: "Create", icon: Factory },
-  { key: "review", label: "Review", icon: Inbox },
+  { key: "assets", label: "Assets", icon: Inbox },
 ];
 
 function isTabKey(v: string | null): v is TabKey {
-  return v === "angles" || v === "create" || v === "review";
+  return v === "explore" || v === "create" || v === "assets";
 }
 
-// Map an angle family to the most natural Create preset so "Send to Create"
-// pre-picks a sensible starting point. Editable in Create.
-const FAMILY_TO_PRESET: Record<Angle["family"], OutputType> = {
-  sensational: "sensational",
-  self_help: "self_help",
-  tour_recap: "tour_recap",
-  bts: "short_form",
-  mini_doc: "mini_doc",
-};
+// Backward-compat: old query-param values map to the renamed tabs. Bookmarks
+// and inbound links from before the Higgsfield-style rename still resolve.
+function migrateLegacyTab(v: string | null): TabKey | null {
+  if (v === "angles") return "explore";
+  if (v === "review") return "assets";
+  return null;
+}
 
 export default function ContentFactoryV2() {
   const [params, setParams] = useSearchParams();
   const tabFromUrl = params.get("tab");
-  const activeTab: TabKey = isTabKey(tabFromUrl) ? tabFromUrl : "review";
+  const [queue, setQueue] = useState<QueueItem[]>(INITIAL_QUEUE);
+  const pendingCount = queue.filter((q) => q.status === "pending").length;
+  // Default landing depends on whether the user has anything to triage. New
+  // users / empty queues land on Explore (the tool grid). Returning users
+  // mid-queue land on Assets so their workflow isn't interrupted.
+  const defaultTab: TabKey = pendingCount > 0 ? "assets" : "explore";
+  const legacy = migrateLegacyTab(tabFromUrl);
+  const activeTab: TabKey = isTabKey(tabFromUrl)
+    ? tabFromUrl
+    : (legacy ?? defaultTab);
   const { labelId } = useUserProfile();
   const queryClient = useQueryClient();
 
@@ -89,15 +92,21 @@ export default function ContentFactoryV2() {
     [params, setParams],
   );
 
-  const [angles, setAngles] = useState<Angle[]>(MOCK_ANGLES);
-  const [queue, setQueue] = useState<QueueItem[]>(INITIAL_QUEUE);
+  // If the user landed via an old `?tab=angles|review` URL, normalize the
+  // query param to the new key without breaking history.
+  useEffect(() => {
+    if (legacy && tabFromUrl !== legacy) {
+      const next = new URLSearchParams(params);
+      next.set("tab", legacy);
+      setParams(next, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [legacy]);
 
-  // Handoff state — when user hits "Send to Create" in Angles, we switch to
-  // the Create tab and pre-fill the preset + angle. Cleared after consume.
-  const [draftAngleId, setDraftAngleId] = useState<string | null>(null);
+  // Handoff state — Explore's tool cards set draftPreset, then push the user
+  // into the Create tab with the right form pre-selected. Cleared after the
+  // CreateView consumes it.
   const [draftPreset, setDraftPreset] = useState<OutputType | null>(null);
-
-  const pendingCount = queue.filter((q) => q.status === "pending").length;
 
   // DB-backed source for the Review queue. Pulls every approved fan_brief for
   // this label and merges them into the in-memory queue (deduped by
@@ -320,42 +329,18 @@ export default function ContentFactoryV2() {
     });
   }, [activeJobsQuery.data]);
 
-  // Angles handlers
-  const handleToggleFavorite = useCallback((angleId: string) => {
-    setAngles((prev) =>
-      prev.map((a) =>
-        a.id === angleId ? { ...a, favorited: !a.favorited } : a,
-      ),
-    );
-  }, []);
-
-  const handleKillAngle = useCallback((angleId: string) => {
-    setAngles((prev) =>
-      prev.map((a) => (a.id === angleId ? { ...a, killed: true } : a)),
-    );
-    toast({
-      title: "Angle killed",
-      description: "Won't appear in this roster.",
-    });
-  }, []);
-
-  const handleSendToCreate = useCallback(
-    (angleId: string) => {
-      const angle = angles.find((a) => a.id === angleId);
-      if (!angle) return;
-      setDraftAngleId(angleId);
-      setDraftPreset(FAMILY_TO_PRESET[angle.family]);
+  // Pick a preset from the Explore tool grid → switch to Create with the
+  // form pre-selected. Mirrors the legacy "Send to Create" mechanic from the
+  // dropped Angles tab; CreateView still consumes draftPreset on mount.
+  const handlePickPreset = useCallback(
+    (preset: OutputType) => {
+      setDraftPreset(preset);
       setActiveTab("create");
-      toast({
-        title: "Sent to Create",
-        description: `Pre-filled with "${angle.title.slice(0, 48)}${angle.title.length > 48 ? "…" : ""}"`,
-      });
     },
-    [angles, setActiveTab],
+    [setActiveTab],
   );
 
   const handleDraftConsumed = useCallback(() => {
-    setDraftAngleId(null);
     setDraftPreset(null);
   }, []);
 
@@ -397,7 +382,7 @@ export default function ContentFactoryV2() {
         }),
       );
       setQueue((prev) => [...placeholders, ...prev]);
-      setActiveTab("review");
+      setActiveTab("assets");
       toast({
         title: `Discovering ${count} ${sourceLabel} brief${count === 1 ? "" : "s"}`,
         description: `for @${artistHandle} — pipeline runs 3–8 min.`,
@@ -1229,7 +1214,7 @@ export default function ContentFactoryV2() {
       }));
 
       setQueue((prev) => [...newItems, ...prev]);
-      setActiveTab("review");
+      setActiveTab("assets");
 
       const writerMessage = `Make a cartoon for ${artistName}. Pick the most compelling, factually-grounded story angle from their dossier — viral moment, hidden lore, fan obsession, chart breakthrough, anything that hooks in 3 words. Run the dossier tools first.`;
 
@@ -1519,7 +1504,7 @@ export default function ContentFactoryV2() {
         jobStage: "Queued — pipeline picking up.",
       };
       setQueue((prev) => [placeholder, ...prev]);
-      setActiveTab("review");
+      setActiveTab("assets");
       toast({
         title: "Generating from TikTok ref",
         description: `for @${artistHandle} — pipeline runs ~4–8 min.`,
@@ -1733,14 +1718,24 @@ export default function ContentFactoryV2() {
 
   const tabTitle = useMemo(() => {
     switch (activeTab) {
-      case "angles":
-        return "Angles";
+      case "explore":
+        return "Explore";
       case "create":
         return "Create";
-      case "review":
-        return "Review";
+      case "assets":
+        return "Assets";
     }
   }, [activeTab]);
+
+  // Combined "needs your attention" count for the Assets nav badge —
+  // pending + actively-generating items. Closer to what the user actually
+  // wants to know at a glance than just one or the other.
+  const assetsBadgeCount = useMemo(
+    () =>
+      queue.filter((q) => q.status === "pending" || q.status === "generating")
+        .length,
+    [queue],
+  );
 
   const cartoonsInFlight = useMemo(
     () =>
@@ -1780,51 +1775,50 @@ export default function ContentFactoryV2() {
           </div>
         </div>
 
-        {/* Tabs */}
+        {/* Top-nav — flat horizontal label list. Bright text on active /
+            hover, muted otherwise; 2px accent underline on the active tab.
+            Higgsfield-style — no pill backgrounds, just labels + a thin
+            divider running underneath the row. */}
         <div
-          className="flex items-center gap-1 mb-6 p-1 rounded-[12px] font-['DM_Sans',sans-serif]"
-          style={{
-            background: "var(--bg-subtle)",
-            border: "1px solid var(--border)",
-            width: "fit-content",
-          }}
+          className="mb-6 flex items-center gap-1 font-['DM_Sans',sans-serif]"
+          style={{ borderBottom: "1px solid var(--border)" }}
         >
           {TABS.map((t) => {
             const active = activeTab === t.key;
-            const badge = t.key === "review" ? pendingCount : null;
+            const badge = t.key === "assets" ? assetsBadgeCount : null;
+            const colorClass = active
+              ? "text-[var(--ink)]"
+              : "text-[var(--ink-tertiary)] hover:text-[var(--accent)]";
+            const badgeClass = active
+              ? "bg-[var(--accent-light)] text-[var(--accent)] border-[var(--accent)]"
+              : "bg-white/[0.06] text-[var(--ink-secondary)] border-[var(--border)] group-hover:bg-[var(--accent-light)] group-hover:text-[var(--accent)] group-hover:border-[var(--accent)]";
             return (
               <button
                 key={t.key}
                 type="button"
                 onClick={() => setActiveTab(t.key)}
-                className="h-9 px-4 rounded-[9px] flex items-center gap-2 text-[13px] font-semibold transition-colors"
-                style={{
-                  background: active ? "var(--surface)" : "transparent",
-                  color: active ? "var(--ink)" : "var(--ink-secondary)",
-                  border: active
-                    ? "1px solid var(--border)"
-                    : "1px solid transparent",
-                  boxShadow: active ? "0 1px 2px rgba(0,0,0,0.15)" : "none",
-                }}
+                className={`group relative h-11 px-4 flex items-center gap-2 text-[14px] font-semibold transition-colors ${colorClass}`}
               >
                 <t.icon
                   size={14}
-                  color={active ? "var(--accent)" : "var(--ink-tertiary)"}
+                  color={active ? "var(--accent)" : "currentColor"}
                 />
                 <span>{t.label}</span>
                 {badge != null && badge > 0 && (
                   <span
-                    className="px-1.5 py-0.5 rounded-full text-[10px] font-['JetBrains_Mono',monospace] tabular-nums"
-                    style={{
-                      background: active
-                        ? "var(--accent-light)"
-                        : "var(--surface)",
-                      color: active ? "var(--accent)" : "var(--ink-secondary)",
-                      border: `1px solid ${active ? "var(--accent)" : "var(--border)"}`,
-                    }}
+                    className={`px-1.5 py-0.5 rounded-full border text-[10px] font-['JetBrains_Mono',monospace] tabular-nums transition-colors ${badgeClass}`}
                   >
                     {badge}
                   </span>
+                )}
+                {active && (
+                  <span
+                    className="absolute left-3 right-3 -bottom-px h-[2px]"
+                    style={{
+                      background: "var(--accent)",
+                      boxShadow: "0 0 12px rgba(242,93,36,0.55)",
+                    }}
+                  />
                 )}
               </button>
             );
@@ -1864,7 +1858,7 @@ export default function ContentFactoryV2() {
                 <button
                   key={job.jobId}
                   type="button"
-                  onClick={() => setActiveTab("review")}
+                  onClick={() => setActiveTab("assets")}
                   className="text-left rounded-2xl px-4 py-3 transition-colors flex items-start gap-3"
                   style={{
                     background: "var(--surface)",
@@ -1907,20 +1901,14 @@ export default function ContentFactoryV2() {
         )}
 
         {/* Tab content */}
-        {activeTab === "angles" && (
-          <AnglesView
-            angles={angles}
-            queue={queue}
-            onToggleFavorite={handleToggleFavorite}
-            onKillAngle={handleKillAngle}
-            onSendToCreate={handleSendToCreate}
-          />
+        {activeTab === "explore" && (
+          <ExploreView onPickPreset={handlePickPreset} />
         )}
 
         {activeTab === "create" && (
           <CreateView
-            angles={angles}
-            draftAngleId={draftAngleId}
+            angles={[]}
+            draftAngleId={null}
             draftPreset={draftPreset}
             onDraftConsumed={handleDraftConsumed}
             onGenerate={handleGenerate}
@@ -1931,7 +1919,7 @@ export default function ContentFactoryV2() {
           />
         )}
 
-        {activeTab === "review" && (
+        {activeTab === "assets" && (
           <ReviewView
             queue={queue}
             onApproveSchedule={handleApproveSchedule}

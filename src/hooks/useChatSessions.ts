@@ -10,7 +10,6 @@ export interface ChatSession {
   created_at: string;
   updated_at: string;
   is_favorite: boolean;
-  label_id?: string | null;
 }
 
 export interface ChatMessage {
@@ -42,10 +41,7 @@ function getMsgCache(chatType: string): Map<string, ChatMessage[]> {
   return _msgCache.get(chatType)!;
 }
 
-export function useChatSessions(
-  chatType: string = "artist",
-  labelId: string | null = null,
-) {
+export function useChatSessions(chatType: string = "artist") {
   const messageCache = getMsgCache(chatType);
 
   const [sessions, setSessions] = useState<ChatSession[]>(
@@ -512,7 +508,6 @@ export function useChatSessions(
       messageCache.set(newId, []);
 
       // Await DB persist — must exist before addMessage inserts chat_messages rows.
-      // label_id is required by RLS for chat_type='label' and ignored otherwise.
       const { data, error } = await supabase
         .from("chat_sessions")
         .insert({
@@ -520,8 +515,7 @@ export function useChatSessions(
           user_id: userId,
           title: title || "New Chat",
           chat_type: chatType,
-          label_id: labelId,
-        } as any)
+        })
         .select()
         .single();
 
@@ -560,8 +554,7 @@ export function useChatSessions(
           user_id: userId,
           title: title || "New Chat",
           chat_type: chatType,
-          label_id: labelId,
-        } as any)
+        })
         .select()
         .single();
 

@@ -459,7 +459,7 @@ export const INITIAL_QUEUE: QueueItem[] = [
   {
     id: "q-6",
     artistId: "art-papi",
-    title: "Link → video · TikTok ref @elpapi/7594...",
+    title: "Lyric Overlay · TikTok ref @elpapi/7594...",
     outputType: "link_video",
     source: "human",
     status: "pending",
@@ -603,7 +603,8 @@ export const OUTPUT_TYPE_LABEL: Record<OutputType, string> = {
   self_help: "Self-help tie-in",
   tour_recap: "Tour recap",
   fan_brief: "Fan brief edit",
-  link_video: "Link → video",
+  link_video: "Lyric Overlay",
+  cartoon: "Cartoon",
 };
 
 export const QUEUE_SOURCE_LABEL: Record<QueueSource, string> = {

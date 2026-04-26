@@ -2,24 +2,16 @@ import { useEffect, useMemo, useState } from "react";
 import {
   ChevronDown,
   FileText,
-  Film,
-  Flame,
-  Heart,
-  Link as LinkIcon,
   Loader2,
-  Mic,
-  Scissors,
   Settings2,
-  Sparkles,
+  Upload,
   X,
 } from "lucide-react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useUserProfile } from "@/contexts/UserProfileContext";
 import { useLabelArtists } from "@/hooks/useLabelArtists";
 import { toast } from "@/hooks/use-toast";
-import type { FanBrief } from "@/types/fanBriefs";
 import type { Angle, OutputType, QueueItem } from "./types";
 import {
   ANGLE_FAMILY_COLOR,
@@ -27,29 +19,28 @@ import {
   MOCK_ARTISTS,
   OUTPUT_TYPE_LABEL,
 } from "./mockData";
+import CartoonPanel, { type CartoonGenerateInput } from "./CartoonPanel";
+import { Button } from "@/components/ui/button";
+import { MOCKED_PRESETS, PRESETS } from "./presets";
 
-// Shared with /label/fan-briefs. Kept inline here rather than extracted to a
-// util so the two routes stay independently editable during the v2 prototype
-// phase; align signatures when the merge-path PR lands (see
-// docs/handoffs/2026-04-23_factory-v2-merge-path.md).
-const BRIEFS_SELECT = `
-  *,
-  content_segments (
-    peak_evidence,
-    hook_source,
-    content_catalog (
-      live_venue,
-      content_type,
-      title,
-      duration_seconds
-    )
-  )
-`;
-const pendingBriefsQueryKey = (labelId: string | null) => [
-  "fan-briefs",
-  labelId,
-  "content",
-];
+const SUPABASE_URL = "https://kxvgbowrkmowuyezoeke.supabase.co";
+
+export interface CreateJobInput {
+  jobId: string;
+  count: number;
+  artistHandle: string;
+  source: "live_performance" | "podcasts";
+}
+
+// Wizard payload for the Lyric Overlay (link_video) pipeline. The handler in
+// ContentFactoryV2 owns the placeholder QueueItem + polling reconciler;
+// CreateView just forwards the freshly-issued job_id and form context.
+export interface LinkVideoJobInput {
+  jobId: string;
+  artistHandle: string;
+  refUrl: string;
+  transcribeProvider: "audioshake" | "whisperx";
+}
 
 interface CreateViewProps {
   angles: Angle[];
@@ -57,58 +48,11 @@ interface CreateViewProps {
   draftPreset: OutputType | null;
   onDraftConsumed: () => void;
   onGenerate: (item: QueueItem) => void;
-  onBulkCreate: (items: QueueItem[]) => void;
+  onCreateJob: (job: CreateJobInput) => void;
+  onCartoonGenerate: (input: CartoonGenerateInput) => Promise<void> | void;
+  cartoonsInFlight: number;
+  onLinkVideoJob: (input: LinkVideoJobInput) => void;
 }
-
-const PRESETS: {
-  key: OutputType;
-  label: string;
-  description: string;
-  icon: React.ComponentType<{ size?: number; color?: string }>;
-}[] = [
-  {
-    key: "short_form",
-    label: "Short-form clip",
-    description: "15-60s vertical cut — IG Reels / TikTok / Shorts",
-    icon: Scissors,
-  },
-  {
-    key: "mini_doc",
-    label: "Mini-doc",
-    description: "1-20 min long-form — YouTube, editorial tone",
-    icon: Film,
-  },
-  {
-    key: "sensational",
-    label: "Sensational angle",
-    description: "High-hook narrative edit — reserve for sourced stories",
-    icon: Flame,
-  },
-  {
-    key: "self_help",
-    label: "Self-help tie-in",
-    description: "Follow-friendly edit with a takeaway",
-    icon: Heart,
-  },
-  {
-    key: "tour_recap",
-    label: "Tour recap",
-    description: "Post-show recap from crowd or BTS footage",
-    icon: Mic,
-  },
-  {
-    key: "fan_brief",
-    label: "Fan brief edit",
-    description: "From a pending fan-submitted brief",
-    icon: Sparkles,
-  },
-  {
-    key: "link_video",
-    label: "Link → video",
-    description: "Paste a TikTok/YT ref, we mirror the vibe",
-    icon: LinkIcon,
-  },
-];
 
 const PENDING_FAN_BRIEFS = [
   { id: "fb-1", title: "Maren anxiety routine — fan-submitted v3" },
@@ -123,7 +67,10 @@ export default function CreateView({
   draftPreset,
   onDraftConsumed,
   onGenerate,
-  onBulkCreate,
+  onCreateJob,
+  onCartoonGenerate,
+  cartoonsInFlight,
+  onLinkVideoJob,
 }: CreateViewProps) {
   const [activePreset, setActivePreset] = useState<OutputType | null>(null);
   const [selectedArtistId, setSelectedArtistId] = useState<string>("art-papi");
@@ -158,8 +105,21 @@ export default function CreateView({
   >("crowd");
   const [fanBriefId, setFanBriefId] = useState<string>("");
   const [fanBriefEdit, setFanBriefEdit] = useState<string>("");
+
+  // Lyric Overlay (link_video) preset: real fields porting the legacy
+  // /label/content-factory form. `linkUrl` is the TikTok ref,
+  // `linkArtistHandle` is free-text (legacy had it free-text too — handle is
+  // used for slugified file paths + display titles, not as a roster join key,
+  // so an unknown artist still works).
   const [linkUrl, setLinkUrl] = useState<string>("");
-  const [linkExtracted, setLinkExtracted] = useState(false);
+  const [linkArtistHandle, setLinkArtistHandle] = useState<string>("");
+  const [linkMp3File, setLinkMp3File] = useState<File | null>(null);
+  const [linkTranscribeProvider, setLinkTranscribeProvider] = useState<
+    "audioshake" | "whisperx"
+  >("audioshake");
+  const [linkSubmitting, setLinkSubmitting] = useState(false);
+  const [linkErrMsg, setLinkErrMsg] = useState<string | null>(null);
+  const [linkUserId, setLinkUserId] = useState<string | null>(null);
 
   // Fan-brief wizard state. The wizard is single-phase now: pick artist +
   // source + count, hit Create, items go straight to Review. Initial values
@@ -180,149 +140,166 @@ export default function CreateView({
   });
   const [isCreating, setIsCreating] = useState(false);
 
-  // Live fetch of pending fan briefs for this label. Shares the query key with
-  // /label/fan-briefs so mutations in either route update both caches. The
-  // fallback `PENDING_FAN_BRIEFS` keeps the preset usable when there's no
-  // label scope or zero pending briefs.
   const { labelId } = useUserProfile();
-  const queryClient = useQueryClient();
-  const pendingBriefsQuery = useQuery({
-    queryKey: pendingBriefsQueryKey(labelId),
-    enabled: !!labelId,
-    refetchInterval: 30_000,
-    staleTime: 15_000,
-    queryFn: async (): Promise<FanBrief[]> => {
-      const { data, error } = await supabase
-        .from("fan_briefs")
-        .select(BRIEFS_SELECT)
-        .eq("label_id", labelId!)
-        .eq("status", "pending")
-        .is("rendered_clip_url", null)
-        .order("confidence_score", { ascending: false })
-        .limit(20);
-      if (error) throw error;
-      return (data ?? []) as FanBrief[];
-    },
-  });
 
-  const livePendingBriefs = pendingBriefsQuery.data ?? [];
-  const usingLiveBriefs = livePendingBriefs.length > 0;
-
-  // Label roster — populates the wizard's artist dropdown.
+  // Label roster — populates the wizard's artist dropdown. The hook returns
+  // every roster row; we drop ones without a handle (the wizard joins fan-
+  // brief generation on handle so a null one can't be selected).
   const labelArtistsQuery = useLabelArtists(labelId);
-  const labelArtists = labelArtistsQuery.data ?? [];
+  const labelArtists = (labelArtistsQuery.data ?? []).filter(
+    (a) => !!a.artist_handle,
+  );
 
-  // Filter the pending pool by the wizard's selections, then cap at the
-  // requested clip count. Matches Live = content_type='live_performance';
-  // Podcasts = interview OR podcast.
-  const filteredBriefs = useMemo(() => {
-    if (!briefArtistHandle || !briefSource) return [];
-    return livePendingBriefs
-      .filter((b) => {
-        if (b.artist_handle !== briefArtistHandle) return false;
-        if (briefSource === "live_performance") {
-          return b.content_type === "live_performance";
-        }
-        return b.content_type === "interview" || b.content_type === "podcast";
-      })
-      .slice(0, briefCount);
-  }, [livePendingBriefs, briefArtistHandle, briefSource, briefCount]);
-
-  // Total matches before slicing — used in the breadcrumb counter.
-  const totalMatches = useMemo(() => {
-    if (!briefArtistHandle || !briefSource) return 0;
-    return livePendingBriefs.filter((b) => {
-      if (b.artist_handle !== briefArtistHandle) return false;
-      if (briefSource === "live_performance") {
-        return b.content_type === "live_performance";
-      }
-      return b.content_type === "interview" || b.content_type === "podcast";
-    }).length;
-  }, [livePendingBriefs, briefArtistHandle, briefSource]);
-
-  // Bulk-approve the filtered briefs: one .in() update on fan_briefs,
-  // optimistic cache purge, and a single onBulkCreate that adds them to the
-  // Review queue and switches the user there. Top N by confidence_score
-  // (already the order coming back from the pendingBriefsQuery).
+  // Trigger a fresh on-demand pipeline run via the backend edge function.
+  // Fire-and-forget: endpoint returns { jobId, status: 'queued' } in <1s, the
+  // worker picks it up within 60s, and Realtime updates land in Review as the
+  // pipeline progresses. The wizard hands the jobId off to the parent which
+  // owns queue placeholders + reconciliation.
   const handleCreate = async () => {
-    if (
-      !briefArtistHandle ||
-      !briefSource ||
-      filteredBriefs.length === 0 ||
-      isCreating
-    ) {
-      return;
-    }
+    if (!briefArtistHandle || !briefSource || !labelId || isCreating) return;
     setIsCreating(true);
 
-    // Telemetry — actual conversion event. Swap for a real analytics call
-    // once instrumented.
     console.log("[fan-brief-wizard] create", {
       artist: briefArtistHandle,
       source: briefSource,
-      count: filteredBriefs.length,
-      requested: briefCount,
-      totalMatches,
+      count: briefCount,
+      labelId,
     });
 
-    const ids = filteredBriefs.map((b) => b.id);
-    const approvedAt = new Date().toISOString();
-    const { error } = await supabase
-      .from("fan_briefs")
-      .update({ status: "approved", approved_at: approvedAt })
-      .in("id", ids);
+    // POST with 15s abort timeout + one transparent retry on 401 after
+    // refreshing the session. Network throw / explicit abort flow into the
+    // same toast path; finally always re-enables the button.
+    const POST_TIMEOUT_MS = 15_000;
 
-    if (error) {
-      setIsCreating(false);
+    const postOnce = async (
+      accessToken: string,
+    ): Promise<{ res: Response; body: { error?: string; jobId?: string } }> => {
+      const ctrl = new AbortController();
+      const timer = window.setTimeout(() => ctrl.abort(), POST_TIMEOUT_MS);
+      try {
+        const res = await fetch(
+          `${SUPABASE_URL}/functions/v1/fan-briefs-generate-on-demand`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              "Content-Type": "application/json",
+              apikey: import.meta.env.VITE_SUPABASE_ANON_KEY ?? "",
+            },
+            body: JSON.stringify({
+              labelId,
+              artistHandle: briefArtistHandle,
+              source: briefSource,
+              count: briefCount,
+            }),
+            signal: ctrl.signal,
+          },
+        );
+        const body = (await res.json().catch(() => ({}))) as {
+          error?: string;
+          jobId?: string;
+        };
+        return { res, body };
+      } finally {
+        window.clearTimeout(timer);
+      }
+    };
+
+    try {
+      const session = (await supabase.auth.getSession()).data.session;
+      if (!session) {
+        toast({
+          title: "Session expired",
+          description: "Please refresh and sign in again.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      let { res, body } = await postOnce(session.access_token);
+
+      // 401: token may have expired between getSession() and the POST. Try
+      // a single refresh + retry before surfacing failure to the user.
+      if (res.status === 401) {
+        console.warn(
+          "[fan-brief-wizard] 401 — refreshing session and retrying",
+        );
+        const refreshed = await supabase.auth.refreshSession();
+        const newToken = refreshed.data.session?.access_token;
+        if (!newToken) {
+          toast({
+            title: "Session expired",
+            description: "Please log out and back in.",
+            variant: "destructive",
+          });
+          return;
+        }
+        ({ res, body } = await postOnce(newToken));
+      }
+
+      if (!res.ok) {
+        const description =
+          body?.error ||
+          (res.status === 401
+            ? "Session expired — please log out and back in."
+            : res.status === 429
+              ? "Already running for this artist + source. Wait a minute and retry."
+              : res.status === 403
+                ? "You don't have access to this label."
+                : `Request failed (${res.status}).`);
+        toast({
+          title: "Create failed",
+          description,
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const jobId = body?.jobId;
+      if (!jobId) {
+        toast({
+          title: "Create failed",
+          description: "Backend did not return a jobId.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      onCreateJob({
+        jobId,
+        count: briefCount,
+        artistHandle: briefArtistHandle,
+        source: briefSource,
+      });
+
+      // Reset wizard + URL so the next batch starts fresh.
+      setBriefArtistHandle("");
+      setBriefSource("");
+      setBriefCount(5);
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          next.delete("fbArtist");
+          next.delete("fbSource");
+          next.delete("fbCount");
+          return next;
+        },
+        { replace: true },
+      );
+    } catch (err) {
+      const aborted = err instanceof DOMException && err.name === "AbortError";
       toast({
         title: "Create failed",
-        description: error.message,
+        description: aborted
+          ? "Couldn't reach the briefs service in 15s — check your connection and try again."
+          : err instanceof Error
+            ? err.message
+            : "Network error",
         variant: "destructive",
       });
-      return;
+    } finally {
+      setIsCreating(false);
     }
-
-    queryClient.setQueryData<FanBrief[]>(
-      pendingBriefsQueryKey(labelId),
-      (prev) => (prev ?? []).filter((b) => !ids.includes(b.id)),
-    );
-
-    const items: QueueItem[] = filteredBriefs.map((brief) => {
-      const hook = brief.modified_hook || brief.hook_text;
-      const short = hook.length > 56 ? `${hook.slice(0, 56)}…` : hook;
-      return {
-        id: `q-fb-${brief.id}`,
-        artistId: `fb-${brief.artist_id}`,
-        artistDisplayName: `@${brief.artist_handle}`,
-        artistDisplayHandle: brief.artist_handle,
-        title: `Fan brief · @${brief.artist_handle} — ${short || "(no hook)"}`,
-        outputType: "fan_brief",
-        source: "fan_brief",
-        status: "pending",
-        risk: "low",
-        riskNotes: [],
-        thumbKind: "brief",
-        createdAt: "just now",
-        fanBriefId: brief.id,
-      };
-    });
-    onBulkCreate(items);
-
-    // Reset wizard + URL so the next batch starts fresh.
-    setBriefArtistHandle("");
-    setBriefSource("");
-    setBriefCount(5);
-    setSearchParams(
-      (prev) => {
-        const next = new URLSearchParams(prev);
-        next.delete("fbArtist");
-        next.delete("fbSource");
-        next.delete("fbCount");
-        return next;
-      },
-      { replace: true },
-    );
-    setIsCreating(false);
   };
 
   // Hydrate from a draft (when user hits "Send to Create" in Angles)
@@ -376,23 +353,149 @@ export default function CreateView({
 
   const selectedArtist = MOCK_ARTISTS.find((a) => a.id === selectedArtistId);
 
+  // Read user id once for the transcribe-provider localStorage key. We don't
+  // gate the form on this — defaults to 'audioshake' until the auth call
+  // resolves, then any user-pinned override hydrates in.
+  useEffect(() => {
+    let cancelled = false;
+    void supabase.auth.getUser().then(({ data }) => {
+      if (cancelled) return;
+      const uid = data.user?.id ?? null;
+      setLinkUserId(uid);
+      if (!uid) return;
+      try {
+        const stored = window.localStorage.getItem(
+          `cf:transcribe_provider:${uid}`,
+        );
+        if (stored === "audioshake" || stored === "whisperx") {
+          setLinkTranscribeProvider(stored);
+        }
+      } catch {
+        /* localStorage disabled — fine */
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Persist transcribe-provider preference per user, mirroring the legacy
+  // /label/content-factory behavior so the choice carries across sessions.
+  useEffect(() => {
+    if (!linkUserId) return;
+    try {
+      window.localStorage.setItem(
+        `cf:transcribe_provider:${linkUserId}`,
+        linkTranscribeProvider,
+      );
+    } catch {
+      /* localStorage disabled — fine */
+    }
+  }, [linkUserId, linkTranscribeProvider]);
+
+  // Submit the legacy content-factory pipeline: optional MP3 upload to the
+  // 'content-factory' bucket, then invoke('content-factory-generate'). On
+  // success the parent owns the placeholder QueueItem + status polling.
+  const handleLinkVideoSubmit = async () => {
+    if (linkSubmitting) return;
+    setLinkErrMsg(null);
+    if (!labelId) {
+      setLinkErrMsg("No label scope on your profile — contact Paul.");
+      return;
+    }
+    if (!isValidTikTokUrl(linkUrl)) {
+      setLinkErrMsg(
+        "Reference URL must be a tiktok.com or vm.tiktok.com link.",
+      );
+      return;
+    }
+    const handle = stripHandle(linkArtistHandle);
+    if (!handle) {
+      setLinkErrMsg("Artist handle is required.");
+      return;
+    }
+    if (linkMp3File) {
+      if (linkMp3File.size > 10 * 1024 * 1024) {
+        setLinkErrMsg(
+          `MP3 is ${(linkMp3File.size / 1024 / 1024).toFixed(1)} MB — max 10 MB.`,
+        );
+        return;
+      }
+      if (
+        !/\.mp3$/i.test(linkMp3File.name) &&
+        linkMp3File.type !== "audio/mpeg"
+      ) {
+        setLinkErrMsg("File must be an MP3.");
+        return;
+      }
+    }
+
+    setLinkSubmitting(true);
+    try {
+      let artistMp3Path: string | undefined;
+      if (linkMp3File) {
+        const rand = crypto.randomUUID().slice(0, 8);
+        artistMp3Path = `sources/${labelId}/${rand}-${slugifyHandle(handle)}.mp3`;
+        const { error: uploadError } = await supabase.storage
+          .from("content-factory")
+          .upload(artistMp3Path, linkMp3File, {
+            contentType: "audio/mpeg",
+            upsert: false,
+          });
+        if (uploadError) throw uploadError;
+      }
+
+      const { data, error: invokeError } = await supabase.functions.invoke(
+        "content-factory-generate",
+        {
+          body: {
+            label_id: labelId,
+            artist_handle: handle,
+            ref_tiktok_url: linkUrl.trim(),
+            transcribe_provider: linkTranscribeProvider,
+            ...(artistMp3Path ? { artist_mp3_path: artistMp3Path } : {}),
+          },
+        },
+      );
+      if (invokeError) throw invokeError;
+      const returnedJobId =
+        (data as { job_id?: string } | null)?.job_id ?? null;
+      if (!returnedJobId) {
+        throw new Error("No job_id returned from generate endpoint");
+      }
+
+      onLinkVideoJob({
+        jobId: returnedJobId,
+        artistHandle: handle,
+        refUrl: linkUrl.trim(),
+        transcribeProvider: linkTranscribeProvider,
+      });
+
+      // Reset form so the next submit starts fresh.
+      setLinkUrl("");
+      setLinkArtistHandle("");
+      setLinkMp3File(null);
+      setActivePreset(null);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setLinkErrMsg(msg);
+      toast({
+        title: "Generation failed",
+        description: msg,
+        variant: "destructive",
+      });
+    } finally {
+      setLinkSubmitting(false);
+    }
+  };
+
   const handleGenerate = () => {
     if (!activePreset || !selectedArtist) return;
-    const liveBrief =
-      activePreset === "fan_brief" && fanBriefId
-        ? livePendingBriefs.find((b) => b.id === fanBriefId)
-        : undefined;
     const title = buildMockTitle(
       activePreset,
       selectedArtist.name,
       selectedAngle,
       linkUrl,
-      liveBrief
-        ? {
-            handle: liveBrief.artist_handle,
-            hook: fanBriefEdit || liveBrief.hook_text,
-          }
-        : undefined,
     );
     const item: QueueItem = {
       id: `q-gen-${Date.now()}`,
@@ -422,7 +525,6 @@ export default function CreateView({
     setActivePreset(null);
     setAngleId("");
     setLinkUrl("");
-    setLinkExtracted(false);
     setFanBriefEdit("");
     setFanBriefId("");
   };
@@ -446,45 +548,98 @@ export default function CreateView({
           <div
             className="grid gap-3"
             style={{
-              gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
+              gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))",
             }}
           >
             {PRESETS.map((p) => {
               const active = activePreset === p.key;
+              const isSoon = p.status === "soon";
               return (
                 <button
                   key={p.key}
                   type="button"
                   onClick={() => setActivePreset(active ? null : p.key)}
-                  className="text-left p-4 rounded-2xl transition-all"
+                  className="group relative text-left rounded-2xl overflow-hidden transition-all duration-200 hover:-translate-y-0.5"
                   style={{
+                    aspectRatio: "1 / 1",
                     background: active
                       ? "var(--accent-light)"
                       : "var(--surface)",
                     border: `1px solid ${active ? "var(--accent)" : "var(--border)"}`,
-                    borderTop: active
-                      ? `1px solid var(--accent)`
-                      : "0.5px solid var(--card-edge)",
+                    boxShadow: active
+                      ? "0 0 24px rgba(242,93,36,0.25), inset 0 1px 0 rgba(255,255,255,0.04)"
+                      : "inset 0 1px 0 rgba(255,255,255,0.04)",
+                    opacity: isSoon && !active ? 0.62 : 1,
                   }}
                 >
-                  <div className="flex items-start gap-3">
-                    <p.icon
-                      size={20}
-                      color={active ? "var(--accent)" : "var(--ink-tertiary)"}
-                    />
-                    <div className="min-w-0">
-                      <div
-                        className="text-[14px] font-semibold mb-0.5"
-                        style={{ color: "var(--ink)" }}
+                  {/* Top-right tag */}
+                  <div className="absolute top-3 right-3 z-10">
+                    {isSoon ? (
+                      <span
+                        className="px-2 py-0.5 rounded-md text-[9px] font-semibold uppercase tracking-wide"
+                        style={{
+                          background: "rgba(255,255,255,0.06)",
+                          color: "var(--ink-tertiary)",
+                          border: "1px solid var(--border)",
+                        }}
                       >
-                        {p.label}
-                      </div>
-                      <div
-                        className="text-[12px] leading-snug"
-                        style={{ color: "var(--ink-tertiary)" }}
+                        Soon
+                      </span>
+                    ) : (
+                      <span
+                        className="px-2 py-0.5 rounded-md text-[9px] font-semibold uppercase tracking-wide"
+                        style={{
+                          background: "var(--accent)",
+                          color: "#fff",
+                        }}
                       >
-                        {p.description}
-                      </div>
+                        New
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Hover-glow gradient that radiates from icon corner */}
+                  <div
+                    className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"
+                    style={{
+                      background:
+                        "radial-gradient(circle at 18% 22%, rgba(242,93,36,0.12), transparent 60%)",
+                    }}
+                  />
+
+                  {/* Icon tile top-left */}
+                  <div className="absolute top-4 left-4">
+                    <div
+                      className="w-11 h-11 rounded-xl flex items-center justify-center transition-colors"
+                      style={{
+                        background: active
+                          ? "var(--accent)"
+                          : "rgba(255,255,255,0.04)",
+                        border: active
+                          ? "1px solid var(--accent)"
+                          : "1px solid var(--border)",
+                      }}
+                    >
+                      <p.icon
+                        size={20}
+                        color={active ? "#fff" : "var(--ink)"}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Title + desc bottom-left */}
+                  <div className="absolute bottom-4 left-4 right-4 flex flex-col gap-1">
+                    <div
+                      className="text-[15px] font-semibold leading-tight"
+                      style={{ color: "var(--ink)" }}
+                    >
+                      {p.label}
+                    </div>
+                    <div
+                      className="text-[11.5px] leading-snug line-clamp-2"
+                      style={{ color: "var(--ink-tertiary)" }}
+                    >
+                      {p.description}
                     </div>
                   </div>
                 </button>
@@ -764,24 +919,13 @@ export default function CreateView({
               </>
             )}
 
-            {/* Fan brief — live: artist + source + count wizard; mock fallback: simple picker */}
+            {/* Fan brief — wizard for label users, mock picker for Paul-only sessions */}
             {activePreset === "fan_brief" && (
               <>
-                {pendingBriefsQuery.isLoading ? (
-                  <div
-                    className="rounded-[10px] px-3 py-2 text-[12px] flex items-center gap-2"
-                    style={{
-                      background: "var(--bg-subtle)",
-                      border: "1px solid var(--border)",
-                      color: "var(--ink-tertiary)",
-                    }}
-                  >
-                    <Loader2 size={12} className="animate-spin" />
-                    Loading pending briefs…
-                  </div>
-                ) : usingLiveBriefs ? (
-                  /* Single-phase wizard: pick artist + source + count, then
-                     hit Create. Items go straight to Review. */
+                {labelId ? (
+                  /* Wizard: pick artist + source + count, hit Create. Backend
+                     edge function spins up the discover → mine → synthesize
+                     pipeline and the items reconcile in Review via Realtime. */
                   <>
                     <Field label="Artist">
                       {labelArtistsQuery.isError ? (
@@ -853,13 +997,7 @@ export default function CreateView({
                       />
                     </Field>
 
-                    <Field
-                      label={`Clip count — up to ${briefCount}${
-                        briefArtistHandle && briefSource
-                          ? ` (${totalMatches} available)`
-                          : ""
-                      }`}
-                    >
+                    <Field label={`Clip count — up to ${briefCount}`}>
                       <input
                         type="range"
                         min={1}
@@ -885,35 +1023,26 @@ export default function CreateView({
                       >
                         {!briefArtistHandle || !briefSource
                           ? "Pick an artist and a source to continue."
-                          : totalMatches === 0
-                            ? "No matching briefs yet — seed via scripts/fan-briefs/discover-live.ts, or change filters."
-                            : `Creates ${filteredBriefs.length} ${
-                                briefSource === "live_performance"
-                                  ? "live-performance"
-                                  : "podcast / interview"
-                              } brief${filteredBriefs.length === 1 ? "" : "s"} for @${briefArtistHandle} → straight to Review.`}
+                          : `Discovers ${briefCount} ${
+                              briefSource === "live_performance"
+                                ? "live-performance"
+                                : "podcast / interview"
+                            } moment${briefCount === 1 ? "" : "s"} for @${briefArtistHandle}, mines fan-comment peaks, and lands the briefs in Review.`}
                       </div>
-                      <button
+                      <Button
                         type="button"
+                        variant="cta"
                         onClick={handleCreate}
                         disabled={
-                          !briefArtistHandle ||
-                          !briefSource ||
-                          filteredBriefs.length === 0 ||
-                          isCreating
+                          !briefArtistHandle || !briefSource || isCreating
                         }
-                        className="h-10 px-5 rounded-[10px] text-[14px] font-semibold disabled:opacity-40 flex items-center gap-2"
-                        style={{
-                          background: "var(--accent)",
-                          color: "#fff",
-                          border: "none",
-                        }}
+                        className="px-5 text-[14px]"
                       >
                         {isCreating && (
                           <Loader2 size={14} className="animate-spin" />
                         )}
-                        {isCreating ? "Creating…" : "Create"}
-                      </button>
+                        {isCreating ? "Submitting…" : "Create"}
+                      </Button>
                     </div>
                   </>
                 ) : (
@@ -938,7 +1067,7 @@ export default function CreateView({
                       <textarea
                         value={fanBriefEdit}
                         onChange={(e) => setFanBriefEdit(e.target.value)}
-                        placeholder="Mock-only — live /label/fan-briefs renders inline with real peak_evidence when a scoped session is active."
+                        placeholder="Mock-only — live briefs render inline with real peak_evidence when a scoped session is active."
                         className="w-full min-h-[80px] px-3 py-2 rounded-[10px] text-[14px] outline-none resize-y"
                         style={{
                           background: "var(--bg-subtle)",
@@ -951,133 +1080,246 @@ export default function CreateView({
                       className="text-[11px] flex items-center gap-1.5"
                       style={{ color: "var(--ink-tertiary)" }}
                     >
-                      {pendingBriefsQuery.isError ? (
-                        <>
-                          <span style={{ color: "#d9a44a" }}>●</span>
-                          Couldn't fetch live briefs — showing mock. See
-                          console.
-                        </>
-                      ) : labelId ? (
-                        <>
-                          <span style={{ color: "var(--ink-tertiary)" }}>
-                            ●
-                          </span>
-                          No pending briefs for this label — showing mock.
-                        </>
-                      ) : (
-                        <>
-                          <span style={{ color: "var(--ink-tertiary)" }}>
-                            ●
-                          </span>
-                          No label scope — showing mock.
-                        </>
-                      )}
+                      <span style={{ color: "var(--ink-tertiary)" }}>●</span>
+                      No label scope — showing mock.
                     </div>
                   </>
                 )}
               </>
             )}
 
-            {/* Link → video */}
+            {/* Cartoon — wizard hands off to ContentFactoryV2 which owns the
+                script-stream + cartoon-vo + Realtime reconciler. The
+                placeholders surface in Review with a 5-stage timeline. */}
+            {activePreset === "cartoon" && (
+              <CartoonPanel
+                onGenerate={onCartoonGenerate}
+                inFlightCount={cartoonsInFlight}
+              />
+            )}
+
+            {/* Lyric Overlay — real generator. Mirrors the legacy
+                /label/content-factory form: TikTok ref + artist handle +
+                optional MP3 + transcribe provider, hands a job_id off to the
+                parent which polls content-factory-status and lands the
+                rendered MP4 in Review. */}
             {activePreset === "link_video" && (
               <>
-                <Field label="Reference URL (TikTok or YouTube)">
-                  <div className="flex gap-2">
+                <Field label="TikTok reference URL">
+                  <input
+                    type="url"
+                    value={linkUrl}
+                    onChange={(e) => {
+                      setLinkUrl(e.target.value);
+                      setLinkErrMsg(null);
+                    }}
+                    placeholder="https://www.tiktok.com/@creator/video/..."
+                    disabled={linkSubmitting}
+                    className="w-full h-10 px-3 rounded-[10px] text-[14px] outline-none"
+                    style={{
+                      background: "var(--bg-subtle)",
+                      color: "var(--ink)",
+                      border: "1px solid var(--border)",
+                    }}
+                  />
+                  {linkUrl && !isValidTikTokUrl(linkUrl) && (
+                    <div
+                      className="text-[11px] mt-1"
+                      style={{ color: "var(--yellow, #b45309)" }}
+                    >
+                      Must be a tiktok.com or vm.tiktok.com URL.
+                    </div>
+                  )}
+                </Field>
+
+                <Row>
+                  <Field label="Artist handle">
                     <input
-                      type="url"
-                      value={linkUrl}
+                      type="text"
+                      value={linkArtistHandle}
                       onChange={(e) => {
-                        setLinkUrl(e.target.value);
-                        setLinkExtracted(false);
+                        setLinkArtistHandle(e.target.value);
+                        setLinkErrMsg(null);
                       }}
-                      placeholder="https://www.tiktok.com/@creator/video/..."
-                      className="flex-1 h-10 px-3 rounded-[10px] text-[14px] outline-none"
+                      placeholder="e.g. sombr"
+                      disabled={linkSubmitting}
+                      className="w-full h-10 px-3 rounded-[10px] text-[14px] outline-none"
                       style={{
                         background: "var(--bg-subtle)",
                         color: "var(--ink)",
                         border: "1px solid var(--border)",
                       }}
                     />
-                    <button
-                      type="button"
-                      onClick={() => setLinkExtracted(!!linkUrl.trim())}
-                      disabled={!linkUrl.trim()}
-                      className="h-10 px-4 rounded-[10px] text-[13px] font-semibold disabled:opacity-40"
-                      style={{
-                        background: "var(--bg-subtle)",
-                        color: "var(--ink)",
-                        border: "1px solid var(--border)",
-                      }}
+                    <div
+                      className="text-[11px] mt-1"
+                      style={{ color: "var(--ink-tertiary)" }}
                     >
-                      Extract
-                    </button>
-                  </div>
-                </Field>
-                {linkExtracted && (
-                  <div
-                    className="rounded-[10px] p-3 flex items-center gap-3"
+                      Free-text — leading @ is stripped.
+                    </div>
+                  </Field>
+                  <Field label="Transcribe provider">
+                    <Select
+                      value={linkTranscribeProvider}
+                      onChange={(v) =>
+                        setLinkTranscribeProvider(
+                          v as "audioshake" | "whisperx",
+                        )
+                      }
+                      options={[
+                        { value: "audioshake", label: "AudioShake — premium" },
+                        { value: "whisperx", label: "WhisperX — free" },
+                      ]}
+                    />
+                  </Field>
+                </Row>
+
+                <Field label="Artist MP3 (optional, max 10 MB)">
+                  <label
+                    htmlFor="cf-v2-link-mp3"
+                    className="flex items-center justify-between gap-3 h-12 px-3 rounded-[10px] cursor-pointer"
                     style={{
                       background: "var(--bg-subtle)",
                       border: "1px solid var(--border)",
+                      color: linkMp3File ? "var(--ink)" : "var(--ink-tertiary)",
                     }}
                   >
-                    <div
-                      className="w-16 h-20 rounded-[8px] flex items-center justify-center"
-                      style={{ background: "#000" }}
-                    >
-                      <Film size={20} color="var(--ink-tertiary)" />
-                    </div>
-                    <div className="min-w-0">
-                      <div
-                        className="text-[13px] font-semibold truncate"
-                        style={{ color: "var(--ink)" }}
-                      >
-                        Reference extracted — 28s · 9:16 · vibe: melodic
-                        vertical
-                      </div>
-                      <div
-                        className="text-[11px] font-['JetBrains_Mono',monospace] truncate"
+                    <span className="flex items-center gap-2 truncate">
+                      <Upload size={16} />
+                      <span className="truncate text-[14px]">
+                        {linkMp3File ? linkMp3File.name : "Choose MP3 file"}
+                      </span>
+                    </span>
+                    {linkMp3File && (
+                      <span
+                        className="text-[12px] font-['JetBrains_Mono',monospace] shrink-0"
                         style={{ color: "var(--ink-tertiary)" }}
                       >
-                        {linkUrl}
-                      </div>
-                    </div>
+                        {(linkMp3File.size / 1024 / 1024).toFixed(1)} MB
+                      </span>
+                    )}
+                  </label>
+                  <input
+                    id="cf-v2-link-mp3"
+                    type="file"
+                    accept="audio/mpeg,.mp3"
+                    className="hidden"
+                    disabled={linkSubmitting}
+                    onChange={(e) => {
+                      setLinkMp3File(e.target.files?.[0] ?? null);
+                      setLinkErrMsg(null);
+                    }}
+                  />
+                  <div
+                    className="text-[11px] mt-1"
+                    style={{ color: "var(--ink-tertiary)" }}
+                  >
+                    Skip to use the sound attached to the ref TikTok.
+                  </div>
+                </Field>
+
+                {linkErrMsg && (
+                  <div
+                    className="rounded-[10px] px-3 py-2 text-[13px]"
+                    style={{
+                      background: "rgba(220,38,38,0.08)",
+                      color: "#dc2626",
+                      border: "1px solid rgba(220,38,38,0.25)",
+                    }}
+                  >
+                    {linkErrMsg}
                   </div>
                 )}
+
+                <div className="flex items-center justify-between gap-3 pt-1">
+                  <div
+                    className="text-[11px]"
+                    style={{ color: "var(--ink-tertiary)" }}
+                  >
+                    {!labelId
+                      ? "No label scope on your profile — contact Paul."
+                      : !isValidTikTokUrl(linkUrl) ||
+                          !stripHandle(linkArtistHandle)
+                        ? "Paste a TikTok ref and an artist handle to continue."
+                        : "Generates a 9:16 MP4 from the ref's vibe — ~4–8 min via content-factory-generate."}
+                  </div>
+                  <Button
+                    type="button"
+                    variant="cta"
+                    onClick={() => void handleLinkVideoSubmit()}
+                    disabled={
+                      linkSubmitting ||
+                      !labelId ||
+                      !isValidTikTokUrl(linkUrl) ||
+                      !stripHandle(linkArtistHandle)
+                    }
+                    className="px-5 text-[14px]"
+                  >
+                    {linkSubmitting && (
+                      <Loader2 size={14} className="animate-spin" />
+                    )}
+                    {linkSubmitting ? "Submitting…" : "Generate"}
+                  </Button>
+                </div>
               </>
             )}
 
-            {/* Footer — Tune + Generate. Hidden for live fan-brief mode
-                since the wizard's own Create button replaces Generate. */}
-            {!(activePreset === "fan_brief" && usingLiveBriefs) && (
-              <div className="flex items-center justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setTuneOpen(true)}
-                  className="h-10 px-4 rounded-[10px] text-[13px] font-semibold flex items-center gap-2"
-                  style={{
-                    background: "transparent",
-                    color: "var(--ink)",
-                    border: "1px solid var(--border)",
-                  }}
+            {/* Coming-soon footer for mocked presets. They render the form
+                (so the URL deep-link `?preset=short_form` still resolves) but
+                the Generate path is replaced with a request-access copy block.
+                Backend pipelines for these aren't built yet, so the previous
+                fake-QueueItem submit was just clutter. */}
+            {MOCKED_PRESETS.has(activePreset) && (
+              <div
+                className="rounded-xl px-4 py-3 mt-2 flex items-center justify-between gap-3"
+                style={{
+                  background: "rgba(255,255,255,0.03)",
+                  border: "1px dashed var(--border)",
+                }}
+              >
+                <div
+                  className="text-[12px]"
+                  style={{ color: "var(--ink-secondary)" }}
                 >
-                  <Settings2 size={14} />
-                  Tune
-                </button>
-                <button
-                  type="button"
-                  onClick={handleGenerate}
-                  className="h-10 px-5 rounded-[10px] text-[14px] font-semibold"
-                  style={{
-                    background: "var(--accent)",
-                    color: "#fff",
-                    border: "none",
-                  }}
-                >
-                  Generate
-                </button>
+                  <span style={{ color: "var(--ink)", fontWeight: 600 }}>
+                    Coming soon —
+                  </span>{" "}
+                  pipeline isn't wired yet. Drop Paul a note if you need this
+                  preset prioritized.
+                </div>
               </div>
             )}
+
+            {/* Footer — Tune + Generate. Hidden for self-contained presets
+                (fan-brief wizard with a label scope, cartoon panel, link →
+                video form) and mocked presets (Coming-soon block above). */}
+            {!(activePreset === "fan_brief" && labelId) &&
+              activePreset !== "cartoon" &&
+              activePreset !== "link_video" &&
+              !MOCKED_PRESETS.has(activePreset) && (
+                <div className="flex items-center justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setTuneOpen(true)}
+                    className="h-10 px-4 rounded-[10px] text-[13px] font-semibold flex items-center gap-2"
+                    style={{
+                      background: "transparent",
+                      color: "var(--ink)",
+                      border: "1px solid var(--border)",
+                    }}
+                  >
+                    <Settings2 size={14} />
+                    Tune
+                  </button>
+                  <Button
+                    type="button"
+                    variant="cta"
+                    onClick={handleGenerate}
+                    className="px-5 text-[14px]"
+                  >
+                    Generate
+                  </Button>
+                </div>
+              )}
           </section>
         )}
 
@@ -1340,23 +1582,49 @@ export default function CreateView({
   );
 }
 
+// Validators for the Lyric Overlay form. Ported verbatim from the legacy
+// /label/content-factory so the V2 entry point matches the same accepted
+// input set (TikTok ref URLs only — YouTube would need a separate ingest
+// path, hence the legacy hostname check).
+function isValidTikTokUrl(raw: string): boolean {
+  const v = raw.trim();
+  if (!v) return false;
+  try {
+    const u = new URL(v);
+    return (
+      /(^|\.)tiktok\.com$/i.test(u.hostname) ||
+      /(^|\.)vm\.tiktok\.com$/i.test(u.hostname)
+    );
+  } catch {
+    return false;
+  }
+}
+
+function stripHandle(input: string): string {
+  return input.trim().replace(/^@+/, "");
+}
+
+function slugifyHandle(input: string): string {
+  return (
+    input
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/(^-|-$)/g, "")
+      .slice(0, 40) || "artist"
+  );
+}
+
 function buildMockTitle(
   preset: OutputType,
   artistName: string,
   angle: Angle | undefined,
   linkUrl: string,
-  liveBrief?: { handle: string; hook: string },
 ): string {
   if (preset === "link_video") {
     const short = linkUrl ? linkUrl.slice(0, 48) : artistName;
-    return `Link → video · ${short}`;
+    return `Lyric Overlay · ${short}`;
   }
   if (preset === "fan_brief") {
-    if (liveBrief) {
-      const hook = liveBrief.hook.trim();
-      const short = hook.length > 56 ? `${hook.slice(0, 56)}…` : hook;
-      return `Fan brief · @${liveBrief.handle} — ${short || "(no hook)"}`;
-    }
     return `Fan brief edit — ${artistName}`;
   }
   if (angle) {

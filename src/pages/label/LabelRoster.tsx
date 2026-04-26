@@ -1,8 +1,8 @@
 import { useEffect, useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
 import { useLabelRole } from "@/hooks/useLabelRole";
 import { useUserProfile } from "@/contexts/UserProfileContext";
+import { useLabelArtists } from "@/hooks/useLabelArtists";
 import { ArtistRow } from "@/components/label/ArtistRow";
 import SEOHead from "@/components/SEOHead";
 import {
@@ -11,20 +11,6 @@ import {
   getLastPostDate,
   type FrequencyWindow,
 } from "@/utils/postingFrequency";
-
-interface ArtistRaw {
-  id: string;
-  artist_name: string;
-  artist_handle: string | null;
-  avatar_url: string | null;
-  tiktok_followers: number | null;
-  spotify_popularity: number | null;
-  posting_dates_tiktok: unknown;
-  posting_dates_instagram: unknown;
-  last_post_date: string | null;
-  status: string | null;
-  updated_at: string | null;
-}
 
 type SortKey = "name" | "updated" | "frequency" | "attention";
 
@@ -38,9 +24,6 @@ export default function LabelRosterPage() {
   const navigate = useNavigate();
   const { isLabel, loading: roleLoading } = useLabelRole();
   const { labelId } = useUserProfile();
-  const [artists, setArtists] = useState<ArtistRaw[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
   const [sortBy, setSortBy] = useState<SortKey>("name");
   const [freqWindow, setFreqWindow] = useState<FrequencyWindow>(30);
 
@@ -48,27 +31,12 @@ export default function LabelRosterPage() {
     if (!roleLoading && !isLabel) navigate("/", { replace: true });
   }, [roleLoading, isLabel, navigate]);
 
-  useEffect(() => {
-    if (!isLabel || !labelId) return;
-    const fetch = async () => {
-      setLoading(true);
-      const { data, error: err } = await supabase
-        .from("artist_intelligence")
-        .select(
-          "id, artist_name, artist_handle, avatar_url, tiktok_followers, spotify_popularity, posting_dates_tiktok, posting_dates_instagram, last_post_date, status, updated_at",
-        )
-        .eq("label_id", labelId)
-        .order("artist_name");
-      if (err) {
-        setError(true);
-        setLoading(false);
-        return;
-      }
-      setArtists((data as any) || []);
-      setLoading(false);
-    };
-    fetch();
-  }, [isLabel, labelId]);
+  // Canonical roster fetch — same hook the content-factory dropdowns use, so
+  // there's a single React Query cache entry per label.
+  const labelArtistsQuery = useLabelArtists(isLabel ? labelId : null);
+  const artists = labelArtistsQuery.data ?? [];
+  const loading = labelArtistsQuery.isLoading;
+  const error = labelArtistsQuery.isError;
 
   const enriched = useMemo(() => {
     return artists.map((a) => {

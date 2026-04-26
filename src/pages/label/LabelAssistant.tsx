@@ -48,7 +48,6 @@ import {
 } from "@/services/chatJobService";
 import { useRateLimit } from "@/hooks/useRateLimit";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { useUserProfile } from "@/contexts/UserProfileContext";
 import { useStickToBottom } from "use-stick-to-bottom";
 import {
   isToday,
@@ -130,7 +129,6 @@ const SUGGESTIONS = [
 ];
 
 export default function LabelAssistant() {
-  const { labelId } = useUserProfile();
   const {
     sessions,
     currentSessionId,
@@ -141,7 +139,7 @@ export default function LabelAssistant() {
     addMessage,
     updateSessionTitle,
     toggleFavorite,
-  } = useChatSessions("label", labelId);
+  } = useChatSessions("label");
 
   const location = useLocation();
   const isMobile = useIsMobile();
