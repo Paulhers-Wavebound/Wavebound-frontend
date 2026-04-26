@@ -18,7 +18,6 @@ import {
   HeartPulse,
   Globe,
   Database,
-  Film,
   Factory,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
@@ -115,19 +114,11 @@ const getMainNav = (isAdmin: boolean, labelId: string | null) => {
       isNew: true as const,
     },
     {
-      id: "content-factory",
-      label: "Content Factory",
-      icon: Film,
-      path: "/label/content-factory",
-      isNew: true as const,
-    },
-    {
       id: "content-factory-v2",
-      label: "Factory v2",
+      label: "Content Factory",
       icon: Factory,
       path: "/label/content-factory-v2",
       isNew: true as const,
-      badgeLabel: "PREVIEW",
     },
     ...(isAdmin
       ? [
