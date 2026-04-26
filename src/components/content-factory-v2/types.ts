@@ -174,6 +174,11 @@ export interface QueueItem {
     | "error";
   linkVideoRefUrl?: string;
   linkVideoCostCents?: number;
+  // Whisper provider the user picked when the link_video job was first
+  // dispatched. Persisted on the QueueItem so the Retry button can re-invoke
+  // content-factory-generate with the same transcription engine the user
+  // originally chose.
+  linkVideoTranscribeProvider?: "audioshake" | "whisperx";
 }
 
 export type AngleFamilyFilter = "all" | AngleFamily;

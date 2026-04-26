@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import {
   CalendarClock,
   Check,
@@ -337,17 +338,49 @@ export default function ReviewView({
           </div>
         )}
 
-        {filtered.map((item) => (
-          <QueueCard
-            key={item.id}
-            item={item}
-            onApprove={() => onApproveSchedule(item.id)}
-            onTune={() => onSendToTune(item.id)}
-            onKill={() => setKillTarget(item)}
-            onView={() => setViewTarget(item)}
-            onRetry={() => onRetryRender(item.id)}
-          />
-        ))}
+        {/* Queue list — stagger reveal only on tab-mount. Once parent
+            transitions through hidden → show the staggerChildren delay no
+            longer applies, so new items pushed in by Realtime/polling get
+            a quick standalone fade-in (no list-wide restage). Cap the
+            visible-stagger to first 8 items so total ≈ 280ms. */}
+        <motion.div
+          className="flex flex-col gap-3"
+          variants={{
+            hidden: {},
+            show: {
+              transition: { staggerChildren: 0.035, delayChildren: 0.04 },
+            },
+          }}
+          initial="hidden"
+          animate="show"
+        >
+          {filtered.map((item, i) => (
+            <motion.div
+              key={item.id}
+              variants={{
+                hidden: { opacity: 0, y: 8 },
+                show: {
+                  opacity: 1,
+                  y: 0,
+                  transition: {
+                    duration: 0.32,
+                    ease: [0.16, 1, 0.3, 1],
+                    delay: i < 8 ? 0 : 0,
+                  },
+                },
+              }}
+            >
+              <QueueCard
+                item={item}
+                onApprove={() => onApproveSchedule(item.id)}
+                onTune={() => onSendToTune(item.id)}
+                onKill={() => setKillTarget(item)}
+                onView={() => setViewTarget(item)}
+                onRetry={() => onRetryRender(item.id)}
+              />
+            </motion.div>
+          ))}
+        </motion.div>
       </div>
 
       <KillFeedbackModal
@@ -360,16 +393,19 @@ export default function ReviewView({
         }}
       />
 
-      {viewTarget && (
-        <BriefViewerModal
-          item={viewTarget}
-          onClose={() => setViewTarget(null)}
-          onRetry={() => {
-            onRetryRender(viewTarget.id);
-            setViewTarget(null);
-          }}
-        />
-      )}
+      <AnimatePresence>
+        {viewTarget && (
+          <BriefViewerModal
+            key="brief-viewer"
+            item={viewTarget}
+            onClose={() => setViewTarget(null)}
+            onRetry={() => {
+              onRetryRender(viewTarget.id);
+              setViewTarget(null);
+            }}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -405,7 +441,7 @@ function QueueCard({
 
   return (
     <div
-      className="group rounded-2xl p-5 flex gap-5 transition-all duration-200 hover:-translate-y-0.5"
+      className="group rounded-2xl p-5 flex gap-5 transition-[transform,border-color,box-shadow,opacity] duration-[var(--dur-state)] ease-[cubic-bezier(0.16,1,0.3,1)] hover:-translate-y-0.5"
       style={{
         background: "var(--surface)",
         border: "1px solid var(--border)",
@@ -583,10 +619,10 @@ function QueueCard({
               Approve & schedule
             </ActionButton>
           )}
-          {isStalled && (
+          {(isStalled || isFailed) && (
             <ActionButton onClick={onRetry} variant="primary">
               <RefreshCw size={14} />
-              Retry render
+              Retry
             </ActionButton>
           )}
           {isStalled && item.sourceUrl && (
@@ -809,18 +845,26 @@ function BriefViewerModal({
         : "Render in progress";
 
   return (
-    <div
+    <motion.div
       className="fixed inset-0 z-50 flex items-center justify-center p-6"
       style={{ background: "rgba(0,0,0,0.7)" }}
       onClick={onClose}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.24, ease: [0.16, 1, 0.3, 1] }}
     >
-      <div
+      <motion.div
         onClick={(e) => e.stopPropagation()}
         className="rounded-2xl flex flex-col gap-4 p-6 max-w-[920px] w-full max-h-[90vh] overflow-y-auto font-['DM_Sans',sans-serif]"
         style={{
           background: "var(--surface)",
           border: "1px solid var(--border)",
         }}
+        initial={{ opacity: 0, scale: 0.96 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.96 }}
+        transition={{ duration: 0.24, ease: [0.16, 1, 0.3, 1] }}
       >
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
@@ -974,8 +1018,8 @@ function BriefViewerModal({
             )}
           </div>
         )}
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   );
 }
 
@@ -1115,7 +1159,7 @@ function ActionButton({
     <button
       type="button"
       onClick={onClick}
-      className="h-9 px-3 rounded-[10px] text-[12px] font-semibold flex items-center gap-1.5"
+      className="h-9 px-3 rounded-[10px] text-[12px] font-semibold flex items-center gap-1.5 transition-[color,background-color,border-color,transform,opacity] duration-[var(--dur-state)] ease-[cubic-bezier(0.16,1,0.3,1)] hover:opacity-90 active:scale-[0.97] active:duration-[var(--dur-instant)]"
       style={styles}
     >
       {children}

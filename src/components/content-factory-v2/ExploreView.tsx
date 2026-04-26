@@ -1,3 +1,4 @@
+import { motion } from "framer-motion";
 import { Sparkles } from "lucide-react";
 import type { OutputType } from "./types";
 import { PRESETS } from "./presets";
@@ -5,6 +6,23 @@ import { PRESETS } from "./presets";
 interface ExploreViewProps {
   onPickPreset: (preset: OutputType) => void;
 }
+
+// Stagger reveal — 40ms between cards, capped at first 12 children so the
+// total never exceeds ~480ms. Each child fades + rises 10px.
+const GRID_VARIANTS = {
+  hidden: {},
+  show: {
+    transition: { staggerChildren: 0.04, delayChildren: 0.04 },
+  },
+};
+const CARD_VARIANTS = {
+  hidden: { opacity: 0, y: 10 },
+  show: {
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.36, ease: [0.16, 1, 0.3, 1] },
+  },
+};
 
 export default function ExploreView({ onPickPreset }: ExploreViewProps) {
   const live = PRESETS.filter((p) => p.status === "live");
@@ -83,20 +101,21 @@ export default function ExploreView({ onPickPreset }: ExploreViewProps) {
             </h2>
           </div>
         </div>
-        <div
+        <motion.div
           className="grid gap-3"
           style={{
             gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
           }}
+          variants={GRID_VARIANTS}
+          initial="hidden"
+          animate="show"
         >
           {live.map((p) => (
-            <ToolCard
-              key={p.key}
-              preset={p}
-              onClick={() => onPickPreset(p.key)}
-            />
+            <motion.div key={p.key} variants={CARD_VARIANTS}>
+              <ToolCard preset={p} onClick={() => onPickPreset(p.key)} />
+            </motion.div>
           ))}
-        </div>
+        </motion.div>
       </section>
 
       {/* Coming soon */}
@@ -115,20 +134,21 @@ export default function ExploreView({ onPickPreset }: ExploreViewProps) {
             Coming soon
           </h2>
         </div>
-        <div
+        <motion.div
           className="grid gap-3"
           style={{
             gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))",
           }}
+          variants={GRID_VARIANTS}
+          initial="hidden"
+          animate="show"
         >
           {soon.map((p) => (
-            <ToolCard
-              key={p.key}
-              preset={p}
-              onClick={() => onPickPreset(p.key)}
-            />
+            <motion.div key={p.key} variants={CARD_VARIANTS}>
+              <ToolCard preset={p} onClick={() => onPickPreset(p.key)} />
+            </motion.div>
           ))}
-        </div>
+        </motion.div>
       </section>
     </div>
   );
@@ -146,7 +166,7 @@ function ToolCard({
     <button
       type="button"
       onClick={onClick}
-      className="group relative text-left rounded-2xl overflow-hidden transition-all duration-200 hover:-translate-y-0.5"
+      className="group relative w-full text-left rounded-2xl overflow-hidden transition-[transform,border-color,box-shadow,opacity] duration-[var(--dur-state)] ease-[cubic-bezier(0.16,1,0.3,1)] hover:-translate-y-0.5 active:scale-[0.985] active:duration-[var(--dur-instant)]"
       style={{
         aspectRatio: "1 / 1",
         background: "var(--surface)",

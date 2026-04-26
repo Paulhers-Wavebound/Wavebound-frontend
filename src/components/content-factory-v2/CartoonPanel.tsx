@@ -4,6 +4,7 @@ import { useUserProfile } from "@/contexts/UserProfileContext";
 import { useLabelArtists } from "@/hooks/useLabelArtists";
 import { toast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
+import SmoothSelect, { type SmoothSelectOption } from "./SmoothSelect";
 
 const COST_PER_CARTOON_USD = 8;
 // Capped at 1 while ElevenLabs is on the 5-concurrent tier. Each cartoon
@@ -173,43 +174,35 @@ export default function CartoonPanel({
             No artists in roster — see /label/admin to onboard.
           </div>
         ) : (
-          <select
+          <SmoothSelect
             value={artistHandle}
-            onChange={(e) => setArtistHandle(e.target.value)}
-            className="w-full h-10 pl-3 pr-9 rounded-[10px] text-[13px] outline-none appearance-none cursor-pointer"
-            style={{
-              background: "var(--bg-subtle)",
-              color: "var(--ink)",
-              border: "1px solid var(--border)",
-            }}
-          >
-            <option value="">— pick an artist —</option>
-            {labelArtists.map((a) => (
-              <option key={a.id} value={a.artist_handle ?? ""}>
-                {a.artist_name} · @{a.artist_handle}
-              </option>
-            ))}
-          </select>
+            onChange={setArtistHandle}
+            placeholder="Pick an artist"
+            searchPlaceholder="Search roster…"
+            options={labelArtists.map<SmoothSelectOption>((a) => ({
+              value: a.artist_handle ?? "",
+              primary: a.artist_name,
+              secondary: a.artist_handle ? `@${a.artist_handle}` : undefined,
+              leading: {
+                avatarUrl: a.avatar_url,
+                node: initialsFor(a.artist_name),
+              },
+            }))}
+          />
         )}
       </Field>
 
       <Field label="Voice">
-        <select
+        <SmoothSelect
           value={voiceId}
-          onChange={(e) => setVoiceId(e.target.value)}
-          className="w-full h-10 pl-3 pr-9 rounded-[10px] text-[13px] outline-none appearance-none cursor-pointer"
-          style={{
-            background: "var(--bg-subtle)",
-            color: "var(--ink)",
-            border: "1px solid var(--border)",
-          }}
-        >
-          {VOICE_CATALOG.map((v) => (
-            <option key={v.id} value={v.id}>
-              {v.label} — {v.description}
-            </option>
-          ))}
-        </select>
+          onChange={setVoiceId}
+          options={VOICE_CATALOG.map<SmoothSelectOption>((v) => ({
+            value: v.id,
+            primary: v.label,
+            secondary: v.description,
+            leading: { node: v.label.charAt(0) },
+          }))}
+        />
         <div
           className="text-[11px] mt-1.5"
           style={{ color: "var(--ink-tertiary)" }}
@@ -297,6 +290,21 @@ export default function CartoonPanel({
         </Button>
       </div>
     </div>
+  );
+}
+
+// Two-letter initials for the avatar fallback when avatar_url is missing
+// or 404s. "Addison Rae Easterling" → "AE", "El Papi" → "EP".
+function initialsFor(name: string): string {
+  const parts = name
+    .trim()
+    .split(/\s+/)
+    .filter((p) => p.length > 0);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0].charAt(0).toUpperCase();
+  return (
+    parts[0].charAt(0).toUpperCase() +
+    parts[parts.length - 1].charAt(0).toUpperCase()
   );
 }
 

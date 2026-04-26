@@ -5,7 +5,7 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-[color,background-color,border-color,box-shadow,transform] duration-[var(--dur-state)] ease-[cubic-bezier(0.16,1,0.3,1)] active:scale-[0.97] active:duration-[var(--dur-instant)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 disabled:active:scale-100 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
   {
     variants: {
       variant: {
@@ -18,7 +18,7 @@ const buttonVariants = cva(
           "bg-secondary text-secondary-foreground hover:bg-secondary/80",
         ghost: "hover:bg-accent hover:text-accent-foreground",
         link: "text-primary underline-offset-4 hover:underline",
-        cta: "btn-shimmer rounded-[12px] bg-[var(--accent)] text-white font-semibold shadow-[0_0_24px_rgba(242,93,36,0.35),inset_0_1px_0_rgba(255,255,255,0.10)] hover:bg-[var(--accent-hover)] hover:shadow-[0_0_32px_rgba(242,93,36,0.50),inset_0_1px_0_rgba(255,255,255,0.14)] active:shadow-[0_0_16px_rgba(242,93,36,0.40),inset_0_1px_0_rgba(255,255,255,0.06)] transition-all duration-200",
+        cta: "btn-shimmer rounded-[12px] bg-[var(--accent)] text-white font-semibold shadow-[0_0_24px_rgba(242,93,36,0.35),inset_0_1px_0_rgba(255,255,255,0.10)] hover:-translate-y-[1px] hover:bg-[var(--accent-hover)] hover:shadow-[0_0_32px_rgba(242,93,36,0.50),inset_0_1px_0_rgba(255,255,255,0.14)] active:translate-y-0 active:scale-[0.97] active:shadow-[0_0_16px_rgba(242,93,36,0.40),inset_0_1px_0_rgba(255,255,255,0.06)]",
       },
       size: {
         default: "h-10 px-4 py-2",

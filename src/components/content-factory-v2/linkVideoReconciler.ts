@@ -191,6 +191,7 @@ export interface LinkVideoRunSnapshot {
   linkVideoStage?: LinkVideoStage;
   linkVideoRefUrl?: string;
   linkVideoCostCents?: number;
+  linkVideoTranscribeProvider?: "audioshake" | "whisperx";
   renderedClipUrl?: string;
   jobStage?: string;
   jobError?: string;
@@ -242,6 +243,7 @@ export function linkVideoSnapshotFromItem(
     linkVideoStage: item.linkVideoStage,
     linkVideoRefUrl: item.linkVideoRefUrl,
     linkVideoCostCents: item.linkVideoCostCents,
+    linkVideoTranscribeProvider: item.linkVideoTranscribeProvider,
     renderedClipUrl: item.renderedClipUrl,
     jobStage: item.jobStage,
     jobError: item.jobError,
@@ -266,6 +268,7 @@ export function linkVideoItemFromSnapshot(s: LinkVideoRunSnapshot): QueueItem {
     linkVideoStage: s.linkVideoStage,
     linkVideoRefUrl: s.linkVideoRefUrl,
     linkVideoCostCents: s.linkVideoCostCents,
+    linkVideoTranscribeProvider: s.linkVideoTranscribeProvider,
     renderedClipUrl: s.renderedClipUrl,
     jobStage: s.jobStage,
     jobError: s.jobError,

@@ -160,6 +160,15 @@ export interface CartoonRunSnapshot {
   thumbnailUrl?: string;
   scheduledFor?: string;
   jobError?: string;
+  // ElevenLabs voice the user picked at creation time. Persisted so the
+  // Retry button can re-fire the cartoon stream with the original voice
+  // even after a page refresh wipes in-memory state.
+  cartoonVoiceId?: string;
+  cartoonVoiceSettings?: {
+    stability: number;
+    style: number;
+    use_speaker_boost: boolean;
+  };
 }
 
 export function loadCartoonRuns(labelId: string | null): CartoonRunSnapshot[] {
@@ -207,6 +216,8 @@ export function snapshotFromItem(item: QueueItem): CartoonRunSnapshot | null {
     thumbnailUrl: item.thumbnailUrl,
     scheduledFor: item.scheduledFor,
     jobError: item.jobError,
+    cartoonVoiceId: item.cartoonVoiceId,
+    cartoonVoiceSettings: item.cartoonVoiceSettings,
   };
 }
 
@@ -242,6 +253,8 @@ export function itemFromSnapshot(s: CartoonRunSnapshot): QueueItem {
     thumbnailUrl: s.thumbnailUrl,
     scheduledFor: s.scheduledFor,
     jobError: s.jobError,
+    cartoonVoiceId: s.cartoonVoiceId,
+    cartoonVoiceSettings: s.cartoonVoiceSettings,
   };
 }
 
@@ -358,9 +371,7 @@ export async function reconcileCartoonItem(
     const errorLabel =
       format === "realfootage" ? realfootageErrorLabel : cartoonErrorLabel;
     const stageMapper =
-      format === "realfootage"
-        ? realfootageStatusToStage
-        : scriptStatusToStage;
+      format === "realfootage" ? realfootageStatusToStage : scriptStatusToStage;
 
     const [scriptRes, videoRes] = await Promise.all([
       supabase

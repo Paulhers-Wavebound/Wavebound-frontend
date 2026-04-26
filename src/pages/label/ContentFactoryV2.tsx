@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { RealtimeChannel } from "@supabase/supabase-js";
+import { AnimatePresence, motion, MotionConfig } from "framer-motion";
 import { Factory, Inbox, Loader2, Sparkles } from "lucide-react";
 import ExploreView from "@/components/content-factory-v2/ExploreView";
 import CreateView from "@/components/content-factory-v2/CreateView";
@@ -1484,7 +1485,12 @@ export default function ContentFactoryV2() {
   // status='generating', flip to the Review tab, let the polling tick own
   // the lifecycle from here.
   const handleLinkVideoJob = useCallback(
-    ({ jobId, artistHandle, refUrl }: LinkVideoJobInput) => {
+    ({
+      jobId,
+      artistHandle,
+      refUrl,
+      transcribeProvider,
+    }: LinkVideoJobInput) => {
       const placeholder: QueueItem = {
         id: `q-linkvideo-${jobId}`,
         artistId: `linkvideo-${artistHandle}`,
@@ -1500,6 +1506,7 @@ export default function ContentFactoryV2() {
         createdAt: new Date().toISOString(),
         linkVideoJobId: jobId,
         linkVideoRefUrl: refUrl,
+        linkVideoTranscribeProvider: transcribeProvider,
         linkVideoStage: "pending",
         jobStage: "Queued — pipeline picking up.",
       };
@@ -1598,55 +1605,264 @@ export default function ContentFactoryV2() {
     });
   }, []);
 
-  // Retry a stalled fan-brief render. Clears render_error/render_error_at on
-  // fan_briefs so the worker's Realtime UPDATE handler re-queues it. The
-  // worker's same-row check (status=approved AND no clip AND no render_error)
-  // will fire automatically. If retry will probably fail (yt_blocked /
-  // geo_blocked), the user is choosing to try anyway — could work if the
-  // worker's IP situation changed since the original failure.
+  // Retry a failed/stalled queue item using the same settings the user
+  // originally picked. Branches by outputType:
+  //
+  //   • fan_brief  → clear render_error on the fan_briefs row; the worker's
+  //                  Realtime UPDATE handler re-queues it (status=approved
+  //                  AND no clip AND no render_error fires automatically).
+  //   • cartoon    → re-fire the writer chat stream with the original
+  //                  artistName/handle/voice — same prompt, same voice id +
+  //                  voice settings, fresh chat job.
+  //   • link_video → re-invoke content-factory-generate with the original
+  //                  artist_handle / ref_tiktok_url / transcribe_provider;
+  //                  swap the placeholder onto the new job_id.
+  //
+  // For yt_blocked / geo_blocked the user is choosing to try anyway — could
+  // work if the worker's IP situation changed since the original failure.
   const handleRetryRender = useCallback(
     async (itemId: string) => {
       const item = queue.find((q) => q.id === itemId);
-      if (!item?.fanBriefId) return;
+      if (!item) return;
 
-      // Optimistic clear so the card flips out of the failed state
-      // immediately. The next 30s refetch will reflect either a fresh
-      // render or a re-tagged render_error.
-      setQueue((prev) =>
-        prev.map((q) =>
-          q.id === itemId
-            ? { ...q, renderError: undefined, renderStalled: false }
-            : q,
-        ),
-      );
-      toast({
-        title: "Retrying render",
-        description: "Worker will pick this back up within a few seconds.",
-      });
-
-      const { error } = await supabase
-        .from("fan_briefs")
-        .update({ render_error: null, render_error_at: null })
-        .eq("id", item.fanBriefId);
-      if (error) {
-        console.error("[retry-render] failed to clear render_error", error);
-        // Revert the optimistic update.
+      // ── fan_brief ──────────────────────────────────────────────────────
+      if (item.outputType === "fan_brief" || item.fanBriefId) {
+        if (!item.fanBriefId) return;
         setQueue((prev) =>
           prev.map((q) =>
             q.id === itemId
-              ? { ...q, renderError: item.renderError, renderStalled: true }
+              ? {
+                  ...q,
+                  status: q.status === "failed" ? "pending" : q.status,
+                  renderError: undefined,
+                  renderStalled: false,
+                  jobError: undefined,
+                }
               : q,
           ),
         );
         toast({
-          title: "Retry failed",
-          description: error.message,
-          variant: "destructive",
+          title: "Retrying render",
+          description: "Worker will pick this back up within a few seconds.",
+        });
+
+        const { error } = await supabase
+          .from("fan_briefs")
+          .update({ render_error: null, render_error_at: null })
+          .eq("id", item.fanBriefId);
+        if (error) {
+          console.error("[retry-render] failed to clear render_error", error);
+          setQueue((prev) =>
+            prev.map((q) =>
+              q.id === itemId
+                ? { ...q, renderError: item.renderError, renderStalled: true }
+                : q,
+            ),
+          );
+          toast({
+            title: "Retry failed",
+            description: error.message,
+            variant: "destructive",
+          });
+          return;
+        }
+        queryClient.invalidateQueries({
+          queryKey: ["fan-briefs-v2-approved", labelId],
         });
         return;
       }
-      queryClient.invalidateQueries({
-        queryKey: ["fan-briefs-v2-approved", labelId],
+
+      // ── cartoon ────────────────────────────────────────────────────────
+      if (item.outputType === "cartoon") {
+        const artistName = item.artistDisplayName ?? "this artist";
+        const artistHandle = item.artistDisplayHandle ?? "";
+        if (!item.cartoonVoiceId) {
+          toast({
+            title: "Can't retry this cartoon",
+            description:
+              "Original voice setting wasn't recorded — kick off a fresh one from Create.",
+            variant: "destructive",
+          });
+          return;
+        }
+
+        // Reset the card back to the script stage in-place so the existing
+        // reconciler picks it up like a fresh run. Keep the same id so the
+        // user's mental position in the list doesn't jump.
+        setQueue((prev) =>
+          prev.map((q) =>
+            q.id === itemId
+              ? {
+                  ...q,
+                  status: "generating",
+                  cartoonStage: "script",
+                  cartoonStageDetail: undefined,
+                  cartoonChatJobId: undefined,
+                  cartoonScriptId: undefined,
+                  cartoonHook: undefined,
+                  cartoonFinalUrl: undefined,
+                  cartoonFormat: undefined,
+                  cartoonVoCallInFlight: false,
+                  jobError: undefined,
+                  jobStage: undefined,
+                  renderedClipUrl: undefined,
+                  createdAt: new Date().toISOString(),
+                }
+              : q,
+          ),
+        );
+        toast({
+          title: "Retrying cartoon",
+          description: `for ${artistName} — script first, end-to-end ~15-20 min.`,
+        });
+
+        const writerMessage = `Make a cartoon for ${artistName}. Pick the most compelling, factually-grounded story angle from their dossier — viral moment, hidden lore, fan obsession, chart breakthrough, anything that hooks in 3 words. Run the dossier tools first.`;
+        const sessionId = crypto.randomUUID();
+        void streamChatMessage(
+          {
+            message: writerMessage,
+            session_id: sessionId,
+            role: "cartoon_writer",
+          },
+          {
+            onJobId: (jobId) => {
+              setQueue((prev) =>
+                prev.map((q) =>
+                  q.id === itemId ? { ...q, cartoonChatJobId: jobId } : q,
+                ),
+              );
+            },
+            onError: (err) => {
+              setQueue((prev) =>
+                prev.map((q) =>
+                  q.id === itemId
+                    ? {
+                        ...q,
+                        status: "failed",
+                        jobError: err || "Script stream errored",
+                      }
+                    : q,
+                ),
+              );
+            },
+          },
+          undefined,
+          "label-chat",
+        ).catch((err) => {
+          setQueue((prev) =>
+            prev.map((q) =>
+              q.id === itemId
+                ? {
+                    ...q,
+                    status: "failed",
+                    jobError:
+                      err instanceof Error
+                        ? err.message
+                        : "Script stream failed",
+                  }
+                : q,
+            ),
+          );
+        });
+        // Reference handle to silence unused-var when handle is empty.
+        void artistHandle;
+        return;
+      }
+
+      // ── link_video ─────────────────────────────────────────────────────
+      if (item.outputType === "link_video") {
+        const artistHandle = item.artistDisplayHandle;
+        const refUrl = item.linkVideoRefUrl;
+        const transcribeProvider =
+          item.linkVideoTranscribeProvider ?? "audioshake";
+        if (!labelId || !artistHandle || !refUrl) {
+          toast({
+            title: "Can't retry this Lyric Overlay",
+            description:
+              "Original ref URL or artist handle wasn't recorded — start a fresh job from Create.",
+            variant: "destructive",
+          });
+          return;
+        }
+
+        setQueue((prev) =>
+          prev.map((q) =>
+            q.id === itemId
+              ? {
+                  ...q,
+                  status: "generating",
+                  linkVideoStage: "pending",
+                  jobStage: "Queued — pipeline picking up.",
+                  jobError: undefined,
+                  renderedClipUrl: undefined,
+                  createdAt: new Date().toISOString(),
+                }
+              : q,
+          ),
+        );
+        toast({
+          title: "Retrying Lyric Overlay",
+          description: `for @${artistHandle} — pipeline runs ~4–8 min.`,
+        });
+
+        const { data, error: invokeError } = await supabase.functions.invoke(
+          "content-factory-generate",
+          {
+            body: {
+              label_id: labelId,
+              artist_handle: artistHandle,
+              ref_tiktok_url: refUrl,
+              transcribe_provider: transcribeProvider,
+            },
+          },
+        );
+        if (invokeError) {
+          setQueue((prev) =>
+            prev.map((q) =>
+              q.id === itemId
+                ? {
+                    ...q,
+                    status: "failed",
+                    jobError: invokeError.message,
+                  }
+                : q,
+            ),
+          );
+          toast({
+            title: "Retry failed",
+            description: invokeError.message,
+            variant: "destructive",
+          });
+          return;
+        }
+        const newJobId = (data as { job_id?: string } | null)?.job_id ?? null;
+        if (!newJobId) {
+          setQueue((prev) =>
+            prev.map((q) =>
+              q.id === itemId
+                ? {
+                    ...q,
+                    status: "failed",
+                    jobError: "No job_id returned from generate endpoint",
+                  }
+                : q,
+            ),
+          );
+          return;
+        }
+        setQueue((prev) =>
+          prev.map((q) =>
+            q.id === itemId ? { ...q, linkVideoJobId: newJobId } : q,
+          ),
+        );
+        return;
+      }
+
+      // Other output types don't have a retry path yet — kept silent so the
+      // button remains harmless if it ever gets exposed for them.
+      toast({
+        title: "Nothing to retry",
+        description: "This item type doesn't support retry yet.",
       });
     },
     [queue, queryClient, labelId],
@@ -1746,190 +1962,215 @@ export default function ContentFactoryV2() {
   );
 
   return (
-    <div
-      className="min-h-[calc(100vh-64px)]"
-      style={{ background: "var(--bg)" }}
-    >
-      <div className="mx-auto px-6 pt-6 pb-16" style={{ maxWidth: 1320 }}>
-        {/* Page header */}
-        <div className="mb-5 flex items-end justify-between gap-4">
-          <div>
-            <div
-              className="text-[11px] font-semibold uppercase tracking-wide mb-1 font-['DM_Sans',sans-serif]"
-              style={{ color: "var(--ink-secondary)" }}
-            >
-              Content Factory v2 · prototype
+    <MotionConfig reducedMotion="user">
+      <div
+        className="min-h-[calc(100vh-64px)]"
+        style={{ background: "var(--bg)" }}
+      >
+        <div className="mx-auto px-6 pt-6 pb-16" style={{ maxWidth: 1320 }}>
+          {/* Page header */}
+          <div className="mb-5 flex items-end justify-between gap-4">
+            <div>
+              <div
+                className="text-[11px] font-semibold uppercase tracking-wide mb-1 font-['DM_Sans',sans-serif]"
+                style={{ color: "var(--ink-secondary)" }}
+              >
+                Content Factory v2 · prototype
+              </div>
+              <h1
+                className="text-[28px] font-bold font-['DM_Sans',sans-serif]"
+                style={{ color: "var(--ink)" }}
+              >
+                {tabTitle}
+              </h1>
             </div>
-            <h1
-              className="text-[28px] font-bold font-['DM_Sans',sans-serif]"
-              style={{ color: "var(--ink)" }}
+            <div
+              className="text-[12px] font-['JetBrains_Mono',monospace]"
+              style={{ color: "var(--ink-tertiary)" }}
             >
-              {tabTitle}
-            </h1>
+              mock data · existing routes untouched
+            </div>
           </div>
-          <div
-            className="text-[12px] font-['JetBrains_Mono',monospace]"
-            style={{ color: "var(--ink-tertiary)" }}
-          >
-            mock data · existing routes untouched
-          </div>
-        </div>
 
-        {/* Top-nav — flat horizontal label list. Bright text on active /
+          {/* Top-nav — flat horizontal label list. Bright text on active /
             hover, muted otherwise; 2px accent underline on the active tab.
             Higgsfield-style — no pill backgrounds, just labels + a thin
             divider running underneath the row. */}
-        <div
-          className="mb-6 flex items-center gap-1 font-['DM_Sans',sans-serif]"
-          style={{ borderBottom: "1px solid var(--border)" }}
-        >
-          {TABS.map((t) => {
-            const active = activeTab === t.key;
-            const badge = t.key === "assets" ? assetsBadgeCount : null;
-            const colorClass = active
-              ? "text-[var(--ink)]"
-              : "text-[var(--ink-tertiary)] hover:text-[var(--accent)]";
-            const badgeClass = active
-              ? "bg-[var(--accent-light)] text-[var(--accent)] border-[var(--accent)]"
-              : "bg-white/[0.06] text-[var(--ink-secondary)] border-[var(--border)] group-hover:bg-[var(--accent-light)] group-hover:text-[var(--accent)] group-hover:border-[var(--accent)]";
-            return (
-              <button
-                key={t.key}
-                type="button"
-                onClick={() => setActiveTab(t.key)}
-                className={`group relative h-11 px-4 flex items-center gap-2 text-[14px] font-semibold transition-colors ${colorClass}`}
-              >
-                <t.icon
-                  size={14}
-                  color={active ? "var(--accent)" : "currentColor"}
-                />
-                <span>{t.label}</span>
-                {badge != null && badge > 0 && (
-                  <span
-                    className={`px-1.5 py-0.5 rounded-full border text-[10px] font-['JetBrains_Mono',monospace] tabular-nums transition-colors ${badgeClass}`}
-                  >
-                    {badge}
-                  </span>
-                )}
-                {active && (
-                  <span
-                    className="absolute left-3 right-3 -bottom-px h-[2px]"
-                    style={{
-                      background: "var(--accent)",
-                      boxShadow: "0 0 12px rgba(242,93,36,0.55)",
-                    }}
+          <div
+            className="mb-6 flex items-center gap-1 font-['DM_Sans',sans-serif]"
+            style={{ borderBottom: "1px solid var(--border)" }}
+          >
+            {TABS.map((t) => {
+              const active = activeTab === t.key;
+              const badge = t.key === "assets" ? assetsBadgeCount : null;
+              const colorClass = active
+                ? "text-[var(--ink)]"
+                : "text-[var(--ink-tertiary)] hover:text-[var(--accent)]";
+              const badgeClass = active
+                ? "bg-[var(--accent-light)] text-[var(--accent)] border-[var(--accent)]"
+                : "bg-white/[0.06] text-[var(--ink-secondary)] border-[var(--border)] group-hover:bg-[var(--accent-light)] group-hover:text-[var(--accent)] group-hover:border-[var(--accent)]";
+              return (
+                <button
+                  key={t.key}
+                  type="button"
+                  onClick={() => setActiveTab(t.key)}
+                  className={`group relative h-11 px-4 flex items-center gap-2 text-[14px] font-semibold transition-colors ${colorClass}`}
+                >
+                  <t.icon
+                    size={14}
+                    color={active ? "var(--accent)" : "currentColor"}
                   />
-                )}
-              </button>
-            );
-          })}
-        </div>
+                  <span>{t.label}</span>
+                  {badge != null && badge > 0 && (
+                    <span
+                      className={`px-1.5 py-0.5 rounded-full border text-[10px] font-['JetBrains_Mono',monospace] tabular-nums transition-colors ${badgeClass}`}
+                    >
+                      {badge}
+                    </span>
+                  )}
+                  {active && (
+                    <motion.span
+                      layoutId="cf2-tab-underline"
+                      className="absolute left-3 right-3 -bottom-px h-[2px]"
+                      style={{
+                        background: "var(--accent)",
+                        boxShadow: "0 0 12px rgba(242,93,36,0.55)",
+                      }}
+                      transition={{
+                        type: "tween",
+                        duration: 0.24,
+                        ease: [0.16, 1, 0.3, 1],
+                      }}
+                    />
+                  )}
+                </button>
+              );
+            })}
+          </div>
 
-        {/* Active jobs strip — visible across all tabs while a fan-brief
+          {/* Active jobs strip — visible across all tabs while a fan-brief
             pipeline run is in flight. Click a card to jump to Review. */}
-        {activeJobs.length > 0 && (
-          <div className="mb-6">
-            <div className="flex items-center justify-between mb-2 font-['DM_Sans',sans-serif]">
-              <div
-                className="text-[11px] font-semibold uppercase tracking-wide flex items-center gap-2"
-                style={{ color: "var(--ink-secondary)" }}
-              >
-                <Loader2
-                  size={12}
-                  className="animate-spin"
-                  color="var(--accent)"
-                />
-                Active jobs · {activeJobs.length}
+          {activeJobs.length > 0 && (
+            <div className="mb-6">
+              <div className="flex items-center justify-between mb-2 font-['DM_Sans',sans-serif]">
+                <div
+                  className="text-[11px] font-semibold uppercase tracking-wide flex items-center gap-2"
+                  style={{ color: "var(--ink-secondary)" }}
+                >
+                  <Loader2
+                    size={12}
+                    className="animate-spin"
+                    color="var(--accent)"
+                  />
+                  Active jobs · {activeJobs.length}
+                </div>
+                <div
+                  className="text-[11px] font-['JetBrains_Mono',monospace]"
+                  style={{ color: "var(--ink-tertiary)" }}
+                >
+                  click to open in Review
+                </div>
               </div>
               <div
-                className="text-[11px] font-['JetBrains_Mono',monospace]"
-                style={{ color: "var(--ink-tertiary)" }}
+                className="grid gap-2"
+                style={{
+                  gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
+                }}
               >
-                click to open in Review
+                {activeJobs.map((job) => (
+                  <button
+                    key={job.jobId}
+                    type="button"
+                    onClick={() => setActiveTab("assets")}
+                    className="text-left rounded-2xl px-4 py-3 transition-colors flex items-start gap-3"
+                    style={{
+                      background: "var(--surface)",
+                      borderTop: "0.5px solid var(--card-edge)",
+                      borderLeft: "2px solid var(--accent)",
+                      fontFamily: '"DM Sans", sans-serif',
+                    }}
+                  >
+                    <div
+                      className="w-9 h-9 rounded-full flex items-center justify-center shrink-0"
+                      style={{
+                        background: "var(--accent-light)",
+                      }}
+                    >
+                      <Loader2
+                        size={16}
+                        color="var(--accent)"
+                        className="animate-spin"
+                      />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div
+                        className="text-[13px] font-semibold truncate"
+                        style={{ color: "var(--ink)" }}
+                      >
+                        @{job.artistHandle} · {job.count} brief
+                        {job.count === 1 ? "" : "s"}
+                      </div>
+                      <div
+                        className="text-[11px] truncate"
+                        style={{ color: "var(--ink-tertiary)" }}
+                      >
+                        {job.stage}
+                      </div>
+                    </div>
+                  </button>
+                ))}
               </div>
             </div>
-            <div
-              className="grid gap-2"
-              style={{
-                gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
+          )}
+
+          {/* Tab content — keyed crossfade. The wrapper (not the inner view)
+            is keyed by activeTab so AnimatePresence handles mount/unmount,
+            but each view's own state survives if React reuses it. The
+            polling/Realtime channels live inside ReviewView; they only
+            unmount when the user actually navigates away from Assets. */}
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.div
+              key={activeTab}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -4 }}
+              transition={{
+                duration: 0.24,
+                ease: [0.16, 1, 0.3, 1],
               }}
             >
-              {activeJobs.map((job) => (
-                <button
-                  key={job.jobId}
-                  type="button"
-                  onClick={() => setActiveTab("assets")}
-                  className="text-left rounded-2xl px-4 py-3 transition-colors flex items-start gap-3"
-                  style={{
-                    background: "var(--surface)",
-                    borderTop: "0.5px solid var(--card-edge)",
-                    borderLeft: "2px solid var(--accent)",
-                    fontFamily: '"DM Sans", sans-serif',
-                  }}
-                >
-                  <div
-                    className="w-9 h-9 rounded-full flex items-center justify-center shrink-0"
-                    style={{
-                      background: "var(--accent-light)",
-                    }}
-                  >
-                    <Loader2
-                      size={16}
-                      color="var(--accent)"
-                      className="animate-spin"
-                    />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div
-                      className="text-[13px] font-semibold truncate"
-                      style={{ color: "var(--ink)" }}
-                    >
-                      @{job.artistHandle} · {job.count} brief
-                      {job.count === 1 ? "" : "s"}
-                    </div>
-                    <div
-                      className="text-[11px] truncate"
-                      style={{ color: "var(--ink-tertiary)" }}
-                    >
-                      {job.stage}
-                    </div>
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
+              {activeTab === "explore" && (
+                <ExploreView onPickPreset={handlePickPreset} />
+              )}
 
-        {/* Tab content */}
-        {activeTab === "explore" && (
-          <ExploreView onPickPreset={handlePickPreset} />
-        )}
+              {activeTab === "create" && (
+                <CreateView
+                  angles={[]}
+                  draftAngleId={null}
+                  draftPreset={draftPreset}
+                  onDraftConsumed={handleDraftConsumed}
+                  onGenerate={handleGenerate}
+                  onCreateJob={handleCreateJob}
+                  onCartoonGenerate={handleCartoonGenerate}
+                  cartoonsInFlight={cartoonsInFlight}
+                  onLinkVideoJob={handleLinkVideoJob}
+                />
+              )}
 
-        {activeTab === "create" && (
-          <CreateView
-            angles={[]}
-            draftAngleId={null}
-            draftPreset={draftPreset}
-            onDraftConsumed={handleDraftConsumed}
-            onGenerate={handleGenerate}
-            onCreateJob={handleCreateJob}
-            onCartoonGenerate={handleCartoonGenerate}
-            cartoonsInFlight={cartoonsInFlight}
-            onLinkVideoJob={handleLinkVideoJob}
-          />
-        )}
-
-        {activeTab === "assets" && (
-          <ReviewView
-            queue={queue}
-            onApproveSchedule={handleApproveSchedule}
-            onSendToTune={handleSendToTune}
-            onKillWithFeedback={handleKillWithFeedback}
-            onRetryRender={handleRetryRender}
-          />
-        )}
+              {activeTab === "assets" && (
+                <ReviewView
+                  queue={queue}
+                  onApproveSchedule={handleApproveSchedule}
+                  onSendToTune={handleSendToTune}
+                  onKillWithFeedback={handleKillWithFeedback}
+                  onRetryRender={handleRetryRender}
+                />
+              )}
+            </motion.div>
+          </AnimatePresence>
+        </div>
       </div>
-    </div>
+    </MotionConfig>
   );
 }
 

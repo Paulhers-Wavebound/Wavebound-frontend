@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import {
   ChevronDown,
   FileText,
@@ -545,21 +546,40 @@ export default function CreateView({
             title="Pick a preset"
             subtitle="Choose what kind of drop you want — fields appear below."
           />
-          <div
+          <motion.div
             className="grid gap-3"
             style={{
               gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))",
             }}
+            variants={{
+              hidden: {},
+              show: {
+                transition: { staggerChildren: 0.04, delayChildren: 0.04 },
+              },
+            }}
+            initial="hidden"
+            animate="show"
           >
             {PRESETS.map((p) => {
               const active = activePreset === p.key;
               const isSoon = p.status === "soon";
               return (
-                <button
+                <motion.button
                   key={p.key}
                   type="button"
                   onClick={() => setActivePreset(active ? null : p.key)}
-                  className="group relative text-left rounded-2xl overflow-hidden transition-all duration-200 hover:-translate-y-0.5"
+                  variants={{
+                    hidden: { opacity: 0, y: 10 },
+                    show: {
+                      opacity: 1,
+                      y: 0,
+                      transition: {
+                        duration: 0.36,
+                        ease: [0.16, 1, 0.3, 1],
+                      },
+                    },
+                  }}
+                  className="group relative text-left rounded-2xl overflow-hidden transition-[transform,border-color,box-shadow,background-color,opacity] duration-[var(--dur-state)] ease-[cubic-bezier(0.16,1,0.3,1)] hover:-translate-y-0.5 active:scale-[0.985] active:duration-[var(--dur-instant)]"
                   style={{
                     aspectRatio: "1 / 1",
                     background: active
@@ -642,506 +662,492 @@ export default function CreateView({
                       {p.description}
                     </div>
                   </div>
-                </button>
+                </motion.button>
               );
             })}
-          </div>
+          </motion.div>
         </section>
 
-        {/* Step 2 — preset-specific fields */}
-        {activePreset && (
-          <section
-            className="rounded-2xl p-6 flex flex-col gap-5"
-            style={{
-              background: "var(--surface)",
-              borderTop: "0.5px solid var(--card-edge)",
-            }}
-          >
-            <div className="flex items-center justify-between gap-3">
-              <SectionHeader
-                title={OUTPUT_TYPE_LABEL[activePreset]}
-                subtitle="Only the fields this preset needs."
-                tight
-              />
-              <button
-                type="button"
-                onClick={() => setActivePreset(null)}
-                className="w-8 h-8 rounded-lg flex items-center justify-center"
-                style={{
-                  background: "var(--bg-subtle)",
-                  border: "1px solid var(--border)",
-                }}
-                title="Clear preset"
-              >
-                <X size={14} color="var(--ink-tertiary)" />
-              </button>
-            </div>
-
-            {/* Short-form */}
-            {activePreset === "short_form" && (
-              <>
-                <AnglePicker
-                  angles={availableAngles}
-                  value={angleId}
-                  onChange={setAngleId}
-                  allowFreeform
+        {/* Step 2 — preset-specific fields. AnimatePresence keyed by
+            activePreset so switching presets fades out the old fields and
+            slides the new ones up. Open/close uses opacity + translateY
+            only (skill rule — no height animation). */}
+        <AnimatePresence mode="wait" initial={false}>
+          {activePreset && (
+            <motion.section
+              key={activePreset}
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 8 }}
+              transition={{
+                duration: 0.36,
+                ease: [0.16, 1, 0.3, 1],
+              }}
+              className="rounded-2xl p-6 flex flex-col gap-5 overflow-hidden"
+              style={{
+                background: "var(--surface)",
+                borderTop: "0.5px solid var(--card-edge)",
+              }}
+            >
+              <div className="flex items-center justify-between gap-3">
+                <SectionHeader
+                  title={OUTPUT_TYPE_LABEL[activePreset]}
+                  subtitle="Only the fields this preset needs."
+                  tight
                 />
-                <Row>
-                  <Field label="Aspect">
+                <button
+                  type="button"
+                  onClick={() => setActivePreset(null)}
+                  className="w-8 h-8 rounded-lg flex items-center justify-center"
+                  style={{
+                    background: "var(--bg-subtle)",
+                    border: "1px solid var(--border)",
+                  }}
+                  title="Clear preset"
+                >
+                  <X size={14} color="var(--ink-tertiary)" />
+                </button>
+              </div>
+
+              {/* Short-form */}
+              {activePreset === "short_form" && (
+                <>
+                  <AnglePicker
+                    angles={availableAngles}
+                    value={angleId}
+                    onChange={setAngleId}
+                    allowFreeform
+                  />
+                  <Row>
+                    <Field label="Aspect">
+                      <ChipRow
+                        options={[
+                          { k: "9:16", label: "9:16" },
+                          { k: "1:1", label: "1:1" },
+                          { k: "16:9", label: "16:9" },
+                        ]}
+                        value={aspectRatio}
+                        onChange={(v) =>
+                          setAspectRatio(v as "9:16" | "1:1" | "16:9")
+                        }
+                      />
+                    </Field>
+                    <Field label={`Duration — ${durationSec}s`}>
+                      <input
+                        type="range"
+                        min={15}
+                        max={60}
+                        value={durationSec}
+                        onChange={(e) => setDurationSec(Number(e.target.value))}
+                        className="w-full"
+                        style={{ accentColor: "var(--accent)" }}
+                      />
+                    </Field>
+                  </Row>
+                  <Field label="Music bed">
                     <ChipRow
                       options={[
-                        { k: "9:16", label: "9:16" },
-                        { k: "1:1", label: "1:1" },
-                        { k: "16:9", label: "16:9" },
+                        { k: "native", label: "Artist track" },
+                        { k: "original", label: "Original score" },
+                        { k: "cue_a", label: "Cue library A" },
                       ]}
-                      value={aspectRatio}
+                      value={musicBed}
                       onChange={(v) =>
-                        setAspectRatio(v as "9:16" | "1:1" | "16:9")
+                        setMusicBed(v as "native" | "original" | "cue_a")
                       }
                     />
                   </Field>
-                  <Field label={`Duration — ${durationSec}s`}>
+                </>
+              )}
+
+              {/* Mini-doc */}
+              {activePreset === "mini_doc" && (
+                <>
+                  <Row>
+                    <Field label="Story structure">
+                      <Select
+                        value={storyStructure}
+                        onChange={(v) =>
+                          setStoryStructure(
+                            v as
+                              | "3_act"
+                              | "5_chapter"
+                              | "chronological"
+                              | "investigative",
+                          )
+                        }
+                        options={[
+                          { value: "3_act", label: "3-act" },
+                          { value: "5_chapter", label: "5-chapter" },
+                          { value: "chronological", label: "Chronological" },
+                          { value: "investigative", label: "Investigative" },
+                        ]}
+                      />
+                    </Field>
+                    <Field label="Research depth">
+                      <ChipRow
+                        options={[
+                          { k: "Light", label: "Light" },
+                          { k: "Deep", label: "Deep" },
+                          { k: "Investigative", label: "Investigative" },
+                        ]}
+                        value={researchDepth}
+                        onChange={(v) =>
+                          setResearchDepth(
+                            v as "Light" | "Deep" | "Investigative",
+                          )
+                        }
+                      />
+                    </Field>
+                  </Row>
+                  <AnglePicker
+                    angles={availableAngles}
+                    value={angleId}
+                    onChange={setAngleId}
+                    allowFreeform
+                    label="Angle source (pick or freeform)"
+                  />
+                  <Field label={`Number of angles — ${numAngles}`}>
                     <input
                       type="range"
-                      min={15}
-                      max={60}
-                      value={durationSec}
-                      onChange={(e) => setDurationSec(Number(e.target.value))}
+                      min={1}
+                      max={6}
+                      value={numAngles}
+                      onChange={(e) => setNumAngles(Number(e.target.value))}
                       className="w-full"
                       style={{ accentColor: "var(--accent)" }}
                     />
                   </Field>
-                </Row>
-                <Field label="Music bed">
-                  <ChipRow
-                    options={[
-                      { k: "native", label: "Artist track" },
-                      { k: "original", label: "Original score" },
-                      { k: "cue_a", label: "Cue library A" },
-                    ]}
-                    value={musicBed}
-                    onChange={(v) =>
-                      setMusicBed(v as "native" | "original" | "cue_a")
-                    }
+                </>
+              )}
+
+              {/* Sensational */}
+              {activePreset === "sensational" && (
+                <>
+                  <AnglePicker
+                    angles={availableAngles.filter(
+                      (a) => a.family === "sensational",
+                    )}
+                    value={angleId}
+                    onChange={setAngleId}
+                    label="Angle"
                   />
-                </Field>
-              </>
-            )}
-
-            {/* Mini-doc */}
-            {activePreset === "mini_doc" && (
-              <>
-                <Row>
-                  <Field label="Story structure">
-                    <Select
-                      value={storyStructure}
-                      onChange={(v) =>
-                        setStoryStructure(
-                          v as
-                            | "3_act"
-                            | "5_chapter"
-                            | "chronological"
-                            | "investigative",
-                        )
-                      }
-                      options={[
-                        { value: "3_act", label: "3-act" },
-                        { value: "5_chapter", label: "5-chapter" },
-                        { value: "chronological", label: "Chronological" },
-                        { value: "investigative", label: "Investigative" },
-                      ]}
-                    />
-                  </Field>
-                  <Field label="Research depth">
-                    <ChipRow
-                      options={[
-                        { k: "Light", label: "Light" },
-                        { k: "Deep", label: "Deep" },
-                        { k: "Investigative", label: "Investigative" },
-                      ]}
-                      value={researchDepth}
-                      onChange={(v) =>
-                        setResearchDepth(
-                          v as "Light" | "Deep" | "Investigative",
-                        )
-                      }
-                    />
-                  </Field>
-                </Row>
-                <AnglePicker
-                  angles={availableAngles}
-                  value={angleId}
-                  onChange={setAngleId}
-                  allowFreeform
-                  label="Angle source (pick or freeform)"
-                />
-                <Field label={`Number of angles — ${numAngles}`}>
-                  <input
-                    type="range"
-                    min={1}
-                    max={6}
-                    value={numAngles}
-                    onChange={(e) => setNumAngles(Number(e.target.value))}
-                    className="w-full"
-                    style={{ accentColor: "var(--accent)" }}
-                  />
-                </Field>
-              </>
-            )}
-
-            {/* Sensational */}
-            {activePreset === "sensational" && (
-              <>
-                <AnglePicker
-                  angles={availableAngles.filter(
-                    (a) => a.family === "sensational",
-                  )}
-                  value={angleId}
-                  onChange={setAngleId}
-                  label="Angle"
-                />
-                <Row>
-                  <Field label="Narrator voice">
-                    <Select
-                      value={narrator}
-                      onChange={(v) =>
-                        setNarrator(v as "artist" | "neutral" | "fan")
-                      }
-                      options={[
-                        { value: "artist", label: "Artist voice" },
-                        { value: "neutral", label: "Neutral editorial" },
-                        { value: "fan", label: "Fan narrator" },
-                      ]}
-                    />
-                  </Field>
-                  <Field label="Pacing curve">
-                    <Select
-                      value={pacing}
-                      onChange={(v) =>
-                        setPacing(v as "steady" | "cold_open" | "builder")
-                      }
-                      options={[
-                        { value: "cold_open", label: "Cold open" },
-                        { value: "builder", label: "Builder" },
-                        { value: "steady", label: "Steady" },
-                      ]}
-                    />
-                  </Field>
-                </Row>
-                {selectedAngle?.speculative && (
-                  <div
-                    className="rounded-[10px] px-3 py-2 text-[12px]"
-                    style={{
-                      background: "rgba(220,38,38,0.08)",
-                      border: "1px solid rgba(220,38,38,0.25)",
-                      color: "#dc2626",
-                    }}
-                  >
-                    This angle is speculative. Review will flag it automatically
-                    — you can still generate.
-                  </div>
-                )}
-              </>
-            )}
-
-            {/* Self-help */}
-            {activePreset === "self_help" && (
-              <>
-                <AnglePicker
-                  angles={availableAngles.filter(
-                    (a) => a.family === "self_help",
-                  )}
-                  value={angleId}
-                  onChange={setAngleId}
-                  label="Angle"
-                />
-                <Field label={`Tone — ${toneLabel(toneSlider)}`}>
-                  <input
-                    type="range"
-                    min={0}
-                    max={100}
-                    value={toneSlider}
-                    onChange={(e) => setToneSlider(Number(e.target.value))}
-                    className="w-full"
-                    style={{ accentColor: "var(--accent)" }}
-                  />
-                  <div
-                    className="flex justify-between text-[10px] uppercase tracking-wide mt-1"
-                    style={{ color: "var(--ink-tertiary)" }}
-                  >
-                    <span>Warm</span>
-                    <span>Clinical</span>
-                  </div>
-                </Field>
-              </>
-            )}
-
-            {/* Tour recap */}
-            {activePreset === "tour_recap" && (
-              <>
-                <Row>
-                  <Field label="Tour date">
-                    <Select
-                      value="red-rocks-2026-04-19"
-                      onChange={() => {
-                        /* mock */
+                  <Row>
+                    <Field label="Narrator voice">
+                      <Select
+                        value={narrator}
+                        onChange={(v) =>
+                          setNarrator(v as "artist" | "neutral" | "fan")
+                        }
+                        options={[
+                          { value: "artist", label: "Artist voice" },
+                          { value: "neutral", label: "Neutral editorial" },
+                          { value: "fan", label: "Fan narrator" },
+                        ]}
+                      />
+                    </Field>
+                    <Field label="Pacing curve">
+                      <Select
+                        value={pacing}
+                        onChange={(v) =>
+                          setPacing(v as "steady" | "cold_open" | "builder")
+                        }
+                        options={[
+                          { value: "cold_open", label: "Cold open" },
+                          { value: "builder", label: "Builder" },
+                          { value: "steady", label: "Steady" },
+                        ]}
+                      />
+                    </Field>
+                  </Row>
+                  {selectedAngle?.speculative && (
+                    <div
+                      className="rounded-[10px] px-3 py-2 text-[12px]"
+                      style={{
+                        background: "rgba(220,38,38,0.08)",
+                        border: "1px solid rgba(220,38,38,0.25)",
+                        color: "#dc2626",
                       }}
-                      options={[
-                        {
-                          value: "red-rocks-2026-04-19",
-                          label: "Red Rocks — Apr 19, 2026",
-                        },
-                        {
-                          value: "sentrum-2026-04-02",
-                          label: "Sentrum Scene — Apr 2, 2026",
-                        },
-                        {
-                          value: "paris-2026-03-14",
-                          label: "Olympia Paris — Mar 14, 2026",
-                        },
-                      ]}
-                    />
-                  </Field>
-                  <Field label="Highlight type">
-                    <ChipRow
-                      options={[
-                        { k: "crowd", label: "Crowd moment" },
-                        { k: "setlist", label: "Setlist" },
-                        { k: "bts", label: "BTS" },
-                      ]}
-                      value={tourHighlight}
-                      onChange={(v) =>
-                        setTourHighlight(v as "crowd" | "setlist" | "bts")
-                      }
-                    />
-                  </Field>
-                </Row>
-              </>
-            )}
+                    >
+                      This angle is speculative. Review will flag it
+                      automatically — you can still generate.
+                    </div>
+                  )}
+                </>
+              )}
 
-            {/* Fan brief — wizard for label users, mock picker for Paul-only sessions */}
-            {activePreset === "fan_brief" && (
-              <>
-                {labelId ? (
-                  /* Wizard: pick artist + source + count, hit Create. Backend
+              {/* Self-help */}
+              {activePreset === "self_help" && (
+                <>
+                  <AnglePicker
+                    angles={availableAngles.filter(
+                      (a) => a.family === "self_help",
+                    )}
+                    value={angleId}
+                    onChange={setAngleId}
+                    label="Angle"
+                  />
+                  <Field label={`Tone — ${toneLabel(toneSlider)}`}>
+                    <input
+                      type="range"
+                      min={0}
+                      max={100}
+                      value={toneSlider}
+                      onChange={(e) => setToneSlider(Number(e.target.value))}
+                      className="w-full"
+                      style={{ accentColor: "var(--accent)" }}
+                    />
+                    <div
+                      className="flex justify-between text-[10px] uppercase tracking-wide mt-1"
+                      style={{ color: "var(--ink-tertiary)" }}
+                    >
+                      <span>Warm</span>
+                      <span>Clinical</span>
+                    </div>
+                  </Field>
+                </>
+              )}
+
+              {/* Tour recap */}
+              {activePreset === "tour_recap" && (
+                <>
+                  <Row>
+                    <Field label="Tour date">
+                      <Select
+                        value="red-rocks-2026-04-19"
+                        onChange={() => {
+                          /* mock */
+                        }}
+                        options={[
+                          {
+                            value: "red-rocks-2026-04-19",
+                            label: "Red Rocks — Apr 19, 2026",
+                          },
+                          {
+                            value: "sentrum-2026-04-02",
+                            label: "Sentrum Scene — Apr 2, 2026",
+                          },
+                          {
+                            value: "paris-2026-03-14",
+                            label: "Olympia Paris — Mar 14, 2026",
+                          },
+                        ]}
+                      />
+                    </Field>
+                    <Field label="Highlight type">
+                      <ChipRow
+                        options={[
+                          { k: "crowd", label: "Crowd moment" },
+                          { k: "setlist", label: "Setlist" },
+                          { k: "bts", label: "BTS" },
+                        ]}
+                        value={tourHighlight}
+                        onChange={(v) =>
+                          setTourHighlight(v as "crowd" | "setlist" | "bts")
+                        }
+                      />
+                    </Field>
+                  </Row>
+                </>
+              )}
+
+              {/* Fan brief — wizard for label users, mock picker for Paul-only sessions */}
+              {activePreset === "fan_brief" && (
+                <>
+                  {labelId ? (
+                    /* Wizard: pick artist + source + count, hit Create. Backend
                      edge function spins up the discover → mine → synthesize
                      pipeline and the items reconcile in Review via Realtime. */
-                  <>
-                    <Field label="Artist">
-                      {labelArtistsQuery.isError ? (
-                        <input
-                          type="text"
-                          value={briefArtistHandle}
-                          onChange={(e) =>
-                            setBriefArtistHandle(e.target.value.trim())
+                    <>
+                      <Field label="Artist">
+                        {labelArtistsQuery.isError ? (
+                          <input
+                            type="text"
+                            value={briefArtistHandle}
+                            onChange={(e) =>
+                              setBriefArtistHandle(e.target.value.trim())
+                            }
+                            placeholder="@handle (roster fetch failed — type manually)"
+                            className="w-full h-10 px-3 rounded-[10px] text-[13px] outline-none"
+                            style={{
+                              background: "var(--bg-subtle)",
+                              color: "var(--ink)",
+                              border: "1px solid var(--border)",
+                            }}
+                          />
+                        ) : labelArtistsQuery.isLoading ? (
+                          <div
+                            className="rounded-[10px] px-3 py-2 text-[12px] flex items-center gap-2"
+                            style={{
+                              background: "var(--bg-subtle)",
+                              border: "1px solid var(--border)",
+                              color: "var(--ink-tertiary)",
+                            }}
+                          >
+                            <Loader2 size={12} className="animate-spin" />
+                            Loading roster…
+                          </div>
+                        ) : labelArtists.length === 0 ? (
+                          <div
+                            className="rounded-[10px] px-3 py-2 text-[12px]"
+                            style={{
+                              background: "var(--bg-subtle)",
+                              border: "1px solid var(--border)",
+                              color: "var(--ink-tertiary)",
+                            }}
+                          >
+                            No artists in roster — see /label/admin to onboard.
+                          </div>
+                        ) : (
+                          <Select
+                            value={briefArtistHandle}
+                            onChange={setBriefArtistHandle}
+                            options={[
+                              { value: "", label: "— pick an artist —" },
+                              ...labelArtists.map((a) => ({
+                                value: a.artist_handle,
+                                label: `${a.artist_name} · @${a.artist_handle}`,
+                              })),
+                            ]}
+                          />
+                        )}
+                      </Field>
+
+                      <Field label="Source">
+                        <ChipRow
+                          options={[
+                            {
+                              k: "live_performance",
+                              label: "Live performance",
+                            },
+                            { k: "podcasts", label: "Podcasts" },
+                          ]}
+                          value={briefSource}
+                          onChange={(v) =>
+                            setBriefSource(v as "live_performance" | "podcasts")
                           }
-                          placeholder="@handle (roster fetch failed — type manually)"
-                          className="w-full h-10 px-3 rounded-[10px] text-[13px] outline-none"
+                        />
+                      </Field>
+
+                      <Field label={`Clip count — up to ${briefCount}`}>
+                        <input
+                          type="range"
+                          min={1}
+                          max={20}
+                          value={briefCount}
+                          onChange={(e) =>
+                            setBriefCount(Number(e.target.value))
+                          }
+                          className="w-full"
+                          style={{ accentColor: "var(--accent)" }}
+                        />
+                        <div
+                          className="flex justify-between text-[10px] uppercase tracking-wide mt-1"
+                          style={{ color: "var(--ink-tertiary)" }}
+                        >
+                          <span>1</span>
+                          <span>20</span>
+                        </div>
+                      </Field>
+
+                      <div className="flex items-center justify-between gap-3 pt-1">
+                        <div
+                          className="text-[11px]"
+                          style={{ color: "var(--ink-tertiary)" }}
+                        >
+                          {!briefArtistHandle || !briefSource
+                            ? "Pick an artist and a source to continue."
+                            : `Discovers ${briefCount} ${
+                                briefSource === "live_performance"
+                                  ? "live-performance"
+                                  : "podcast / interview"
+                              } moment${briefCount === 1 ? "" : "s"} for @${briefArtistHandle}, mines fan-comment peaks, and lands the briefs in Review.`}
+                        </div>
+                        <Button
+                          type="button"
+                          variant="cta"
+                          onClick={handleCreate}
+                          disabled={
+                            !briefArtistHandle || !briefSource || isCreating
+                          }
+                          className="px-5 text-[14px]"
+                        >
+                          {isCreating && (
+                            <Loader2 size={14} className="animate-spin" />
+                          )}
+                          {isCreating ? "Submitting…" : "Create"}
+                        </Button>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <Field label="Pending brief (mock)">
+                        <Select
+                          value={fanBriefId}
+                          onChange={(id) => {
+                            setFanBriefId(id);
+                            setFanBriefEdit("");
+                          }}
+                          options={[
+                            { value: "", label: "— pick a mock brief —" },
+                            ...PENDING_FAN_BRIEFS.map((b) => ({
+                              value: b.id,
+                              label: b.title,
+                            })),
+                          ]}
+                        />
+                      </Field>
+                      <Field label="Edit hook / caption">
+                        <textarea
+                          value={fanBriefEdit}
+                          onChange={(e) => setFanBriefEdit(e.target.value)}
+                          placeholder="Mock-only — live briefs render inline with real peak_evidence when a scoped session is active."
+                          className="w-full min-h-[80px] px-3 py-2 rounded-[10px] text-[14px] outline-none resize-y"
                           style={{
                             background: "var(--bg-subtle)",
                             color: "var(--ink)",
                             border: "1px solid var(--border)",
                           }}
                         />
-                      ) : labelArtistsQuery.isLoading ? (
-                        <div
-                          className="rounded-[10px] px-3 py-2 text-[12px] flex items-center gap-2"
-                          style={{
-                            background: "var(--bg-subtle)",
-                            border: "1px solid var(--border)",
-                            color: "var(--ink-tertiary)",
-                          }}
-                        >
-                          <Loader2 size={12} className="animate-spin" />
-                          Loading roster…
-                        </div>
-                      ) : labelArtists.length === 0 ? (
-                        <div
-                          className="rounded-[10px] px-3 py-2 text-[12px]"
-                          style={{
-                            background: "var(--bg-subtle)",
-                            border: "1px solid var(--border)",
-                            color: "var(--ink-tertiary)",
-                          }}
-                        >
-                          No artists in roster — see /label/admin to onboard.
-                        </div>
-                      ) : (
-                        <Select
-                          value={briefArtistHandle}
-                          onChange={setBriefArtistHandle}
-                          options={[
-                            { value: "", label: "— pick an artist —" },
-                            ...labelArtists.map((a) => ({
-                              value: a.artist_handle,
-                              label: `${a.artist_name} · @${a.artist_handle}`,
-                            })),
-                          ]}
-                        />
-                      )}
-                    </Field>
-
-                    <Field label="Source">
-                      <ChipRow
-                        options={[
-                          {
-                            k: "live_performance",
-                            label: "Live performance",
-                          },
-                          { k: "podcasts", label: "Podcasts" },
-                        ]}
-                        value={briefSource}
-                        onChange={(v) =>
-                          setBriefSource(v as "live_performance" | "podcasts")
-                        }
-                      />
-                    </Field>
-
-                    <Field label={`Clip count — up to ${briefCount}`}>
-                      <input
-                        type="range"
-                        min={1}
-                        max={20}
-                        value={briefCount}
-                        onChange={(e) => setBriefCount(Number(e.target.value))}
-                        className="w-full"
-                        style={{ accentColor: "var(--accent)" }}
-                      />
+                      </Field>
                       <div
-                        className="flex justify-between text-[10px] uppercase tracking-wide mt-1"
+                        className="text-[11px] flex items-center gap-1.5"
                         style={{ color: "var(--ink-tertiary)" }}
                       >
-                        <span>1</span>
-                        <span>20</span>
+                        <span style={{ color: "var(--ink-tertiary)" }}>●</span>
+                        No label scope — showing mock.
                       </div>
-                    </Field>
+                    </>
+                  )}
+                </>
+              )}
 
-                    <div className="flex items-center justify-between gap-3 pt-1">
-                      <div
-                        className="text-[11px]"
-                        style={{ color: "var(--ink-tertiary)" }}
-                      >
-                        {!briefArtistHandle || !briefSource
-                          ? "Pick an artist and a source to continue."
-                          : `Discovers ${briefCount} ${
-                              briefSource === "live_performance"
-                                ? "live-performance"
-                                : "podcast / interview"
-                            } moment${briefCount === 1 ? "" : "s"} for @${briefArtistHandle}, mines fan-comment peaks, and lands the briefs in Review.`}
-                      </div>
-                      <Button
-                        type="button"
-                        variant="cta"
-                        onClick={handleCreate}
-                        disabled={
-                          !briefArtistHandle || !briefSource || isCreating
-                        }
-                        className="px-5 text-[14px]"
-                      >
-                        {isCreating && (
-                          <Loader2 size={14} className="animate-spin" />
-                        )}
-                        {isCreating ? "Submitting…" : "Create"}
-                      </Button>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <Field label="Pending brief (mock)">
-                      <Select
-                        value={fanBriefId}
-                        onChange={(id) => {
-                          setFanBriefId(id);
-                          setFanBriefEdit("");
-                        }}
-                        options={[
-                          { value: "", label: "— pick a mock brief —" },
-                          ...PENDING_FAN_BRIEFS.map((b) => ({
-                            value: b.id,
-                            label: b.title,
-                          })),
-                        ]}
-                      />
-                    </Field>
-                    <Field label="Edit hook / caption">
-                      <textarea
-                        value={fanBriefEdit}
-                        onChange={(e) => setFanBriefEdit(e.target.value)}
-                        placeholder="Mock-only — live briefs render inline with real peak_evidence when a scoped session is active."
-                        className="w-full min-h-[80px] px-3 py-2 rounded-[10px] text-[14px] outline-none resize-y"
-                        style={{
-                          background: "var(--bg-subtle)",
-                          color: "var(--ink)",
-                          border: "1px solid var(--border)",
-                        }}
-                      />
-                    </Field>
-                    <div
-                      className="text-[11px] flex items-center gap-1.5"
-                      style={{ color: "var(--ink-tertiary)" }}
-                    >
-                      <span style={{ color: "var(--ink-tertiary)" }}>●</span>
-                      No label scope — showing mock.
-                    </div>
-                  </>
-                )}
-              </>
-            )}
-
-            {/* Cartoon — wizard hands off to ContentFactoryV2 which owns the
+              {/* Cartoon — wizard hands off to ContentFactoryV2 which owns the
                 script-stream + cartoon-vo + Realtime reconciler. The
                 placeholders surface in Review with a 5-stage timeline. */}
-            {activePreset === "cartoon" && (
-              <CartoonPanel
-                onGenerate={onCartoonGenerate}
-                inFlightCount={cartoonsInFlight}
-              />
-            )}
+              {activePreset === "cartoon" && (
+                <CartoonPanel
+                  onGenerate={onCartoonGenerate}
+                  inFlightCount={cartoonsInFlight}
+                />
+              )}
 
-            {/* Lyric Overlay — real generator. Mirrors the legacy
+              {/* Lyric Overlay — real generator. Mirrors the legacy
                 /label/content-factory form: TikTok ref + artist handle +
                 optional MP3 + transcribe provider, hands a job_id off to the
                 parent which polls content-factory-status and lands the
                 rendered MP4 in Review. */}
-            {activePreset === "link_video" && (
-              <>
-                <Field label="TikTok reference URL">
-                  <input
-                    type="url"
-                    value={linkUrl}
-                    onChange={(e) => {
-                      setLinkUrl(e.target.value);
-                      setLinkErrMsg(null);
-                    }}
-                    placeholder="https://www.tiktok.com/@creator/video/..."
-                    disabled={linkSubmitting}
-                    className="w-full h-10 px-3 rounded-[10px] text-[14px] outline-none"
-                    style={{
-                      background: "var(--bg-subtle)",
-                      color: "var(--ink)",
-                      border: "1px solid var(--border)",
-                    }}
-                  />
-                  {linkUrl && !isValidTikTokUrl(linkUrl) && (
-                    <div
-                      className="text-[11px] mt-1"
-                      style={{ color: "var(--yellow, #b45309)" }}
-                    >
-                      Must be a tiktok.com or vm.tiktok.com URL.
-                    </div>
-                  )}
-                </Field>
-
-                <Row>
-                  <Field label="Artist handle">
+              {activePreset === "link_video" && (
+                <>
+                  <Field label="TikTok reference URL">
                     <input
-                      type="text"
-                      value={linkArtistHandle}
+                      type="url"
+                      value={linkUrl}
                       onChange={(e) => {
-                        setLinkArtistHandle(e.target.value);
+                        setLinkUrl(e.target.value);
                         setLinkErrMsg(null);
                       }}
-                      placeholder="e.g. sombr"
+                      placeholder="https://www.tiktok.com/@creator/video/..."
                       disabled={linkSubmitting}
                       className="w-full h-10 px-3 rounded-[10px] text-[14px] outline-none"
                       style={{
@@ -1150,178 +1156,212 @@ export default function CreateView({
                         border: "1px solid var(--border)",
                       }}
                     />
+                    {linkUrl && !isValidTikTokUrl(linkUrl) && (
+                      <div
+                        className="text-[11px] mt-1"
+                        style={{ color: "var(--yellow, #b45309)" }}
+                      >
+                        Must be a tiktok.com or vm.tiktok.com URL.
+                      </div>
+                    )}
+                  </Field>
+
+                  <Row>
+                    <Field label="Artist handle">
+                      <input
+                        type="text"
+                        value={linkArtistHandle}
+                        onChange={(e) => {
+                          setLinkArtistHandle(e.target.value);
+                          setLinkErrMsg(null);
+                        }}
+                        placeholder="e.g. sombr"
+                        disabled={linkSubmitting}
+                        className="w-full h-10 px-3 rounded-[10px] text-[14px] outline-none"
+                        style={{
+                          background: "var(--bg-subtle)",
+                          color: "var(--ink)",
+                          border: "1px solid var(--border)",
+                        }}
+                      />
+                      <div
+                        className="text-[11px] mt-1"
+                        style={{ color: "var(--ink-tertiary)" }}
+                      >
+                        Free-text — leading @ is stripped.
+                      </div>
+                    </Field>
+                    <Field label="Transcribe provider">
+                      <Select
+                        value={linkTranscribeProvider}
+                        onChange={(v) =>
+                          setLinkTranscribeProvider(
+                            v as "audioshake" | "whisperx",
+                          )
+                        }
+                        options={[
+                          {
+                            value: "audioshake",
+                            label: "AudioShake — premium",
+                          },
+                          { value: "whisperx", label: "WhisperX — free" },
+                        ]}
+                      />
+                    </Field>
+                  </Row>
+
+                  <Field label="Artist MP3 (optional, max 10 MB)">
+                    <label
+                      htmlFor="cf-v2-link-mp3"
+                      className="flex items-center justify-between gap-3 h-12 px-3 rounded-[10px] cursor-pointer"
+                      style={{
+                        background: "var(--bg-subtle)",
+                        border: "1px solid var(--border)",
+                        color: linkMp3File
+                          ? "var(--ink)"
+                          : "var(--ink-tertiary)",
+                      }}
+                    >
+                      <span className="flex items-center gap-2 truncate">
+                        <Upload size={16} />
+                        <span className="truncate text-[14px]">
+                          {linkMp3File ? linkMp3File.name : "Choose MP3 file"}
+                        </span>
+                      </span>
+                      {linkMp3File && (
+                        <span
+                          className="text-[12px] font-['JetBrains_Mono',monospace] shrink-0"
+                          style={{ color: "var(--ink-tertiary)" }}
+                        >
+                          {(linkMp3File.size / 1024 / 1024).toFixed(1)} MB
+                        </span>
+                      )}
+                    </label>
+                    <input
+                      id="cf-v2-link-mp3"
+                      type="file"
+                      accept="audio/mpeg,.mp3"
+                      className="hidden"
+                      disabled={linkSubmitting}
+                      onChange={(e) => {
+                        setLinkMp3File(e.target.files?.[0] ?? null);
+                        setLinkErrMsg(null);
+                      }}
+                    />
                     <div
                       className="text-[11px] mt-1"
                       style={{ color: "var(--ink-tertiary)" }}
                     >
-                      Free-text — leading @ is stripped.
+                      Skip to use the sound attached to the ref TikTok.
                     </div>
                   </Field>
-                  <Field label="Transcribe provider">
-                    <Select
-                      value={linkTranscribeProvider}
-                      onChange={(v) =>
-                        setLinkTranscribeProvider(
-                          v as "audioshake" | "whisperx",
-                        )
+
+                  {linkErrMsg && (
+                    <div
+                      className="rounded-[10px] px-3 py-2 text-[13px]"
+                      style={{
+                        background: "rgba(220,38,38,0.08)",
+                        color: "#dc2626",
+                        border: "1px solid rgba(220,38,38,0.25)",
+                      }}
+                    >
+                      {linkErrMsg}
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-between gap-3 pt-1">
+                    <div
+                      className="text-[11px]"
+                      style={{ color: "var(--ink-tertiary)" }}
+                    >
+                      {!labelId
+                        ? "No label scope on your profile — contact Paul."
+                        : !isValidTikTokUrl(linkUrl) ||
+                            !stripHandle(linkArtistHandle)
+                          ? "Paste a TikTok ref and an artist handle to continue."
+                          : "Generates a 9:16 MP4 from the ref's vibe — ~4–8 min via content-factory-generate."}
+                    </div>
+                    <Button
+                      type="button"
+                      variant="cta"
+                      onClick={() => void handleLinkVideoSubmit()}
+                      disabled={
+                        linkSubmitting ||
+                        !labelId ||
+                        !isValidTikTokUrl(linkUrl) ||
+                        !stripHandle(linkArtistHandle)
                       }
-                      options={[
-                        { value: "audioshake", label: "AudioShake — premium" },
-                        { value: "whisperx", label: "WhisperX — free" },
-                      ]}
-                    />
-                  </Field>
-                </Row>
-
-                <Field label="Artist MP3 (optional, max 10 MB)">
-                  <label
-                    htmlFor="cf-v2-link-mp3"
-                    className="flex items-center justify-between gap-3 h-12 px-3 rounded-[10px] cursor-pointer"
-                    style={{
-                      background: "var(--bg-subtle)",
-                      border: "1px solid var(--border)",
-                      color: linkMp3File ? "var(--ink)" : "var(--ink-tertiary)",
-                    }}
-                  >
-                    <span className="flex items-center gap-2 truncate">
-                      <Upload size={16} />
-                      <span className="truncate text-[14px]">
-                        {linkMp3File ? linkMp3File.name : "Choose MP3 file"}
-                      </span>
-                    </span>
-                    {linkMp3File && (
-                      <span
-                        className="text-[12px] font-['JetBrains_Mono',monospace] shrink-0"
-                        style={{ color: "var(--ink-tertiary)" }}
-                      >
-                        {(linkMp3File.size / 1024 / 1024).toFixed(1)} MB
-                      </span>
-                    )}
-                  </label>
-                  <input
-                    id="cf-v2-link-mp3"
-                    type="file"
-                    accept="audio/mpeg,.mp3"
-                    className="hidden"
-                    disabled={linkSubmitting}
-                    onChange={(e) => {
-                      setLinkMp3File(e.target.files?.[0] ?? null);
-                      setLinkErrMsg(null);
-                    }}
-                  />
-                  <div
-                    className="text-[11px] mt-1"
-                    style={{ color: "var(--ink-tertiary)" }}
-                  >
-                    Skip to use the sound attached to the ref TikTok.
+                      className="px-5 text-[14px]"
+                    >
+                      {linkSubmitting && (
+                        <Loader2 size={14} className="animate-spin" />
+                      )}
+                      {linkSubmitting ? "Submitting…" : "Generate"}
+                    </Button>
                   </div>
-                </Field>
+                </>
+              )}
 
-                {linkErrMsg && (
-                  <div
-                    className="rounded-[10px] px-3 py-2 text-[13px]"
-                    style={{
-                      background: "rgba(220,38,38,0.08)",
-                      color: "#dc2626",
-                      border: "1px solid rgba(220,38,38,0.25)",
-                    }}
-                  >
-                    {linkErrMsg}
-                  </div>
-                )}
-
-                <div className="flex items-center justify-between gap-3 pt-1">
-                  <div
-                    className="text-[11px]"
-                    style={{ color: "var(--ink-tertiary)" }}
-                  >
-                    {!labelId
-                      ? "No label scope on your profile — contact Paul."
-                      : !isValidTikTokUrl(linkUrl) ||
-                          !stripHandle(linkArtistHandle)
-                        ? "Paste a TikTok ref and an artist handle to continue."
-                        : "Generates a 9:16 MP4 from the ref's vibe — ~4–8 min via content-factory-generate."}
-                  </div>
-                  <Button
-                    type="button"
-                    variant="cta"
-                    onClick={() => void handleLinkVideoSubmit()}
-                    disabled={
-                      linkSubmitting ||
-                      !labelId ||
-                      !isValidTikTokUrl(linkUrl) ||
-                      !stripHandle(linkArtistHandle)
-                    }
-                    className="px-5 text-[14px]"
-                  >
-                    {linkSubmitting && (
-                      <Loader2 size={14} className="animate-spin" />
-                    )}
-                    {linkSubmitting ? "Submitting…" : "Generate"}
-                  </Button>
-                </div>
-              </>
-            )}
-
-            {/* Coming-soon footer for mocked presets. They render the form
+              {/* Coming-soon footer for mocked presets. They render the form
                 (so the URL deep-link `?preset=short_form` still resolves) but
                 the Generate path is replaced with a request-access copy block.
                 Backend pipelines for these aren't built yet, so the previous
                 fake-QueueItem submit was just clutter. */}
-            {MOCKED_PRESETS.has(activePreset) && (
-              <div
-                className="rounded-xl px-4 py-3 mt-2 flex items-center justify-between gap-3"
-                style={{
-                  background: "rgba(255,255,255,0.03)",
-                  border: "1px dashed var(--border)",
-                }}
-              >
+              {MOCKED_PRESETS.has(activePreset) && (
                 <div
-                  className="text-[12px]"
-                  style={{ color: "var(--ink-secondary)" }}
+                  className="rounded-xl px-4 py-3 mt-2 flex items-center justify-between gap-3"
+                  style={{
+                    background: "rgba(255,255,255,0.03)",
+                    border: "1px dashed var(--border)",
+                  }}
                 >
-                  <span style={{ color: "var(--ink)", fontWeight: 600 }}>
-                    Coming soon —
-                  </span>{" "}
-                  pipeline isn't wired yet. Drop Paul a note if you need this
-                  preset prioritized.
-                </div>
-              </div>
-            )}
-
-            {/* Footer — Tune + Generate. Hidden for self-contained presets
-                (fan-brief wizard with a label scope, cartoon panel, link →
-                video form) and mocked presets (Coming-soon block above). */}
-            {!(activePreset === "fan_brief" && labelId) &&
-              activePreset !== "cartoon" &&
-              activePreset !== "link_video" &&
-              !MOCKED_PRESETS.has(activePreset) && (
-                <div className="flex items-center justify-end gap-2 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => setTuneOpen(true)}
-                    className="h-10 px-4 rounded-[10px] text-[13px] font-semibold flex items-center gap-2"
-                    style={{
-                      background: "transparent",
-                      color: "var(--ink)",
-                      border: "1px solid var(--border)",
-                    }}
+                  <div
+                    className="text-[12px]"
+                    style={{ color: "var(--ink-secondary)" }}
                   >
-                    <Settings2 size={14} />
-                    Tune
-                  </button>
-                  <Button
-                    type="button"
-                    variant="cta"
-                    onClick={handleGenerate}
-                    className="px-5 text-[14px]"
-                  >
-                    Generate
-                  </Button>
+                    <span style={{ color: "var(--ink)", fontWeight: 600 }}>
+                      Coming soon —
+                    </span>{" "}
+                    pipeline isn't wired yet. Drop Paul a note if you need this
+                    preset prioritized.
+                  </div>
                 </div>
               )}
-          </section>
-        )}
+
+              {/* Footer — Tune + Generate. Hidden for self-contained presets
+                (fan-brief wizard with a label scope, cartoon panel, link →
+                video form) and mocked presets (Coming-soon block above). */}
+              {!(activePreset === "fan_brief" && labelId) &&
+                activePreset !== "cartoon" &&
+                activePreset !== "link_video" &&
+                !MOCKED_PRESETS.has(activePreset) && (
+                  <div className="flex items-center justify-end gap-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setTuneOpen(true)}
+                      className="h-10 px-4 rounded-[10px] text-[13px] font-semibold flex items-center gap-2"
+                      style={{
+                        background: "transparent",
+                        color: "var(--ink)",
+                        border: "1px solid var(--border)",
+                      }}
+                    >
+                      <Settings2 size={14} />
+                      Tune
+                    </button>
+                    <Button
+                      type="button"
+                      variant="cta"
+                      onClick={handleGenerate}
+                      className="px-5 text-[14px]"
+                    >
+                      Generate
+                    </Button>
+                  </div>
+                )}
+            </motion.section>
+          )}
+        </AnimatePresence>
 
         {!activePreset && (
           <div
@@ -1455,129 +1495,146 @@ export default function CreateView({
         </div>
       </aside>
 
-      {/* Tune drawer */}
-      {tuneOpen && (
-        <div
-          className="fixed inset-0 z-50 flex justify-end"
-          style={{ background: "rgba(0,0,0,0.5)" }}
-          onClick={() => setTuneOpen(false)}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className="h-full w-full max-w-[440px] overflow-y-auto p-6 flex flex-col gap-5"
-            style={{
-              background: "var(--surface)",
-              borderLeft: "1px solid var(--border)",
-            }}
+      {/* Tune drawer — backdrop fade + panel slide in from the right.
+          Backdrop click dismisses; e.stopPropagation on the panel keeps the
+          click from leaking through. AnimatePresence so the close also
+          animates instead of popping. */}
+      <AnimatePresence>
+        {tuneOpen && (
+          <motion.div
+            key="tune-backdrop"
+            className="fixed inset-0 z-50 flex justify-end"
+            style={{ background: "rgba(0,0,0,0.5)" }}
+            onClick={() => setTuneOpen(false)}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.24, ease: [0.16, 1, 0.3, 1] }}
           >
-            <div className="flex items-center justify-between">
-              <h2
-                className="text-[18px] font-semibold"
-                style={{ color: "var(--ink)" }}
+            <motion.div
+              onClick={(e) => e.stopPropagation()}
+              className="h-full w-full max-w-[440px] overflow-y-auto p-6 flex flex-col gap-5"
+              style={{
+                background: "var(--surface)",
+                borderLeft: "1px solid var(--border)",
+              }}
+              initial={{ x: "100%" }}
+              animate={{ x: 0 }}
+              exit={{ x: "100%" }}
+              transition={{ duration: 0.36, ease: [0.16, 1, 0.3, 1] }}
+            >
+              <div className="flex items-center justify-between">
+                <h2
+                  className="text-[18px] font-semibold"
+                  style={{ color: "var(--ink)" }}
+                >
+                  Tune
+                </h2>
+                <button
+                  type="button"
+                  onClick={() => setTuneOpen(false)}
+                  className="w-8 h-8 rounded-lg flex items-center justify-center"
+                  style={{
+                    background: "var(--bg-subtle)",
+                    border: "1px solid var(--border)",
+                  }}
+                >
+                  <X size={14} color="var(--ink-tertiary)" />
+                </button>
+              </div>
+              <p
+                className="text-[12px]"
+                style={{ color: "var(--ink-tertiary)" }}
               >
-                Tune
-              </h2>
-              <button
-                type="button"
-                onClick={() => setTuneOpen(false)}
-                className="w-8 h-8 rounded-lg flex items-center justify-center"
-                style={{
-                  background: "var(--bg-subtle)",
-                  border: "1px solid var(--border)",
-                }}
-              >
-                <X size={14} color="var(--ink-tertiary)" />
-              </button>
-            </div>
-            <p className="text-[12px]" style={{ color: "var(--ink-tertiary)" }}>
-              Advanced knobs — every preset reads from here unless overridden
-              above.
-            </p>
+                Advanced knobs — every preset reads from here unless overridden
+                above.
+              </p>
 
-            <TuneGroup title="Caption style">
-              <ChipRow
-                options={[
-                  { k: "burned_bottom", label: "Burned — bottom" },
-                  { k: "karaoke", label: "Karaoke" },
-                  { k: "none", label: "None" },
-                ]}
-                value="burned_bottom"
-                onChange={() => {
-                  /* mock */
-                }}
-              />
-            </TuneGroup>
+              <TuneGroup title="Caption style">
+                <ChipRow
+                  options={[
+                    { k: "burned_bottom", label: "Burned — bottom" },
+                    { k: "karaoke", label: "Karaoke" },
+                    { k: "none", label: "None" },
+                  ]}
+                  value="burned_bottom"
+                  onChange={() => {
+                    /* mock */
+                  }}
+                />
+              </TuneGroup>
 
-            <TuneGroup title="Voiceover model">
-              <Select
-                value="opus-v1"
-                onChange={() => {
-                  /* mock */
-                }}
-                options={[
-                  { value: "opus-v1", label: "Opus v1 — editorial" },
-                  { value: "fan-clone", label: "Fan-voice clone" },
-                  { value: "elevenlabs-pro", label: "ElevenLabs Pro" },
-                ]}
-              />
-            </TuneGroup>
+              <TuneGroup title="Voiceover model">
+                <Select
+                  value="opus-v1"
+                  onChange={() => {
+                    /* mock */
+                  }}
+                  options={[
+                    { value: "opus-v1", label: "Opus v1 — editorial" },
+                    { value: "fan-clone", label: "Fan-voice clone" },
+                    { value: "elevenlabs-pro", label: "ElevenLabs Pro" },
+                  ]}
+                />
+              </TuneGroup>
 
-            <TuneGroup title="B-roll density">
-              <input
-                type="range"
-                min={0}
-                max={100}
-                defaultValue={45}
-                className="w-full"
-                style={{ accentColor: "var(--accent)" }}
-              />
-            </TuneGroup>
+              <TuneGroup title="B-roll density">
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  defaultValue={45}
+                  className="w-full"
+                  style={{ accentColor: "var(--accent)" }}
+                />
+              </TuneGroup>
 
-            <TuneGroup title="Hook placement">
-              <ChipRow
-                options={[
-                  { k: "first_1s", label: "< 1s" },
-                  { k: "first_3s", label: "< 3s" },
-                  { k: "slow_build", label: "Slow build" },
-                ]}
-                value="first_3s"
-                onChange={() => {
-                  /* mock */
-                }}
-              />
-            </TuneGroup>
+              <TuneGroup title="Hook placement">
+                <ChipRow
+                  options={[
+                    { k: "first_1s", label: "< 1s" },
+                    { k: "first_3s", label: "< 3s" },
+                    { k: "slow_build", label: "Slow build" },
+                  ]}
+                  value="first_3s"
+                  onChange={() => {
+                    /* mock */
+                  }}
+                />
+              </TuneGroup>
 
-            <TuneGroup title="Music bed library">
-              <Select
-                value="cue_a"
-                onChange={() => {
-                  /* mock */
-                }}
-                options={[
-                  { value: "artist", label: "Artist catalog only" },
-                  { value: "cue_a", label: "Cue library A — ambient" },
-                  { value: "cue_b", label: "Cue library B — cinematic" },
-                  { value: "fair_use", label: "Fair-use cleared" },
-                ]}
-              />
-            </TuneGroup>
+              <TuneGroup title="Music bed library">
+                <Select
+                  value="cue_a"
+                  onChange={() => {
+                    /* mock */
+                  }}
+                  options={[
+                    { value: "artist", label: "Artist catalog only" },
+                    { value: "cue_a", label: "Cue library A — ambient" },
+                    { value: "cue_b", label: "Cue library B — cinematic" },
+                    { value: "fair_use", label: "Fair-use cleared" },
+                  ]}
+                />
+              </TuneGroup>
 
-            <TuneGroup title="Output format">
-              <ChipRow
-                options={[
-                  { k: "mp4_h264", label: "MP4 h.264" },
-                  { k: "mov_prores", label: "MOV ProRes" },
-                  { k: "webm", label: "WebM" },
-                ]}
-                value="mp4_h264"
-                onChange={() => {
-                  /* mock */
-                }}
-              />
-            </TuneGroup>
-          </div>
-        </div>
-      )}
+              <TuneGroup title="Output format">
+                <ChipRow
+                  options={[
+                    { k: "mp4_h264", label: "MP4 h.264" },
+                    { k: "mov_prores", label: "MOV ProRes" },
+                    { k: "webm", label: "WebM" },
+                  ]}
+                  value="mp4_h264"
+                  onChange={() => {
+                    /* mock */
+                  }}
+                />
+              </TuneGroup>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -1758,7 +1815,7 @@ function ChipRow({
             key={o.k}
             type="button"
             onClick={() => onChange(o.k)}
-            className="px-3 h-8 rounded-[10px] text-[12px] font-semibold"
+            className="px-3 h-8 rounded-[10px] text-[12px] font-semibold transition-[color,background-color,border-color,transform] duration-[var(--dur-state)] ease-[cubic-bezier(0.16,1,0.3,1)] active:scale-[0.96] active:duration-[var(--dur-instant)]"
             style={{
               background: active ? "var(--accent-light)" : "var(--bg-subtle)",
               color: active ? "var(--accent)" : "var(--ink-secondary)",

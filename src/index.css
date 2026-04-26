@@ -2,6 +2,41 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ========================================
+   MOTION TOKENS — see ~/.claude/skills/animate, frontend-design/reference/motion-design.md
+   Durations follow the 100/300/500 rule. Exits = 75% of enter. Easing is
+   ease-out-expo for natural deceleration — never bounce/elastic.
+   ======================================== */
+:root {
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-expo: cubic-bezier(0.7, 0, 0.84, 0);
+
+  --dur-instant: 130ms;
+  --dur-state: 240ms;
+  --dur-layout: 360ms;
+  --dur-entrance: 540ms;
+
+  --dur-exit-instant: 100ms;
+  --dur-exit-state: 180ms;
+  --dur-exit-layout: 270ms;
+
+  --stagger-step: 40ms;
+  --stagger-cap: 480ms;
+}
+
+/* Accessibility: collapse all motion when the user has requested reduced
+   motion. Pair with <MotionConfig reducedMotion="user"> in framer-motion. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 /* Tiempos Text — licensed from Klim Type Foundry */
 @font-face {
   font-family: "Tiempos Text";
