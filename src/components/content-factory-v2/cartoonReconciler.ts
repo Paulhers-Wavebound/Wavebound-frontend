@@ -13,6 +13,8 @@ export const CARTOON_STAGE_ORDER: CartoonStage[] = [
   "video",
 ];
 
+export type CartoonFormat = "cartoon" | "realfootage";
+
 /**
  * Map a cartoon_scripts.status value to the UI stage. Returns "done" when the
  * row is fully complete (caller still verifies cartoon_videos.final_url
@@ -36,6 +38,57 @@ export function scriptStatusToStage(
       return "done";
     default:
       return "vo";
+  }
+}
+
+/**
+ * Real-footage status → UI stage. Different post-VO sub-states than cartoon
+ * (selecting_clips / materializing_clips instead of planning_images /
+ * rendering_images) but they collapse to the same 4-stage timeline so the
+ * QueueCard pills don't need a format-specific layout.
+ */
+export function realfootageStatusToStage(
+  status: string | null | undefined,
+): CartoonStage | "done" {
+  switch (status) {
+    case "draft":
+    case "rendering_vo":
+      return "vo";
+    case "vo_complete":
+    case "selecting_clips":
+    case "clips_selected":
+    case "materializing_clips":
+      return "images"; // visual-asset prep stage; UI label stays generic
+    case "clips_complete":
+    case "rendering_video":
+      return "video";
+    case "complete":
+      return "done";
+    default:
+      return "vo";
+  }
+}
+
+const REALFOOTAGE_FAILED_STATUSES = new Set([
+  "failed",
+  "vo_failed",
+  "clips_failed",
+  "materializing_failed",
+  "video_failed",
+]);
+
+function realfootageErrorLabel(status: string): string {
+  switch (status) {
+    case "vo_failed":
+      return "Voice generation failed";
+    case "clips_failed":
+      return "Clip selection failed";
+    case "materializing_failed":
+      return "Footage download failed";
+    case "video_failed":
+      return "Video composition failed";
+    default:
+      return "Render failed";
   }
 }
 
@@ -99,6 +152,7 @@ export interface CartoonRunSnapshot {
   status: "generating" | "pending" | "scheduled" | "failed";
   cartoonChatJobId?: string;
   cartoonScriptId?: string;
+  cartoonFormat?: CartoonFormat;
   cartoonStage?: CartoonStage;
   cartoonStageDetail?: string;
   cartoonHook?: string;
@@ -145,6 +199,7 @@ export function snapshotFromItem(item: QueueItem): CartoonRunSnapshot | null {
     status: item.status,
     cartoonChatJobId: item.cartoonChatJobId,
     cartoonScriptId: item.cartoonScriptId,
+    cartoonFormat: item.cartoonFormat,
     cartoonStage: item.cartoonStage,
     cartoonStageDetail: item.cartoonStageDetail,
     cartoonHook: item.cartoonHook,
@@ -178,6 +233,7 @@ export function itemFromSnapshot(s: CartoonRunSnapshot): QueueItem {
     createdAt: s.startedAt,
     cartoonChatJobId: s.cartoonChatJobId,
     cartoonScriptId: s.cartoonScriptId,
+    cartoonFormat: s.cartoonFormat,
     cartoonStage: s.cartoonStage,
     cartoonStageDetail: s.cartoonStageDetail,
     cartoonHook: s.cartoonHook,
@@ -235,8 +291,11 @@ export async function reconcileCartoonItem(
     }
 
     try {
+      // Route through the dispatcher: it reads the chat-job's fenced JSON for
+      // a `format` field and forwards to cartoon-vo OR realfootage-vo. The
+      // response echoes which target ran so we can poll the correct tables.
       const res = await fetch(
-        `${SUPABASE_URL}/functions/v1/content-factory-cartoon-vo`,
+        `${SUPABASE_URL}/functions/v1/content-factory-vo-dispatch`,
         {
           method: "POST",
           headers: {
@@ -267,9 +326,14 @@ export async function reconcileCartoonItem(
           jobError: "Render kick-off returned no script_id",
         };
       }
+      const format =
+        (body?.format as CartoonFormat | undefined) === "realfootage"
+          ? "realfootage"
+          : "cartoon";
       return {
         cartoonScriptId: scriptId,
         cartoonStage: "vo",
+        cartoonFormat: format,
       };
     } catch (err) {
       return {
@@ -280,32 +344,50 @@ export async function reconcileCartoonItem(
     }
   }
 
-  // ── step 2: scriptId set, walk through cartoon_scripts + cartoon_videos ──
+  // ── step 2: scriptId set, walk through scripts + videos for the right format ──
   if (item.cartoonScriptId) {
+    const format: CartoonFormat = item.cartoonFormat ?? "cartoon";
+    const scriptsTable =
+      format === "realfootage" ? "realfootage_scripts" : "cartoon_scripts";
+    const videosTable =
+      format === "realfootage" ? "realfootage_videos" : "cartoon_videos";
+    const failedSet =
+      format === "realfootage"
+        ? REALFOOTAGE_FAILED_STATUSES
+        : CARTOON_FAILED_STATUSES;
+    const errorLabel =
+      format === "realfootage" ? realfootageErrorLabel : cartoonErrorLabel;
+    const stageMapper =
+      format === "realfootage"
+        ? realfootageStatusToStage
+        : scriptStatusToStage;
+
     const [scriptRes, videoRes] = await Promise.all([
       supabase
-        .from("cartoon_scripts" as never)
+        .from(scriptsTable as never)
         .select("status, error_message, hook_title")
         .eq("id", item.cartoonScriptId)
         .maybeSingle(),
       supabase
-        .from("cartoon_videos" as never)
+        .from(videosTable as never)
         .select("status, final_url, error_message")
         .eq("script_id", item.cartoonScriptId)
         .maybeSingle(),
     ]);
 
     if (scriptRes.error) {
-      console.error("[cartoon-reconcile] cartoon_scripts read failed", {
+      console.error(`[cartoon-reconcile] ${scriptsTable} read failed`, {
         scriptId: item.cartoonScriptId,
         itemId: item.id,
+        format,
         error: scriptRes.error,
       });
     }
     if (videoRes.error) {
-      console.error("[cartoon-reconcile] cartoon_videos read failed", {
+      console.error(`[cartoon-reconcile] ${videosTable} read failed`, {
         scriptId: item.cartoonScriptId,
         itemId: item.id,
+        format,
         error: videoRes.error,
       });
     }
@@ -323,11 +405,11 @@ export async function reconcileCartoonItem(
 
     if (!script) return null;
 
-    if (script.status && CARTOON_FAILED_STATUSES.has(script.status)) {
+    if (script.status && failedSet.has(script.status)) {
       return {
         status: "failed",
         cartoonStageDetail: undefined,
-        jobError: script.error_message ?? cartoonErrorLabel(script.status),
+        jobError: script.error_message ?? errorLabel(script.status),
       };
     }
     if (video?.status === "failed") {
@@ -339,29 +421,37 @@ export async function reconcileCartoonItem(
     }
 
     if (script.status === "complete" && video?.final_url) {
-      // Pull shot 0's rendered image as the Review thumbnail. Falls back to
-      // the lowest-index successful shot when shot 0 itself was blocked by
-      // gpt-image-2 safety — still a real frame from the same cartoon.
-      const shotRes = await supabase
-        .from("cartoon_image_assets" as never)
-        .select("storage_url")
-        .eq("script_id", item.cartoonScriptId)
-        .eq("status", "complete")
-        .order("segment_index", { ascending: true })
-        .limit(1)
-        .maybeSingle();
-      if (shotRes.error) {
-        console.error("[cartoon-reconcile] cartoon_image_assets read failed", {
-          scriptId: item.cartoonScriptId,
-          itemId: item.id,
-          error: shotRes.error,
-        });
+      // Cartoon: shot 0's rendered image as Review thumbnail. Realfootage:
+      // skip the thumb extraction — clip 0's first frame isn't deterministically
+      // available as a still, so the QueueCard's video-player fallback handles
+      // preview. v2 task: lift a poster frame out of the cached clip via ffmpeg.
+      let thumbnailUrl: string | undefined;
+      if (format === "cartoon") {
+        const shotRes = await supabase
+          .from("cartoon_image_assets" as never)
+          .select("storage_url")
+          .eq("script_id", item.cartoonScriptId)
+          .eq("status", "complete")
+          .order("segment_index", { ascending: true })
+          .limit(1)
+          .maybeSingle();
+        if (shotRes.error) {
+          console.error(
+            "[cartoon-reconcile] cartoon_image_assets read failed",
+            {
+              scriptId: item.cartoonScriptId,
+              itemId: item.id,
+              error: shotRes.error,
+            },
+          );
+        }
+        thumbnailUrl =
+          (shotRes.data as { storage_url: string | null } | null)
+            ?.storage_url ?? undefined;
       }
-      const thumbnailUrl =
-        (shotRes.data as { storage_url: string | null } | null)?.storage_url ??
-        undefined;
 
       const hook = script.hook_title ?? item.cartoonHook;
+      const titlePrefix = format === "realfootage" ? "Real footage" : "Cartoon";
       return {
         status: "pending",
         cartoonStage: undefined,
@@ -370,12 +460,12 @@ export async function reconcileCartoonItem(
         cartoonHook: hook,
         renderedClipUrl: video.final_url,
         thumbnailUrl,
-        title: hook ? `Cartoon — ${hook}` : item.title,
+        title: hook ? `${titlePrefix} — ${hook}` : item.title,
       };
     }
 
-    const stage = scriptStatusToStage(script.status);
-    if (stage === "done") return null; // wait for cartoon_videos.final_url
+    const stage = stageMapper(script.status);
+    if (stage === "done") return null; // wait for *_videos.final_url
 
     const detail = scriptStatusToDetail(script.status);
     const patch: Partial<QueueItem> = {};

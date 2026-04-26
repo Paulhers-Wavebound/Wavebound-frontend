@@ -129,8 +129,14 @@ export interface QueueItem {
   // through renderedClipUrl + the BriefViewerModal.
   cartoonChatJobId?: string;
   cartoonScriptId?: string;
+  // Which Content Factory pipeline this script is rendering through. Set from
+  // the vo-dispatch response on POST. Drives which tables the reconciler polls
+  // (cartoon_scripts/cartoon_videos vs realfootage_scripts/realfootage_videos)
+  // and which set of statuses map to the UI stage timeline. Default 'cartoon'
+  // for older items that pre-date the dispatcher migration.
+  cartoonFormat?: "cartoon" | "realfootage";
   // ElevenLabs voice ID + tuned settings the user picked at creation time.
-  // The reconciler forwards both to content-factory-cartoon-vo so the script
+  // The reconciler forwards both to content-factory-vo-dispatch so the script
   // row gets voice_id_used set and the call uses the matching settings.
   cartoonVoiceId?: string;
   cartoonVoiceSettings?: {
