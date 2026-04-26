@@ -1388,6 +1388,28 @@ export default function CreateView({
                     </Button>
                   </div>
                 )}
+
+              {/* Tune-only footer for self-contained presets that own their
+                own Generate button (cartoon, link → video). Surfaces the
+                cross-format settings (script writer, etc.) without
+                duplicating the panel's Generate. */}
+              {(activePreset === "cartoon" || activePreset === "link_video") && (
+                <div className="flex items-center justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setTuneOpen(true)}
+                    className="h-10 px-4 rounded-[10px] text-[13px] font-semibold flex items-center gap-2"
+                    style={{
+                      background: "transparent",
+                      color: "var(--ink)",
+                      border: "1px solid var(--border)",
+                    }}
+                  >
+                    <Settings2 size={14} />
+                    Tune
+                  </button>
+                </div>
+              )}
             </motion.section>
           )}
         </AnimatePresence>
