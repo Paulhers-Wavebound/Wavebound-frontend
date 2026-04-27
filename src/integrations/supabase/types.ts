@@ -1894,6 +1894,74 @@ export type Database = {
         }
         Relationships: []
       }
+      artist_asset_chunks: {
+        Row: {
+          asset_id: string
+          characters_visible: string[] | null
+          chunk_index: number
+          chunk_type: string
+          created_at: string
+          description: string
+          embedding: string | null
+          end_seconds: number
+          fts: unknown
+          id: string
+          location: string | null
+          metadata: Json
+          mood_tags: string[] | null
+          quality_score: number | null
+          start_seconds: number
+          transcript_excerpt: string | null
+          wardrobe: string | null
+        }
+        Insert: {
+          asset_id: string
+          characters_visible?: string[] | null
+          chunk_index: number
+          chunk_type: string
+          created_at?: string
+          description: string
+          embedding?: string | null
+          end_seconds: number
+          fts?: unknown
+          id?: string
+          location?: string | null
+          metadata?: Json
+          mood_tags?: string[] | null
+          quality_score?: number | null
+          start_seconds: number
+          transcript_excerpt?: string | null
+          wardrobe?: string | null
+        }
+        Update: {
+          asset_id?: string
+          characters_visible?: string[] | null
+          chunk_index?: number
+          chunk_type?: string
+          created_at?: string
+          description?: string
+          embedding?: string | null
+          end_seconds?: number
+          fts?: unknown
+          id?: string
+          location?: string | null
+          metadata?: Json
+          mood_tags?: string[] | null
+          quality_score?: number | null
+          start_seconds?: number
+          transcript_excerpt?: string | null
+          wardrobe?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "artist_asset_chunks_asset_id_fkey"
+            columns: ["asset_id"]
+            isOneToOne: false
+            referencedRelation: "content_catalog"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       artist_audience_footprint: {
         Row: {
           artist_handle: string | null
@@ -3144,6 +3212,42 @@ export type Database = {
         }
         Relationships: []
       }
+      artist_reference_photos: {
+        Row: {
+          artist_handle: string
+          id: string
+          is_primary: boolean
+          source: string
+          source_metadata: Json | null
+          storage_path: string
+          storage_url: string
+          uploaded_at: string
+          uploaded_by: string | null
+        }
+        Insert: {
+          artist_handle: string
+          id?: string
+          is_primary?: boolean
+          source: string
+          source_metadata?: Json | null
+          storage_path: string
+          storage_url: string
+          uploaded_at?: string
+          uploaded_by?: string | null
+        }
+        Update: {
+          artist_handle?: string
+          id?: string
+          is_primary?: boolean
+          source?: string
+          source_metadata?: Json | null
+          storage_path?: string
+          storage_url?: string
+          uploaded_at?: string
+          uploaded_by?: string | null
+        }
+        Relationships: []
+      }
       artist_score: {
         Row: {
           apple_charting_songs: number | null
@@ -4050,6 +4154,389 @@ export type Database = {
         }
         Relationships: []
       }
+      cartoon_character_refs_cache: {
+        Row: {
+          character_name_lower: string
+          character_name_original: string
+          fetch_attempts: number
+          fetched_at: string
+          id: string
+          last_error: string | null
+          reference_url: string | null
+          source: string
+          source_id: string | null
+          storage_path: string | null
+          storage_url: string | null
+        }
+        Insert: {
+          character_name_lower: string
+          character_name_original: string
+          fetch_attempts?: number
+          fetched_at?: string
+          id?: string
+          last_error?: string | null
+          reference_url?: string | null
+          source: string
+          source_id?: string | null
+          storage_path?: string | null
+          storage_url?: string | null
+        }
+        Update: {
+          character_name_lower?: string
+          character_name_original?: string
+          fetch_attempts?: number
+          fetched_at?: string
+          id?: string
+          last_error?: string | null
+          reference_url?: string | null
+          source?: string
+          source_id?: string | null
+          storage_path?: string | null
+          storage_url?: string | null
+        }
+        Relationships: []
+      }
+      cartoon_image_assets: {
+        Row: {
+          character_ids: string[] | null
+          completed_at: string | null
+          created_at: string
+          error_message: string | null
+          framing: string | null
+          height: number | null
+          id: string
+          openai_model_id: string
+          openai_response_id: string | null
+          photo_prompt: string
+          reference_photo_urls: string[] | null
+          retry_count: number
+          script_id: string
+          segment_index: number
+          status: string
+          storage_path: string | null
+          storage_url: string | null
+          width: number | null
+        }
+        Insert: {
+          character_ids?: string[] | null
+          completed_at?: string | null
+          created_at?: string
+          error_message?: string | null
+          framing?: string | null
+          height?: number | null
+          id?: string
+          openai_model_id: string
+          openai_response_id?: string | null
+          photo_prompt: string
+          reference_photo_urls?: string[] | null
+          retry_count?: number
+          script_id: string
+          segment_index: number
+          status?: string
+          storage_path?: string | null
+          storage_url?: string | null
+          width?: number | null
+        }
+        Update: {
+          character_ids?: string[] | null
+          completed_at?: string | null
+          created_at?: string
+          error_message?: string | null
+          framing?: string | null
+          height?: number | null
+          id?: string
+          openai_model_id?: string
+          openai_response_id?: string | null
+          photo_prompt?: string
+          reference_photo_urls?: string[] | null
+          retry_count?: number
+          script_id?: string
+          segment_index?: number
+          status?: string
+          storage_path?: string | null
+          storage_url?: string | null
+          width?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cartoon_image_assets_script_id_fkey"
+            columns: ["script_id"]
+            isOneToOne: false
+            referencedRelation: "cartoon_scripts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cartoon_image_jobs: {
+        Row: {
+          art_director_completed_at: string | null
+          created_at: string
+          error_message: string | null
+          failed_shots: number
+          id: string
+          ok_shots: number
+          refs_completed_at: string | null
+          rendering_completed_at: string | null
+          script_id: string
+          shot_plan_json: Json | null
+          status: string
+          total_shots: number | null
+          updated_at: string
+          worker_heartbeat_at: string | null
+          worker_id: string | null
+          worker_started_at: string | null
+        }
+        Insert: {
+          art_director_completed_at?: string | null
+          created_at?: string
+          error_message?: string | null
+          failed_shots?: number
+          id?: string
+          ok_shots?: number
+          refs_completed_at?: string | null
+          rendering_completed_at?: string | null
+          script_id: string
+          shot_plan_json?: Json | null
+          status?: string
+          total_shots?: number | null
+          updated_at?: string
+          worker_heartbeat_at?: string | null
+          worker_id?: string | null
+          worker_started_at?: string | null
+        }
+        Update: {
+          art_director_completed_at?: string | null
+          created_at?: string
+          error_message?: string | null
+          failed_shots?: number
+          id?: string
+          ok_shots?: number
+          refs_completed_at?: string | null
+          rendering_completed_at?: string | null
+          script_id?: string
+          shot_plan_json?: Json | null
+          status?: string
+          total_shots?: number | null
+          updated_at?: string
+          worker_heartbeat_at?: string | null
+          worker_id?: string | null
+          worker_started_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cartoon_image_jobs_script_id_fkey"
+            columns: ["script_id"]
+            isOneToOne: true
+            referencedRelation: "cartoon_scripts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cartoon_scripts: {
+        Row: {
+          artist_handle: string
+          artist_name: string | null
+          created_at: string
+          error_message: string | null
+          hook_title: string | null
+          id: string
+          images_completed_at: string | null
+          label_id: string | null
+          model_id_used: string | null
+          narrative_shape: string | null
+          script_json: Json
+          source_chat_job_id: string | null
+          status: string
+          vo_completed_at: string | null
+          voice_id_used: string | null
+        }
+        Insert: {
+          artist_handle: string
+          artist_name?: string | null
+          created_at?: string
+          error_message?: string | null
+          hook_title?: string | null
+          id?: string
+          images_completed_at?: string | null
+          label_id?: string | null
+          model_id_used?: string | null
+          narrative_shape?: string | null
+          script_json: Json
+          source_chat_job_id?: string | null
+          status?: string
+          vo_completed_at?: string | null
+          voice_id_used?: string | null
+        }
+        Update: {
+          artist_handle?: string
+          artist_name?: string | null
+          created_at?: string
+          error_message?: string | null
+          hook_title?: string | null
+          id?: string
+          images_completed_at?: string | null
+          label_id?: string | null
+          model_id_used?: string | null
+          narrative_shape?: string | null
+          script_json?: Json
+          source_chat_job_id?: string | null
+          status?: string
+          vo_completed_at?: string | null
+          voice_id_used?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cartoon_scripts_label_id_fkey"
+            columns: ["label_id"]
+            isOneToOne: false
+            referencedRelation: "labels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cartoon_scripts_source_chat_job_id_fkey"
+            columns: ["source_chat_job_id"]
+            isOneToOne: false
+            referencedRelation: "chat_jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cartoon_videos: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          creatomate_attempts: number
+          creatomate_render_id: string | null
+          creatomate_source_json: Json | null
+          duration_sec: number | null
+          error_message: string | null
+          final_url: string | null
+          height: number
+          id: string
+          script_id: string
+          status: string
+          updated_at: string
+          webhook_secret: string
+          width: number
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          creatomate_attempts?: number
+          creatomate_render_id?: string | null
+          creatomate_source_json?: Json | null
+          duration_sec?: number | null
+          error_message?: string | null
+          final_url?: string | null
+          height?: number
+          id?: string
+          script_id: string
+          status?: string
+          updated_at?: string
+          webhook_secret?: string
+          width?: number
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          creatomate_attempts?: number
+          creatomate_render_id?: string | null
+          creatomate_source_json?: Json | null
+          duration_sec?: number | null
+          error_message?: string | null
+          final_url?: string | null
+          height?: number
+          id?: string
+          script_id?: string
+          status?: string
+          updated_at?: string
+          webhook_secret?: string
+          width?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cartoon_videos_script_id_fkey"
+            columns: ["script_id"]
+            isOneToOne: true
+            referencedRelation: "cartoon_scripts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cartoon_vo_clips: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          duration_sec: number | null
+          eleven_model_id: string
+          eleven_voice_id: string
+          error_message: string | null
+          id: string
+          planned_end_sec: number | null
+          planned_start_sec: number | null
+          retry_count: number
+          script_id: string
+          segment_index: number
+          sentence_original: string
+          sentence_rendered: string
+          status: string
+          storage_path: string | null
+          storage_url: string | null
+          voice_settings: Json | null
+          word_timings: Json | null
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          duration_sec?: number | null
+          eleven_model_id: string
+          eleven_voice_id: string
+          error_message?: string | null
+          id?: string
+          planned_end_sec?: number | null
+          planned_start_sec?: number | null
+          retry_count?: number
+          script_id: string
+          segment_index: number
+          sentence_original: string
+          sentence_rendered: string
+          status?: string
+          storage_path?: string | null
+          storage_url?: string | null
+          voice_settings?: Json | null
+          word_timings?: Json | null
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          duration_sec?: number | null
+          eleven_model_id?: string
+          eleven_voice_id?: string
+          error_message?: string | null
+          id?: string
+          planned_end_sec?: number | null
+          planned_start_sec?: number | null
+          retry_count?: number
+          script_id?: string
+          segment_index?: number
+          sentence_original?: string
+          sentence_rendered?: string
+          status?: string
+          storage_path?: string | null
+          storage_url?: string | null
+          voice_settings?: Json | null
+          word_timings?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cartoon_vo_clips_script_id_fkey"
+            columns: ["script_id"]
+            isOneToOne: false
+            referencedRelation: "cartoon_scripts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       catalog_intelligence: {
         Row: {
           accelerating_songs: number | null
@@ -4343,6 +4830,36 @@ export type Database = {
           },
         ]
       }
+      cf_retry_telemetry: {
+        Row: {
+          attempt: number
+          created_at: string
+          id: string
+          item_id: string
+          original_error: string | null
+          output_type: string
+          user_id: string | null
+        }
+        Insert: {
+          attempt: number
+          created_at?: string
+          id?: string
+          item_id: string
+          original_error?: string | null
+          output_type: string
+          user_id?: string | null
+        }
+        Update: {
+          attempt?: number
+          created_at?: string
+          id?: string
+          item_id?: string
+          original_error?: string | null
+          output_type?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       chat_jobs: {
         Row: {
           chat_history: Json | null
@@ -4538,6 +5055,8 @@ export type Database = {
       }
       content_catalog: {
         Row: {
+          ai_description: string | null
+          ai_description_json: Json | null
           artist_handle: string
           artist_id: string | null
           channel_name: string | null
@@ -4546,15 +5065,19 @@ export type Database = {
           created_at: string | null
           description: string | null
           duration_seconds: number | null
+          embedding: string | null
+          fts: unknown
           id: string
           is_processed: boolean | null
           label_id: string | null
+          last_refreshed_at: string | null
           live_venue: string | null
           metadata: Json | null
           processed_at: string | null
           signal_sources: Json | null
           source_platform: string
           source_url: string
+          thumbnail_storage_path: string | null
           title: string | null
           transcript: string | null
           transcript_source: string | null
@@ -4564,6 +5087,8 @@ export type Database = {
           view_count: number | null
         }
         Insert: {
+          ai_description?: string | null
+          ai_description_json?: Json | null
           artist_handle: string
           artist_id?: string | null
           channel_name?: string | null
@@ -4572,15 +5097,19 @@ export type Database = {
           created_at?: string | null
           description?: string | null
           duration_seconds?: number | null
+          embedding?: string | null
+          fts?: unknown
           id?: string
           is_processed?: boolean | null
           label_id?: string | null
+          last_refreshed_at?: string | null
           live_venue?: string | null
           metadata?: Json | null
           processed_at?: string | null
           signal_sources?: Json | null
           source_platform: string
           source_url: string
+          thumbnail_storage_path?: string | null
           title?: string | null
           transcript?: string | null
           transcript_source?: string | null
@@ -4590,6 +5119,8 @@ export type Database = {
           view_count?: number | null
         }
         Update: {
+          ai_description?: string | null
+          ai_description_json?: Json | null
           artist_handle?: string
           artist_id?: string | null
           channel_name?: string | null
@@ -4598,15 +5129,19 @@ export type Database = {
           created_at?: string | null
           description?: string | null
           duration_seconds?: number | null
+          embedding?: string | null
+          fts?: unknown
           id?: string
           is_processed?: boolean | null
           label_id?: string | null
+          last_refreshed_at?: string | null
           live_venue?: string | null
           metadata?: Json | null
           processed_at?: string | null
           signal_sources?: Json | null
           source_platform?: string
           source_url?: string
+          thumbnail_storage_path?: string | null
           title?: string | null
           transcript?: string | null
           transcript_source?: string | null
@@ -5603,6 +6138,62 @@ export type Database = {
         }
         Relationships: []
       }
+      fan_brief_jobs: {
+        Row: {
+          artist_handle: string
+          completed_at: string | null
+          created_at: string
+          current_stage: string | null
+          error_message: string | null
+          id: string
+          label_id: string
+          produced_brief_ids: string[]
+          requested_count: number
+          source: string
+          status: string
+          triggered_by: string | null
+          updated_at: string
+        }
+        Insert: {
+          artist_handle: string
+          completed_at?: string | null
+          created_at?: string
+          current_stage?: string | null
+          error_message?: string | null
+          id?: string
+          label_id: string
+          produced_brief_ids?: string[]
+          requested_count: number
+          source: string
+          status?: string
+          triggered_by?: string | null
+          updated_at?: string
+        }
+        Update: {
+          artist_handle?: string
+          completed_at?: string | null
+          created_at?: string
+          current_stage?: string | null
+          error_message?: string | null
+          id?: string
+          label_id?: string
+          produced_brief_ids?: string[]
+          requested_count?: number
+          source?: string
+          status?: string
+          triggered_by?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fan_brief_jobs_label_id_fkey"
+            columns: ["label_id"]
+            isOneToOne: false
+            referencedRelation: "labels"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       fan_briefs: {
         Row: {
           approved_at: string | null
@@ -5624,6 +6215,8 @@ export type Database = {
           modified_hook: string | null
           platform_recommendation: string[] | null
           posted_url: string | null
+          render_error: string | null
+          render_error_at: string | null
           render_style: string | null
           rendered_clip_url: string | null
           segment_id: string | null
@@ -5656,6 +6249,8 @@ export type Database = {
           modified_hook?: string | null
           platform_recommendation?: string[] | null
           posted_url?: string | null
+          render_error?: string | null
+          render_error_at?: string | null
           render_style?: string | null
           rendered_clip_url?: string | null
           segment_id?: string | null
@@ -5688,6 +6283,8 @@ export type Database = {
           modified_hook?: string | null
           platform_recommendation?: string[] | null
           posted_url?: string | null
+          render_error?: string | null
+          render_error_at?: string | null
           render_style?: string | null
           rendered_clip_url?: string | null
           segment_id?: string | null
@@ -7489,6 +8086,441 @@ export type Database = {
           viral_score?: number | null
         }
         Relationships: []
+      }
+      realfootage_clip_cache: {
+        Row: {
+          asset_id: string
+          created_at: string
+          download_attempts: number
+          download_method: string | null
+          duration_sec: number | null
+          end_seconds: number
+          error_code: string | null
+          file_size_bytes: number | null
+          height: number | null
+          id: string
+          last_error: string | null
+          last_used_at: string
+          start_seconds: number
+          status: string
+          storage_path: string | null
+          storage_url: string | null
+          width: number | null
+        }
+        Insert: {
+          asset_id: string
+          created_at?: string
+          download_attempts?: number
+          download_method?: string | null
+          duration_sec?: number | null
+          end_seconds: number
+          error_code?: string | null
+          file_size_bytes?: number | null
+          height?: number | null
+          id?: string
+          last_error?: string | null
+          last_used_at?: string
+          start_seconds: number
+          status?: string
+          storage_path?: string | null
+          storage_url?: string | null
+          width?: number | null
+        }
+        Update: {
+          asset_id?: string
+          created_at?: string
+          download_attempts?: number
+          download_method?: string | null
+          duration_sec?: number | null
+          end_seconds?: number
+          error_code?: string | null
+          file_size_bytes?: number | null
+          height?: number | null
+          id?: string
+          last_error?: string | null
+          last_used_at?: string
+          start_seconds?: number
+          status?: string
+          storage_path?: string | null
+          storage_url?: string | null
+          width?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "realfootage_clip_cache_asset_id_fkey"
+            columns: ["asset_id"]
+            isOneToOne: false
+            referencedRelation: "content_catalog"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      realfootage_clip_jobs: {
+        Row: {
+          bytes_downloaded: number
+          cache_hits: number
+          cache_misses: number
+          composing_started_at: string | null
+          created_at: string
+          error_message: string | null
+          failed_segments: number
+          fallback_segments: number
+          id: string
+          materialization_completed_at: string | null
+          ok_segments: number
+          script_id: string
+          selections_completed_at: string | null
+          status: string
+          total_segments: number | null
+          updated_at: string
+          worker_heartbeat_at: string | null
+          worker_id: string | null
+          worker_started_at: string | null
+        }
+        Insert: {
+          bytes_downloaded?: number
+          cache_hits?: number
+          cache_misses?: number
+          composing_started_at?: string | null
+          created_at?: string
+          error_message?: string | null
+          failed_segments?: number
+          fallback_segments?: number
+          id?: string
+          materialization_completed_at?: string | null
+          ok_segments?: number
+          script_id: string
+          selections_completed_at?: string | null
+          status?: string
+          total_segments?: number | null
+          updated_at?: string
+          worker_heartbeat_at?: string | null
+          worker_id?: string | null
+          worker_started_at?: string | null
+        }
+        Update: {
+          bytes_downloaded?: number
+          cache_hits?: number
+          cache_misses?: number
+          composing_started_at?: string | null
+          created_at?: string
+          error_message?: string | null
+          failed_segments?: number
+          fallback_segments?: number
+          id?: string
+          materialization_completed_at?: string | null
+          ok_segments?: number
+          script_id?: string
+          selections_completed_at?: string | null
+          status?: string
+          total_segments?: number | null
+          updated_at?: string
+          worker_heartbeat_at?: string | null
+          worker_id?: string | null
+          worker_started_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "realfootage_clip_jobs_script_id_fkey"
+            columns: ["script_id"]
+            isOneToOne: true
+            referencedRelation: "realfootage_scripts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      realfootage_clip_selections: {
+        Row: {
+          asset_content_type: string | null
+          asset_id: string | null
+          chunk_id: string | null
+          created_at: string
+          end_seconds: number | null
+          fallback_image_storage_url: string | null
+          id: string
+          play_strategy: string | null
+          query_text: string | null
+          raw_rpc_score: number | null
+          script_id: string
+          segment_index: number
+          selection_breakdown: Json | null
+          selection_score: number | null
+          source_url: string | null
+          start_seconds: number | null
+          target_duration_sec: number | null
+          top_k_alternatives: Json | null
+        }
+        Insert: {
+          asset_content_type?: string | null
+          asset_id?: string | null
+          chunk_id?: string | null
+          created_at?: string
+          end_seconds?: number | null
+          fallback_image_storage_url?: string | null
+          id?: string
+          play_strategy?: string | null
+          query_text?: string | null
+          raw_rpc_score?: number | null
+          script_id: string
+          segment_index: number
+          selection_breakdown?: Json | null
+          selection_score?: number | null
+          source_url?: string | null
+          start_seconds?: number | null
+          target_duration_sec?: number | null
+          top_k_alternatives?: Json | null
+        }
+        Update: {
+          asset_content_type?: string | null
+          asset_id?: string | null
+          chunk_id?: string | null
+          created_at?: string
+          end_seconds?: number | null
+          fallback_image_storage_url?: string | null
+          id?: string
+          play_strategy?: string | null
+          query_text?: string | null
+          raw_rpc_score?: number | null
+          script_id?: string
+          segment_index?: number
+          selection_breakdown?: Json | null
+          selection_score?: number | null
+          source_url?: string | null
+          start_seconds?: number | null
+          target_duration_sec?: number | null
+          top_k_alternatives?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "realfootage_clip_selections_asset_id_fkey"
+            columns: ["asset_id"]
+            isOneToOne: false
+            referencedRelation: "content_catalog"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "realfootage_clip_selections_chunk_id_fkey"
+            columns: ["chunk_id"]
+            isOneToOne: false
+            referencedRelation: "artist_asset_chunks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "realfootage_clip_selections_script_id_fkey"
+            columns: ["script_id"]
+            isOneToOne: false
+            referencedRelation: "realfootage_scripts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      realfootage_scripts: {
+        Row: {
+          artist_handle: string
+          artist_name: string | null
+          clips_completed_at: string | null
+          created_at: string
+          error_message: string | null
+          hook_title: string | null
+          id: string
+          label_id: string | null
+          model_id_used: string | null
+          narrative_shape: string | null
+          script_json: Json
+          selections_completed_at: string | null
+          source_chat_job_id: string | null
+          status: string
+          vo_completed_at: string | null
+          voice_id_used: string | null
+        }
+        Insert: {
+          artist_handle: string
+          artist_name?: string | null
+          clips_completed_at?: string | null
+          created_at?: string
+          error_message?: string | null
+          hook_title?: string | null
+          id?: string
+          label_id?: string | null
+          model_id_used?: string | null
+          narrative_shape?: string | null
+          script_json: Json
+          selections_completed_at?: string | null
+          source_chat_job_id?: string | null
+          status?: string
+          vo_completed_at?: string | null
+          voice_id_used?: string | null
+        }
+        Update: {
+          artist_handle?: string
+          artist_name?: string | null
+          clips_completed_at?: string | null
+          created_at?: string
+          error_message?: string | null
+          hook_title?: string | null
+          id?: string
+          label_id?: string | null
+          model_id_used?: string | null
+          narrative_shape?: string | null
+          script_json?: Json
+          selections_completed_at?: string | null
+          source_chat_job_id?: string | null
+          status?: string
+          vo_completed_at?: string | null
+          voice_id_used?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "realfootage_scripts_label_id_fkey"
+            columns: ["label_id"]
+            isOneToOne: false
+            referencedRelation: "labels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "realfootage_scripts_source_chat_job_id_fkey"
+            columns: ["source_chat_job_id"]
+            isOneToOne: false
+            referencedRelation: "chat_jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      realfootage_videos: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          creatomate_attempts: number
+          creatomate_render_id: string | null
+          creatomate_source_json: Json | null
+          duration_sec: number | null
+          error_message: string | null
+          final_url: string | null
+          height: number
+          id: string
+          script_id: string
+          status: string
+          updated_at: string
+          webhook_secret: string
+          width: number
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          creatomate_attempts?: number
+          creatomate_render_id?: string | null
+          creatomate_source_json?: Json | null
+          duration_sec?: number | null
+          error_message?: string | null
+          final_url?: string | null
+          height?: number
+          id?: string
+          script_id: string
+          status?: string
+          updated_at?: string
+          webhook_secret?: string
+          width?: number
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          creatomate_attempts?: number
+          creatomate_render_id?: string | null
+          creatomate_source_json?: Json | null
+          duration_sec?: number | null
+          error_message?: string | null
+          final_url?: string | null
+          height?: number
+          id?: string
+          script_id?: string
+          status?: string
+          updated_at?: string
+          webhook_secret?: string
+          width?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "realfootage_videos_script_id_fkey"
+            columns: ["script_id"]
+            isOneToOne: true
+            referencedRelation: "realfootage_scripts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      realfootage_vo_clips: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          duration_sec: number | null
+          eleven_model_id: string
+          eleven_voice_id: string
+          error_message: string | null
+          id: string
+          planned_end_sec: number | null
+          planned_start_sec: number | null
+          retry_count: number
+          script_id: string
+          segment_index: number
+          sentence_original: string
+          sentence_rendered: string
+          status: string
+          storage_path: string | null
+          storage_url: string | null
+          voice_settings: Json | null
+          word_timings: Json | null
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          duration_sec?: number | null
+          eleven_model_id: string
+          eleven_voice_id: string
+          error_message?: string | null
+          id?: string
+          planned_end_sec?: number | null
+          planned_start_sec?: number | null
+          retry_count?: number
+          script_id: string
+          segment_index: number
+          sentence_original: string
+          sentence_rendered: string
+          status?: string
+          storage_path?: string | null
+          storage_url?: string | null
+          voice_settings?: Json | null
+          word_timings?: Json | null
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          duration_sec?: number | null
+          eleven_model_id?: string
+          eleven_voice_id?: string
+          error_message?: string | null
+          id?: string
+          planned_end_sec?: number | null
+          planned_start_sec?: number | null
+          retry_count?: number
+          script_id?: string
+          segment_index?: number
+          sentence_original?: string
+          sentence_rendered?: string
+          status?: string
+          storage_path?: string | null
+          storage_url?: string | null
+          voice_settings?: Json | null
+          word_timings?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "realfootage_vo_clips_script_id_fkey"
+            columns: ["script_id"]
+            isOneToOne: false
+            referencedRelation: "realfootage_scripts"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       referral_signups: {
         Row: {
@@ -13605,6 +14637,43 @@ export type Database = {
         }[]
       }
       pipeline_health_stats: { Args: never; Returns: Json }
+      realfootage_chunk_search: {
+        Args: {
+          full_text_weight?: number
+          match_count?: number
+          p_artist_handle?: string
+          p_chunk_type?: string
+          p_label_id?: string
+          p_max_duration?: number
+          p_min_duration?: number
+          query_embedding: string
+          query_text: string
+          rrf_k?: number
+          semantic_weight?: number
+        }
+        Returns: {
+          artist_handle: string
+          asset_content_type: string
+          asset_duration_seconds: number
+          asset_id: string
+          asset_source_url: string
+          asset_title: string
+          asset_upload_date: string
+          characters_visible: string[]
+          chunk_index: number
+          chunk_type: string
+          description: string
+          end_seconds: number
+          fused_score: number
+          id: string
+          location: string
+          metadata: Json
+          mood_tags: string[]
+          start_seconds: number
+          transcript_excerpt: string
+          wardrobe: string
+        }[]
+      }
       refresh_globe_materialized_views: { Args: never; Returns: undefined }
       refresh_health_views: { Args: never; Returns: undefined }
       refresh_popular_videos: { Args: never; Returns: undefined }

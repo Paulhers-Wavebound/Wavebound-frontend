@@ -28,6 +28,31 @@ User asked: "add a retry button on the assets that failed, that will retry it wi
 2. **cartoon failure**: easiest repro is to kill a chat stream mid-script (or wait for one to actually fail). After Retry, the card should flip back to `Generating` with the script-stage pill spinning, and within 15–20 min produce a new MP4. Voice should match the one originally picked.
 3. **link_video failure**: repro by handing it a TikTok URL the pipeline can't ingest. After Retry, the card flips back to `Generating · Queued — pipeline picking up.` and the `linkVideoJobId` swaps to a new uuid. Original `transcribe_provider` is preserved across the retry (verifiable from `cf_jobs` row).
 
+## Follow-up pass (same session) — all four "while I was in here" items shipped
+
+- **DB-backed cartoon rehydrate now carries voice id**
+  - `src/components/content-factory-v2/cartoonReconciler.ts` — `CartoonScriptRow` gained `voice_id_used`; `buildCartoonItemFromScript` projects it onto `QueueItem.cartoonVoiceId`.
+  - `src/pages/label/ContentFactoryV2.tsx` — `recentCartoonScriptsQuery` now selects `voice_id_used`; the merge effect backfills `cartoonVoiceId` on already-known items so a long-absent rehydrate (localStorage gone, DB only) still has enough context to retry.
+  - `voice_settings` is not on `cartoon_scripts`, so DB-rehydrated retries fall back to the dispatcher's defaults (acceptable — voice ID is the user-visible setting).
+- **`BriefViewerModal` handles failed items**
+  - `src/components/content-factory-v2/ReviewView.tsx`:
+    - Modal now branches on `isFailed`: header "Generation failed", red icon, surfaces `item.jobError`, exposes the same Retry button the stalled state uses.
+    - `ThumbFrame` is now clickable for failed items so the user can open the modal and read the error in full (was previously not interactive on failure).
+- **Retry cap (3)**
+  - `src/components/content-factory-v2/types.ts` — added `retryCount?: number` on `QueueItem` and exported `RETRY_MAX = 3`.
+  - Both `CartoonRunSnapshot` and `LinkVideoRunSnapshot` (+ their `*FromItem` / `*FromSnapshot` helpers) persist `retryCount`, so the cap survives a refresh.
+  - `handleRetryRender` now reads `priorAttempts = item.retryCount ?? 0`; if `>= RETRY_MAX`, fires a destructive toast and returns. Each successful retry path bumps `retryCount` to `attemptNo`.
+- **Retry telemetry**
+  - New file `src/components/content-factory-v2/retryTelemetry.ts` — `logRetryAttempt({ itemId, outputType, originalError, attempt })` writes to `console.info('[cf-retry-telemetry]', …)` and inserts into the `cf_retry_telemetry` Supabase table.
+  - `handleRetryRender` calls `logRetryAttempt` once per click, after the cap check.
+  - **Migration shipped same session**: `supabase/migrations/20260426203149_cf_retry_telemetry.sql` created the table (uuid pk, created_at, user_id FK, item_id, output_type, original_error, attempt smallint with check) plus two indexes (created_at desc; user_id, created_at desc) and an RLS policy `insert own retry telemetry` (authenticated, `user_id = auth.uid()`). Applied to prod via `supabase db push`. Verified via `curl /rest/v1/cf_retry_telemetry` → HTTP 200.
+  - Types regenerated (`supabase gen types typescript --project-id kxvgbowrkmowuyezoeke --schema public`); the `unknown as never` cast in `retryTelemetry.ts` was dropped — direct `supabase.from("cf_retry_telemetry").insert(…)` now type-checks.
+
+## Verification
+
+- `npx tsc --noEmit` — clean (exit 0) after every change.
+- Not yet exercised in browser — needs a manufactured failure on each output type to verify the new modal copy + cap behavior end-to-end.
+
 ## "While I was in here" recommendations
 
 1. **Persist cartoon voice in the DB-backed rehydrate too** — the `recentCartoonScriptsQuery` rebuilds items from `cartoon_scripts`/`realfootage_scripts`, which currently doesn't expose `voice_id_used` to the client. If the user closes the tab + comes back hours later, the localStorage snapshot is discarded by the freshness gate and the QueueItem comes back with no `cartoonVoiceId`, so Retry would refuse. Worth wiring `voice_id_used` into the script select + projecting it back onto the QueueItem.

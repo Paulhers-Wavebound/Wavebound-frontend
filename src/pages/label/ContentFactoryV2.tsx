@@ -13,15 +13,19 @@ import type {
 import type { CartoonGenerateInput } from "@/components/content-factory-v2/CartoonPanel";
 import ReviewView from "@/components/content-factory-v2/ReviewView";
 import { INITIAL_QUEUE } from "@/components/content-factory-v2/mockData";
-import type {
-  KillReason,
-  OutputType,
-  QueueItem,
+import {
+  RETRY_MAX,
+  type KillReason,
+  type OutputType,
+  type QueueItem,
 } from "@/components/content-factory-v2/types";
+import { logRetryAttempt } from "@/components/content-factory-v2/retryTelemetry";
 import {
   buildCartoonItemFromScript,
+  type CartoonFormat,
   type CartoonScriptRow,
   deriveCartoonItemState,
+  FORMAT_TITLE_PREFIX,
   itemFromSnapshot,
   loadCartoonRuns,
   reconcileCartoonItem,
@@ -58,6 +62,37 @@ const TABS: {
 
 function isTabKey(v: string | null): v is TabKey {
   return v === "explore" || v === "create" || v === "assets";
+}
+
+/**
+ * Set up a polling interval that runs at `visibleMs` while the tab is in the
+ * foreground and `hiddenMs` (slower) when backgrounded. Browsers throttle
+ * setInterval on hidden tabs anyway, but our useEffects also need a way to
+ * cut Supabase query volume to a hidden tab without losing the catch-up
+ * tick when it returns. Returns a cleanup function suitable for a useEffect
+ * return value.
+ */
+function setupVisibilityAwareInterval(
+  visibleMs: number,
+  hiddenMs: number,
+  tick: () => void,
+): () => void {
+  let intervalId: number | undefined;
+  const start = () => {
+    if (intervalId !== undefined) window.clearInterval(intervalId);
+    const ms = document.visibilityState === "visible" ? visibleMs : hiddenMs;
+    intervalId = window.setInterval(tick, ms);
+  };
+  start();
+  const onVisible = () => {
+    start();
+    if (document.visibilityState === "visible") tick();
+  };
+  document.addEventListener("visibilitychange", onVisible);
+  return () => {
+    if (intervalId !== undefined) window.clearInterval(intervalId);
+    document.removeEventListener("visibilitychange", onVisible);
+  };
 }
 
 // Backward-compat: old query-param values map to the renamed tabs. Bookmarks
@@ -762,23 +797,13 @@ export default function ContentFactoryV2() {
 
     // Polling fallback: Realtime can drop silently (network blip, browser
     // throttling a hidden tab) and there's no way to detect it. Re-fetch
-    // every 15s while any job is active so stuck placeholders self-heal.
+    // every 15s while visible / 30s when backgrounded — Realtime is the
+    // primary signal and the poll is just a safety net, so a slower hidden
+    // cadence cuts Supabase load without hurting UX.
     if (activeJobIds.size === 0) return;
-    const interval = window.setInterval(() => {
+    return setupVisibilityAwareInterval(15_000, 30_000, () => {
       for (const jobId of activeJobIds) void fetchAndReconcileJob(jobId);
-    }, 15_000);
-
-    // Also catch up the moment the tab regains focus.
-    const onVisible = () => {
-      if (document.visibilityState !== "visible") return;
-      for (const jobId of activeJobIds) void fetchAndReconcileJob(jobId);
-    };
-    document.addEventListener("visibilitychange", onVisible);
-
-    return () => {
-      window.clearInterval(interval);
-      document.removeEventListener("visibilitychange", onVisible);
-    };
+    });
   }, [queue, reconcileJobUpdate, fetchAndReconcileJob]);
 
   // Unmount: drop every channel that the per-job effect didn't get to drain.
@@ -821,8 +846,21 @@ export default function ContentFactoryV2() {
     });
   }, [labelId]);
 
+  // Persist cartoon snapshots back to localStorage whenever the queue
+  // changes. The first fire for a given labelId is SKIPPED — the load
+  // effect above schedules a setQueue with localStorage's content, but
+  // that hasn't applied yet when the save effect runs in the same flush.
+  // Without this guard, the empty INITIAL_QUEUE wipes localStorage, and
+  // any page lifecycle event (navigation, route change, hot reload) that
+  // fires before the next render kills the snapshot. This is the bug
+  // that made cartoons silently disappear on refresh.
+  const cartoonSaveSkippedForLabelRef = useRef<string | null>(null);
   useEffect(() => {
     if (!labelId) return;
+    if (cartoonSaveSkippedForLabelRef.current !== labelId) {
+      cartoonSaveSkippedForLabelRef.current = labelId;
+      return;
+    }
     const snapshots = queue
       .map(snapshotFromItem)
       .filter((s): s is NonNullable<typeof s> => s !== null);
@@ -851,18 +889,70 @@ export default function ContentFactoryV2() {
       ? 30_000
       : false,
     queryFn: async (): Promise<CartoonScriptRow[]> => {
-      const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      // 7-day window. 24h was too tight — a cartoon rendered yesterday
+      // afternoon disappears from the rehydrate query the next morning,
+      // even though it's still very much "in the queue" from the user's
+      // POV. 7d covers any reasonable "I want to see what I've made
+      // recently" while still bounding the response.
+      const cutoff = new Date(
+        Date.now() - 7 * 24 * 60 * 60 * 1000,
+      ).toISOString();
       const { data, error } = await supabase
         .from("cartoon_scripts")
         .select(
-          "id, status, label_id, artist_handle, artist_name, source_chat_job_id, script_json, created_at, cartoon_videos(id, status, final_url)",
+          "id, status, label_id, artist_handle, artist_name, source_chat_job_id, script_json, created_at, voice_id_used, cartoon_videos(id, status, final_url)",
         )
         .eq("label_id", labelId!)
         .gte("created_at", cutoff)
         .order("created_at", { ascending: false })
         .limit(50);
       if (error) throw error;
-      return (data ?? []) as unknown as CartoonScriptRow[];
+      // Tag each row with its source format so the merge effect can route
+      // to the right failed-status set / error label / cartoonFormat field
+      // without re-querying.
+      return (data ?? []).map((r) => ({
+        ...r,
+        format: "cartoon" as CartoonFormat,
+      })) as unknown as CartoonScriptRow[];
+    },
+  });
+
+  // Sibling query against realfootage_scripts. Same shape, same window,
+  // same staleTime — diff is the table + cartoonFormat tag. Without this,
+  // a realfootage card disappears on refresh after localStorage expires
+  // (the cartoon_scripts query has no idea it exists), and even when it
+  // sticks around via localStorage it never gets a fresh status read for
+  // failure cases like materializing_failed.
+  const recentRealfootageScriptsQuery = useQuery({
+    queryKey: ["realfootage-scripts-recent", labelId],
+    enabled: !!labelId,
+    staleTime: 30_000,
+    refetchInterval: queue.some(
+      (q) =>
+        q.outputType === "cartoon" &&
+        q.cartoonFormat === "realfootage" &&
+        q.status === "generating",
+    )
+      ? 30_000
+      : false,
+    queryFn: async (): Promise<CartoonScriptRow[]> => {
+      const cutoff = new Date(
+        Date.now() - 7 * 24 * 60 * 60 * 1000,
+      ).toISOString();
+      const { data, error } = await supabase
+        .from("realfootage_scripts")
+        .select(
+          "id, status, label_id, artist_handle, artist_name, source_chat_job_id, script_json, created_at, voice_id_used, realfootage_videos(id, status, final_url)",
+        )
+        .eq("label_id", labelId!)
+        .gte("created_at", cutoff)
+        .order("created_at", { ascending: false })
+        .limit(50);
+      if (error) throw error;
+      return (data ?? []).map((r) => ({
+        ...r,
+        format: "realfootage" as CartoonFormat,
+      })) as unknown as CartoonScriptRow[];
     },
   });
 
@@ -878,8 +968,13 @@ export default function ContentFactoryV2() {
   // Items locally killed (status='scheduled' or absent because user
   // dismissed) aren't resurrected: we only patch by ID match.
   useEffect(() => {
-    const scripts = recentCartoonScriptsQuery.data;
-    if (!scripts || scripts.length === 0) return;
+    // Merge both pipelines into one tagged list. Either query can be empty
+    // (e.g. user has no realfootage scripts in the last 7d) — combine
+    // whatever's available.
+    const cartoonRows = recentCartoonScriptsQuery.data ?? [];
+    const realfootageRows = recentRealfootageScriptsQuery.data ?? [];
+    const scripts: CartoonScriptRow[] = [...cartoonRows, ...realfootageRows];
+    if (scripts.length === 0) return;
     setQueue((prev) => {
       let mutated = false;
       const claimed = new Set<string>();
@@ -908,6 +1003,15 @@ export default function ContentFactoryV2() {
         const nextChatJobId =
           q.cartoonChatJobId ?? row.source_chat_job_id ?? undefined;
         const nextThumb = derived.thumbnailUrl ?? q.thumbnailUrl;
+        // Backfill voice_id from the DB row when the in-memory placeholder
+        // never picked it up (DB-only rehydrate after localStorage expired).
+        // Don't overwrite an already-set local value — the user's original
+        // pick is more trustworthy than what the dispatcher echoed back.
+        const nextVoiceId = q.cartoonVoiceId ?? row.voice_id_used ?? undefined;
+        // Trust the matched row's pipeline over a missing/stale local tag.
+        // Critical when matching by chat_job_id before the dispatcher echo
+        // landed: a realfootage row is the source of truth for format.
+        const nextFormat = row.format ?? q.cartoonFormat;
         const changed =
           q.cartoonScriptId !== nextScriptId ||
           q.cartoonChatJobId !== nextChatJobId ||
@@ -918,7 +1022,9 @@ export default function ContentFactoryV2() {
           q.cartoonHook !== nextHook ||
           q.jobError !== derived.jobError ||
           q.status !== nextStatus ||
-          q.thumbnailUrl !== nextThumb;
+          q.thumbnailUrl !== nextThumb ||
+          q.cartoonVoiceId !== nextVoiceId ||
+          q.cartoonFormat !== nextFormat;
         if (!changed) return q;
         mutated = true;
         return {
@@ -933,6 +1039,8 @@ export default function ContentFactoryV2() {
           jobError: derived.jobError,
           status: nextStatus,
           thumbnailUrl: nextThumb,
+          cartoonVoiceId: nextVoiceId,
+          cartoonFormat: nextFormat,
         };
       });
 
@@ -945,7 +1053,7 @@ export default function ContentFactoryV2() {
       if (!mutated && additions.length === 0) return prev;
       return additions.length > 0 ? [...additions, ...patched] : patched;
     });
-  }, [recentCartoonScriptsQuery.data]);
+  }, [recentCartoonScriptsQuery.data, recentRealfootageScriptsQuery.data]);
 
   // Process-local gate against double-firing cartoon-vo when a Realtime
   // UPDATE event and a polling tick race after chat_jobs flips to complete.
@@ -1034,14 +1142,24 @@ export default function ContentFactoryV2() {
       if (item.cartoonScriptId) {
         const key = `script-${item.id}-${item.cartoonScriptId}`;
         if (cartoonChannelsRef.current.has(key)) continue;
+        // Realfootage items live in their own pair of tables. The cartoon
+        // realtime publication doesn't broadcast realfootage row changes,
+        // so without this branch a materializing_failed status sits in the
+        // DB without ever flipping the queue card to Failed (until the 15s
+        // polling fallback catches up).
+        const format: CartoonFormat = item.cartoonFormat ?? "cartoon";
+        const scriptsTable =
+          format === "realfootage" ? "realfootage_scripts" : "cartoon_scripts";
+        const videosTable =
+          format === "realfootage" ? "realfootage_videos" : "cartoon_videos";
         const ch = supabase
-          .channel(`cf-cartoon-${item.id}-${item.cartoonScriptId}`)
+          .channel(`cf-${format}-${item.id}-${item.cartoonScriptId}`)
           .on(
             "postgres_changes",
             {
               event: "UPDATE",
               schema: "public",
-              table: "cartoon_scripts",
+              table: scriptsTable,
               filter: `id=eq.${item.cartoonScriptId}`,
             },
             () => void fetchAndReconcileCartoonById(item.id),
@@ -1051,7 +1169,7 @@ export default function ContentFactoryV2() {
             {
               event: "UPDATE",
               schema: "public",
-              table: "cartoon_videos",
+              table: videosTable,
               filter: `script_id=eq.${item.cartoonScriptId}`,
             },
             () => void fetchAndReconcileCartoonById(item.id),
@@ -1061,7 +1179,7 @@ export default function ContentFactoryV2() {
             {
               event: "INSERT",
               schema: "public",
-              table: "cartoon_videos",
+              table: videosTable,
               filter: `script_id=eq.${item.cartoonScriptId}`,
             },
             () => void fetchAndReconcileCartoonById(item.id),
@@ -1079,6 +1197,7 @@ export default function ContentFactoryV2() {
               console.warn("[cartoon-realtime] script subscription degraded", {
                 itemId: item.id,
                 scriptId: item.cartoonScriptId,
+                format,
                 status,
               });
             }
@@ -1134,25 +1253,14 @@ export default function ContentFactoryV2() {
 
     if (activeCartoons.length === 0) return;
 
-    // Polling fallback every 15s + visibility-change catch-up — Realtime can
-    // drop silently (network blip, hidden-tab throttling), this is the safety
-    // net that keeps stuck items moving.
-    const interval = window.setInterval(() => {
+    // Polling fallback — 15s visible / 30s hidden. Realtime is primary; this
+    // is the safety net that keeps stuck items moving when a UPDATE event
+    // gets dropped or a hidden tab misses a window.
+    return setupVisibilityAwareInterval(15_000, 30_000, () => {
       for (const item of activeCartoons) {
         void fetchAndReconcileCartoonById(item.id);
       }
-    }, 15_000);
-    const onVisible = () => {
-      if (document.visibilityState !== "visible") return;
-      for (const item of activeCartoons) {
-        void fetchAndReconcileCartoonById(item.id);
-      }
-    };
-    document.addEventListener("visibilitychange", onVisible);
-    return () => {
-      window.clearInterval(interval);
-      document.removeEventListener("visibilitychange", onVisible);
-    };
+    });
   }, [queue, fetchAndReconcileCartoonById]);
 
   useEffect(() => {
@@ -1194,8 +1302,14 @@ export default function ContentFactoryV2() {
         return;
       }
 
-      const { artistName, artistHandle, count, voiceId, voiceSettings, subFormat } =
-        input;
+      const {
+        artistName,
+        artistHandle,
+        count,
+        voiceId,
+        voiceSettings,
+        subFormat,
+      } = input;
       const isRealfootage = subFormat === "realfootage";
       const now = new Date().toISOString();
       const newItems: QueueItem[] = Array.from({ length: count }, () => ({
@@ -1203,7 +1317,7 @@ export default function ContentFactoryV2() {
         artistId: `cartoon-${artistHandle}`,
         artistDisplayName: artistName,
         artistDisplayHandle: artistHandle,
-        title: `${isRealfootage ? "Real edit" : "Cartoon"} · ${artistName}`,
+        title: `${FORMAT_TITLE_PREFIX[subFormat]} · ${artistName}`,
         outputType: "cartoon",
         source: "human",
         status: "generating",
@@ -1215,7 +1329,7 @@ export default function ContentFactoryV2() {
         cartoonVoiceId: voiceId,
         cartoonVoiceSettings: voiceSettings,
         // Optimistic — vo-dispatch's response confirms it but the UI can show
-        // the right "Real edit" label from the moment the placeholder lands.
+        // the right label from the moment the placeholder lands.
         cartoonFormat: subFormat,
       }));
 
@@ -1341,8 +1455,16 @@ export default function ContentFactoryV2() {
     });
   }, [labelId]);
 
+  // Same first-fire skip pattern as the cartoon save effect — see comment
+  // there for why this matters. Without the skip, the empty INITIAL_QUEUE
+  // wipes link_video sessionStorage on the first labelId-load tick.
+  const linkVideoSaveSkippedForLabelRef = useRef<string | null>(null);
   useEffect(() => {
     if (!labelId) return;
+    if (linkVideoSaveSkippedForLabelRef.current !== labelId) {
+      linkVideoSaveSkippedForLabelRef.current = labelId;
+      return;
+    }
     const snapshots = queue
       .map(linkVideoSnapshotFromItem)
       .filter((s): s is NonNullable<typeof s> => s !== null);
@@ -1367,7 +1489,10 @@ export default function ContentFactoryV2() {
       ? 30_000
       : false,
     queryFn: async (): Promise<CfJobRow[]> => {
-      const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      // 7d, same reasoning as recentCartoonScriptsQuery above.
+      const cutoff = new Date(
+        Date.now() - 7 * 24 * 60 * 60 * 1000,
+      ).toISOString();
       const { data, error } = await supabase
         .from("cf_jobs")
         .select(
@@ -1491,22 +1616,15 @@ export default function ContentFactoryV2() {
     );
     if (active.length === 0) return;
 
-    const interval = window.setInterval(() => {
+    // Link Video has no Realtime publication — polling IS the signal.
+    // Stay aggressive when visible (3s) and back off when hidden (15s) so
+    // a forgotten tab doesn't hammer cf_jobs but a watching user still
+    // sees fast updates.
+    return setupVisibilityAwareInterval(3_000, 15_000, () => {
       for (const item of active) {
         void fetchAndReconcileLinkVideoById(item.id);
       }
-    }, 3_000);
-    const onVisible = () => {
-      if (document.visibilityState !== "visible") return;
-      for (const item of active) {
-        void fetchAndReconcileLinkVideoById(item.id);
-      }
-    };
-    document.addEventListener("visibilitychange", onVisible);
-    return () => {
-      window.clearInterval(interval);
-      document.removeEventListener("visibilitychange", onVisible);
-    };
+    });
   }, [queue, fetchAndReconcileLinkVideoById]);
 
   // Wizard handoff — push one placeholder QueueItem to Review with
@@ -1653,6 +1771,25 @@ export default function ContentFactoryV2() {
       const item = queue.find((q) => q.id === itemId);
       if (!item) return;
 
+      const priorAttempts = item.retryCount ?? 0;
+      if (priorAttempts >= RETRY_MAX) {
+        toast({
+          title: `Already retried ${RETRY_MAX}×`,
+          description:
+            "The source — not the pipeline — is probably the issue. Dismiss and start a fresh job from a different angle.",
+          variant: "destructive",
+        });
+        return;
+      }
+      const attemptNo = priorAttempts + 1;
+      const originalError = item.jobError ?? item.renderError ?? null;
+      logRetryAttempt({
+        itemId,
+        outputType: item.outputType,
+        originalError,
+        attempt: attemptNo,
+      });
+
       // ── fan_brief ──────────────────────────────────────────────────────
       if (item.outputType === "fan_brief" || item.fanBriefId) {
         if (!item.fanBriefId) return;
@@ -1665,6 +1802,7 @@ export default function ContentFactoryV2() {
                   renderError: undefined,
                   renderStalled: false,
                   jobError: undefined,
+                  retryCount: attemptNo,
                 }
               : q,
           ),
@@ -1714,9 +1852,115 @@ export default function ContentFactoryV2() {
           return;
         }
 
-        // Reset the card back to the script stage in-place so the existing
-        // reconciler picks it up like a fresh run. Keep the same id so the
-        // user's mental position in the list doesn't jump.
+        // Two retry paths depending on how far the original run got:
+        //   • chat_job exists → re-POST to content-factory-vo-dispatch with
+        //     the same chat_job_id. Skips the writer phase, reuses the
+        //     existing fenced JSON, and the VO functions are idempotent on
+        //     source_chat_job_id so this won't duplicate scripts.
+        //   • no chat_job → writer never produced one (e.g. SSE never landed
+        //     a job_id). Restart the writer from scratch.
+        // The dispatcher path is what the realfootage `materializing_failed`
+        // case wants — re-running the writer there is wasteful and loses
+        // the user's original story angle.
+        if (item.cartoonChatJobId) {
+          const chatJobId = item.cartoonChatJobId;
+          const voiceId = item.cartoonVoiceId;
+          const voiceSettings = item.cartoonVoiceSettings;
+          const formatLabel =
+            item.cartoonFormat === "realfootage" ? "real edit" : "cartoon";
+
+          setQueue((prev) =>
+            prev.map((q) =>
+              q.id === itemId
+                ? {
+                    ...q,
+                    status: "generating",
+                    cartoonStage: "vo",
+                    cartoonStageDetail: undefined,
+                    cartoonScriptId: undefined,
+                    cartoonHook: undefined,
+                    cartoonFinalUrl: undefined,
+                    cartoonVoCallInFlight: false,
+                    jobError: undefined,
+                    jobStage: undefined,
+                    renderedClipUrl: undefined,
+                    createdAt: new Date().toISOString(),
+                    retryCount: attemptNo,
+                    // KEEP: cartoonChatJobId, cartoonFormat, cartoonVoiceId,
+                    // cartoonVoiceSettings — the dispatcher needs these.
+                  }
+                : q,
+            ),
+          );
+          toast({
+            title: `Retrying ${formatLabel}`,
+            description: `for ${artistName} — re-running render only, ~5–15 min.`,
+          });
+
+          try {
+            const { data, error } = await supabase.functions.invoke(
+              "content-factory-vo-dispatch",
+              {
+                body: {
+                  chat_job_id: chatJobId,
+                  voice_id: voiceId,
+                  ...(voiceSettings ? { voice_settings: voiceSettings } : {}),
+                },
+              },
+            );
+            if (error) throw error;
+            const scriptId = (data?.script_id ?? data?.id) as
+              | string
+              | undefined;
+            const dispatchedFormat: CartoonFormat =
+              data?.format === "realfootage" ? "realfootage" : "cartoon";
+            if (!scriptId) {
+              setQueue((prev) =>
+                prev.map((q) =>
+                  q.id === itemId
+                    ? {
+                        ...q,
+                        status: "failed",
+                        jobError: "Render kick-off returned no script_id",
+                      }
+                    : q,
+                ),
+              );
+              return;
+            }
+            setQueue((prev) =>
+              prev.map((q) =>
+                q.id === itemId
+                  ? {
+                      ...q,
+                      cartoonScriptId: scriptId,
+                      cartoonFormat: dispatchedFormat,
+                    }
+                  : q,
+              ),
+            );
+          } catch (err) {
+            setQueue((prev) =>
+              prev.map((q) =>
+                q.id === itemId
+                  ? {
+                      ...q,
+                      status: "failed",
+                      jobError:
+                        err instanceof Error
+                          ? err.message
+                          : "Retry dispatch failed",
+                    }
+                  : q,
+              ),
+            );
+          }
+          void artistHandle;
+          return;
+        }
+
+        // Fallback: writer never produced a chat_job_id. Restart the writer.
+        const isRealfootageRetry = item.cartoonFormat === "realfootage";
         setQueue((prev) =>
           prev.map((q) =>
             q.id === itemId
@@ -1735,16 +1979,19 @@ export default function ContentFactoryV2() {
                   jobStage: undefined,
                   renderedClipUrl: undefined,
                   createdAt: new Date().toISOString(),
+                  retryCount: attemptNo,
                 }
               : q,
           ),
         );
         toast({
-          title: "Retrying cartoon",
+          title: `Retrying ${isRealfootageRetry ? "real edit" : "cartoon"}`,
           description: `for ${artistName} — script first, end-to-end ~15-20 min.`,
         });
 
-        const writerMessage = `Make a cartoon for ${artistName}. Pick the most compelling, factually-grounded story angle from their dossier — viral moment, hidden lore, fan obsession, chart breakthrough, anything that hooks in 3 words. Run the dossier tools first.`;
+        const writerMessage = isRealfootageRetry
+          ? `Make a 60-second real-footage story for ${artistName}. Pick the most compelling, factually-grounded story angle from their dossier — viral moment, hidden lore, fan obsession, chart breakthrough, anything that hooks in 3 words. Run the dossier tools first. IMPORTANT: include "format": "realfootage" at the top level of the fenced JSON output so the renderer routes to the real-footage pipeline.`
+          : `Make a cartoon for ${artistName}. Pick the most compelling, factually-grounded story angle from their dossier — viral moment, hidden lore, fan obsession, chart breakthrough, anything that hooks in 3 words. Run the dossier tools first.`;
         const sessionId = crypto.randomUUID();
         void streamChatMessage(
           {
@@ -1824,6 +2071,7 @@ export default function ContentFactoryV2() {
                   jobError: undefined,
                   renderedClipUrl: undefined,
                   createdAt: new Date().toISOString(),
+                  retryCount: attemptNo,
                 }
               : q,
           ),

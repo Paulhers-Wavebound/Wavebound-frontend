@@ -132,6 +132,17 @@ export function cartoonErrorLabel(status: string): string {
   }
 }
 
+// User-facing prefix for the cartoon-bucket queue card title. Mirrors the
+// sub-format dropdown ("Cartoon" / "Real edit") so the card label matches
+// what the user picked at create time. Anything that builds a card title
+// goes through this map so the two formats can never diverge again — the
+// prior bug was three different code paths each hard-coding their own
+// prefix string.
+export const FORMAT_TITLE_PREFIX: Record<CartoonFormat, string> = {
+  cartoon: "Cartoon",
+  realfootage: "Real edit",
+};
+
 export function cartoonStorageKey(labelId: string | null): string {
   return `cartoon-runs-v1.5-${labelId ?? "anon"}`;
 }
@@ -169,6 +180,7 @@ export interface CartoonRunSnapshot {
     style: number;
     use_speaker_boost: boolean;
   };
+  retryCount?: number;
 }
 
 export function loadCartoonRuns(labelId: string | null): CartoonRunSnapshot[] {
@@ -218,6 +230,7 @@ export function snapshotFromItem(item: QueueItem): CartoonRunSnapshot | null {
     jobError: item.jobError,
     cartoonVoiceId: item.cartoonVoiceId,
     cartoonVoiceSettings: item.cartoonVoiceSettings,
+    retryCount: item.retryCount,
   };
 }
 
@@ -226,9 +239,10 @@ export function snapshotFromItem(item: QueueItem): CartoonRunSnapshot | null {
  * to repopulate Review with in-flight + completed cartoons.
  */
 export function itemFromSnapshot(s: CartoonRunSnapshot): QueueItem {
+  const prefix = FORMAT_TITLE_PREFIX[s.cartoonFormat ?? "cartoon"];
   const display = s.cartoonHook
     ? `${s.artistName} — ${s.cartoonHook}`
-    : `Cartoon · ${s.artistName}`;
+    : `${prefix} · ${s.artistName}`;
   return {
     id: s.itemId,
     artistId: s.artistId,
@@ -255,6 +269,7 @@ export function itemFromSnapshot(s: CartoonRunSnapshot): QueueItem {
     jobError: s.jobError,
     cartoonVoiceId: s.cartoonVoiceId,
     cartoonVoiceSettings: s.cartoonVoiceSettings,
+    retryCount: s.retryCount,
   };
 }
 
@@ -462,7 +477,7 @@ export async function reconcileCartoonItem(
       }
 
       const hook = script.hook_title ?? item.cartoonHook;
-      const titlePrefix = format === "realfootage" ? "Real footage" : "Cartoon";
+      const titlePrefix = FORMAT_TITLE_PREFIX[format];
       return {
         status: "pending",
         cartoonStage: undefined,
@@ -498,9 +513,12 @@ export async function reconcileCartoonItem(
 // `event: job_id`, lost across browsers / incognito, etc.).
 
 /**
- * Shape returned by the recent-scripts query. The cartoon_videos embed is
- * either a single object (PostgREST 1:1 inference), an array (1:many), or
- * null when no video row exists yet. We accept all three.
+ * Shape returned by the recent-scripts query. The videos embed is either a
+ * single object (PostgREST 1:1 inference), an array (1:many), or null when
+ * no video row exists yet. Both cartoon_scripts and realfootage_scripts hit
+ * this shape — the rehydrate effect tags each row with `format` so the
+ * derive/build helpers know which status set + error labels to apply, and
+ * which downstream tables the resulting QueueItem will poll.
  */
 export interface CartoonScriptRow {
   id: string;
@@ -511,7 +529,22 @@ export interface CartoonScriptRow {
   source_chat_job_id: string | null;
   script_json: { hook_title?: string | null } | null;
   created_at: string;
+  // Original ElevenLabs voice the user picked at create time. Projected so
+  // a long-absent rehydrate (localStorage gone, DB only) still has enough
+  // to power the Retry button. voice_settings isn't on the table, so retries
+  // on a rehydrated item fall back to the dispatcher's defaults.
+  voice_id_used: string | null;
+  // Frontend tag — not a DB column. Set by the rehydrate effect after
+  // selecting from cartoon_scripts vs realfootage_scripts so deriveState /
+  // buildItem can pick the right status set and not have to re-query.
+  format?: CartoonFormat;
   cartoon_videos:
+    | { id: string; status: string | null; final_url: string | null }
+    | { id: string; status: string | null; final_url: string | null }[]
+    | null;
+  // Realfootage scripts return their video join under this name. Same
+  // shape as cartoon_videos — pickVideo() handles either.
+  realfootage_videos?:
     | { id: string; status: string | null; final_url: string | null }
     | { id: string; status: string | null; final_url: string | null }[]
     | null;
@@ -522,7 +555,7 @@ function pickVideo(row: CartoonScriptRow): {
   status: string | null;
   final_url: string | null;
 } | null {
-  const v = row.cartoon_videos;
+  const v = row.cartoon_videos ?? row.realfootage_videos ?? null;
   if (!v) return null;
   if (Array.isArray(v)) return v[0] ?? null;
   return v;
@@ -531,7 +564,9 @@ function pickVideo(row: CartoonScriptRow): {
 /**
  * Compute the QueueItem `status` + `cartoonStage` derived from a script row
  * and its joined video. Centralizes the rules so the merge effect doesn't
- * have to reimplement them.
+ * have to reimplement them. Format-aware: realfootage rows use a different
+ * failure-status set, error label fn, and stage mapper, and don't have a
+ * deterministic still thumbnail (the cartoon-images bucket is cartoon-only).
  */
 export function deriveCartoonItemState(row: CartoonScriptRow): {
   status: QueueItem["status"];
@@ -541,27 +576,44 @@ export function deriveCartoonItemState(row: CartoonScriptRow): {
   jobError: string | undefined;
   thumbnailUrl: string | undefined;
 } {
+  const format: CartoonFormat = row.format ?? "cartoon";
+  const failedSet =
+    format === "realfootage"
+      ? REALFOOTAGE_FAILED_STATUSES
+      : CARTOON_FAILED_STATUSES;
+  const errorLabel =
+    format === "realfootage" ? realfootageErrorLabel : cartoonErrorLabel;
+  const stageMapper =
+    format === "realfootage" ? realfootageStatusToStage : scriptStatusToStage;
+
   const video = pickVideo(row);
   const finalUrl = video?.final_url ?? undefined;
   const scriptStatus = row.status ?? "";
-  // 000.png lands in the public cartoon-images bucket as soon as shot 0
-  // renders, but to avoid 404 flicker we only surface it once all shots are
-  // guaranteed done (status flipped to rendering_video) or the final MP4 is
-  // ready. The <img onError> in ReviewView hides it if the file is missing.
+  // Cartoon: 000.png lands in the public cartoon-images bucket as soon as
+  // shot 0 renders. Realfootage: poster.jpg lands in the public
+  // realfootage-thumbs bucket once the final MP4 is ready (backend writes
+  // it via ffmpeg post-render). To avoid 404 flicker we only surface
+  // either URL once all shots are guaranteed done (status flipped to
+  // rendering_video) or the final MP4 is ready. The <img onError> in
+  // ReviewView hides whichever URL ends up missing — safe to set the
+  // realfootage URL even if the backend hasn't shipped the writer yet,
+  // the broken-image fallback hides it gracefully.
   const allShotsDone =
     scriptStatus === "rendering_video" || scriptStatus === "complete";
   const thumbnailUrl =
     finalUrl || allShotsDone
-      ? `${SUPABASE_URL}/storage/v1/object/public/cartoon-images/${row.id}/000.png`
+      ? format === "realfootage"
+        ? `${SUPABASE_URL}/storage/v1/object/public/realfootage-thumbs/${row.id}/poster.jpg`
+        : `${SUPABASE_URL}/storage/v1/object/public/cartoon-images/${row.id}/000.png`
       : undefined;
 
-  if (CARTOON_FAILED_STATUSES.has(scriptStatus)) {
+  if (failedSet.has(scriptStatus)) {
     return {
       status: "failed",
       stage: undefined,
       stageDetail: undefined,
       finalUrl,
-      jobError: cartoonErrorLabel(scriptStatus),
+      jobError: errorLabel(scriptStatus),
       thumbnailUrl,
     };
   }
@@ -585,7 +637,7 @@ export function deriveCartoonItemState(row: CartoonScriptRow): {
       thumbnailUrl,
     };
   }
-  const stage = scriptStatusToStage(scriptStatus);
+  const stage = stageMapper(scriptStatus);
   return {
     status: "generating",
     stage: stage === "done" ? "video" : stage,
@@ -601,8 +653,14 @@ export function deriveCartoonItemState(row: CartoonScriptRow): {
  * doesn't know about yet. Mirrors `itemFromSnapshot` but reads from DB
  * shape. Used when the user refreshed before the SSE first event landed
  * and localStorage has nothing — DB still has the script row.
+ *
+ * The row's `format` tag is the single source of truth for which pipeline
+ * the resulting QueueItem belongs to. It drives the title prefix, the
+ * cartoonFormat field (so subsequent reconciles hit the right tables),
+ * and indirectly the failure-status set via deriveCartoonItemState.
  */
 export function buildCartoonItemFromScript(row: CartoonScriptRow): QueueItem {
+  const format: CartoonFormat = row.format ?? "cartoon";
   const handle = row.artist_handle ?? "artist";
   const name = row.artist_name ?? `@${handle}`;
   const hook = row.script_json?.hook_title ?? undefined;
@@ -613,7 +671,9 @@ export function buildCartoonItemFromScript(row: CartoonScriptRow): QueueItem {
     artistId: `cartoon-${handle}`,
     artistDisplayName: name,
     artistDisplayHandle: handle,
-    title: hook ? `${name} — ${hook}` : `Cartoon · ${name}`,
+    title: hook
+      ? `${name} — ${hook}`
+      : `${FORMAT_TITLE_PREFIX[format]} · ${name}`,
     outputType: "cartoon",
     source: "human",
     status,
@@ -624,11 +684,13 @@ export function buildCartoonItemFromScript(row: CartoonScriptRow): QueueItem {
     createdAt: row.created_at,
     cartoonChatJobId: row.source_chat_job_id ?? undefined,
     cartoonScriptId: row.id,
+    cartoonFormat: format,
     cartoonStage: stage,
     cartoonStageDetail: stageDetail,
     cartoonHook: hook,
     cartoonFinalUrl: finalUrl,
     renderedClipUrl: finalUrl,
+    cartoonVoiceId: row.voice_id_used ?? undefined,
     jobError,
   };
 }

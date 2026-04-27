@@ -12,6 +12,7 @@ import { useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useUserProfile } from "@/contexts/UserProfileContext";
 import { useLabelArtists } from "@/hooks/useLabelArtists";
+import { useLatestPresetAssets } from "@/hooks/useLatestPresetAssets";
 import { toast } from "@/hooks/use-toast";
 import type { Angle, OutputType, QueueItem } from "./types";
 import {
@@ -75,7 +76,6 @@ export default function CreateView({
 }: CreateViewProps) {
   const [activePreset, setActivePreset] = useState<OutputType | null>(null);
   const [selectedArtistId, setSelectedArtistId] = useState<string>("art-papi");
-  const [selectedAvatar, setSelectedAvatar] = useState<string>("av-native");
   const [tuneOpen, setTuneOpen] = useState(false);
 
   // Preset-specific form state (kept simple for mock)
@@ -179,6 +179,12 @@ export default function CreateView({
   const labelArtists = (labelArtistsQuery.data ?? []).filter(
     (a) => !!a.artist_handle,
   );
+
+  // Showcase imagery for the preset cards — pulls the latest successful
+  // generation per preset (cartoon thumb, fan-brief mp4, lyric-overlay mp4)
+  // so the Create grid feels like a portfolio, not a blank form.
+  const presetShowcaseQuery = useLatestPresetAssets(labelId);
+  const presetShowcase = presetShowcaseQuery.data;
 
   // Trigger a fresh on-demand pipeline run via the backend edge function.
   // Fire-and-forget: endpoint returns { jobId, status: 'queued' } in <1s, the
@@ -561,11 +567,8 @@ export default function CreateView({
 
   return (
     <div
-      className="font-['DM_Sans',sans-serif] grid gap-6"
-      style={{
-        gridTemplateColumns: "minmax(0,1fr) 280px",
-        color: "var(--ink)",
-      }}
+      className="font-['DM_Sans',sans-serif]"
+      style={{ color: "var(--ink)" }}
     >
       {/* Main canvas */}
       <div className="flex flex-col gap-6 min-w-0">
@@ -578,7 +581,7 @@ export default function CreateView({
           <motion.div
             className="grid gap-3"
             style={{
-              gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))",
+              gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))",
             }}
             variants={{
               hidden: {},
@@ -592,6 +595,9 @@ export default function CreateView({
             {PRESETS.map((p) => {
               const active = activePreset === p.key;
               const isSoon = p.status === "soon";
+              const showcase =
+                presetShowcase?.[p.key as keyof typeof presetShowcase];
+              const hasHero = !!(showcase?.thumbnailUrl || showcase?.videoUrl);
               return (
                 <motion.button
                   key={p.key}
@@ -610,10 +616,12 @@ export default function CreateView({
                   }}
                   className="group relative text-left rounded-2xl overflow-hidden transition-[transform,border-color,box-shadow,background-color,opacity] duration-[var(--dur-state)] ease-[cubic-bezier(0.16,1,0.3,1)] hover:-translate-y-0.5 active:scale-[0.985] active:duration-[var(--dur-instant)]"
                   style={{
-                    aspectRatio: "1 / 1",
-                    background: active
-                      ? "var(--accent-light)"
-                      : "var(--surface)",
+                    aspectRatio: "9 / 16",
+                    background: hasHero
+                      ? "#0a0a0a"
+                      : active
+                        ? "var(--accent-light)"
+                        : "var(--surface)",
                     border: `1px solid ${active ? "var(--accent)" : "var(--border)"}`,
                     boxShadow: active
                       ? "0 0 24px rgba(242,93,36,0.25), inset 0 1px 0 rgba(255,255,255,0.04)"
@@ -621,15 +629,71 @@ export default function CreateView({
                     opacity: isSoon && !active ? 0.62 : 1,
                   }}
                 >
+                  {/* Hero — full-bleed image or muted-loop video poster.
+                      Sits below everything else; subtle zoom on hover for life. */}
+                  {hasHero && (
+                    <div className="absolute inset-0 overflow-hidden">
+                      {showcase?.thumbnailUrl ? (
+                        <img
+                          src={showcase.thumbnailUrl}
+                          alt=""
+                          loading="lazy"
+                          className="w-full h-full object-cover transition-transform duration-[var(--dur-layout)] ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:scale-[1.04]"
+                        />
+                      ) : showcase?.videoUrl ? (
+                        <video
+                          src={showcase.videoUrl}
+                          muted
+                          playsInline
+                          preload="metadata"
+                          className="w-full h-full object-cover transition-transform duration-[var(--dur-layout)] ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:scale-[1.04]"
+                          onMouseEnter={(e) => {
+                            const v = e.currentTarget;
+                            v.loop = true;
+                            v.play().catch(() => {});
+                          }}
+                          onMouseLeave={(e) => {
+                            const v = e.currentTarget;
+                            v.pause();
+                            v.currentTime = 0;
+                          }}
+                        />
+                      ) : null}
+                      {/* Default-state dimmer — mutes the hero so the grid
+                          reads as a calm set of options at first glance.
+                          Fades on hover for the "wake up" moment. */}
+                      <div
+                        className="absolute inset-0 pointer-events-none transition-opacity duration-[var(--dur-state)] ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:opacity-15"
+                        style={{
+                          background: "rgba(0,0,0,0.55)",
+                          opacity: active ? 0 : undefined,
+                        }}
+                      />
+                      {/* Vertical gradient — keeps the bottom title legible
+                          on busy hero imagery. Top is mostly clean for the
+                          icon + tag. */}
+                      <div
+                        className="absolute inset-0 pointer-events-none"
+                        style={{
+                          background:
+                            "linear-gradient(180deg, rgba(0,0,0,0.30) 0%, rgba(0,0,0,0.05) 38%, rgba(0,0,0,0.55) 72%, rgba(0,0,0,0.92) 100%)",
+                        }}
+                      />
+                    </div>
+                  )}
+
                   {/* Top-right tag */}
                   <div className="absolute top-3 right-3 z-10">
                     {isSoon ? (
                       <span
                         className="px-2 py-0.5 rounded-md text-[9px] font-semibold uppercase tracking-wide"
                         style={{
-                          background: "rgba(255,255,255,0.06)",
-                          color: "var(--ink-tertiary)",
-                          border: "1px solid var(--border)",
+                          background: "rgba(0,0,0,0.55)",
+                          backdropFilter: "blur(8px)",
+                          color: hasHero
+                            ? "rgba(255,255,255,0.8)"
+                            : "var(--ink-tertiary)",
+                          border: "1px solid rgba(255,255,255,0.10)",
                         }}
                       >
                         Soon
@@ -647,46 +711,67 @@ export default function CreateView({
                     )}
                   </div>
 
-                  {/* Hover-glow gradient that radiates from icon corner */}
-                  <div
-                    className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"
-                    style={{
-                      background:
-                        "radial-gradient(circle at 18% 22%, rgba(242,93,36,0.12), transparent 60%)",
-                    }}
-                  />
+                  {/* Hover-glow gradient that radiates from icon corner.
+                      Suppressed when a hero image is present — the image
+                      already carries the visual weight. */}
+                  {!hasHero && (
+                    <div
+                      className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"
+                      style={{
+                        background:
+                          "radial-gradient(circle at 18% 22%, rgba(242,93,36,0.12), transparent 60%)",
+                      }}
+                    />
+                  )}
 
                   {/* Icon tile top-left */}
-                  <div className="absolute top-4 left-4">
+                  <div className="absolute top-4 left-4 z-10">
                     <div
-                      className="w-11 h-11 rounded-xl flex items-center justify-center transition-colors"
+                      className="w-10 h-10 rounded-xl flex items-center justify-center transition-colors"
                       style={{
                         background: active
                           ? "var(--accent)"
-                          : "rgba(255,255,255,0.04)",
+                          : hasHero
+                            ? "rgba(0,0,0,0.55)"
+                            : "rgba(255,255,255,0.04)",
+                        backdropFilter: hasHero ? "blur(8px)" : undefined,
                         border: active
                           ? "1px solid var(--accent)"
-                          : "1px solid var(--border)",
+                          : hasHero
+                            ? "1px solid rgba(255,255,255,0.10)"
+                            : "1px solid var(--border)",
                       }}
                     >
                       <p.icon
-                        size={20}
-                        color={active ? "#fff" : "var(--ink)"}
+                        size={18}
+                        color={active || hasHero ? "#fff" : "var(--ink)"}
                       />
                     </div>
                   </div>
 
                   {/* Title + desc bottom-left */}
-                  <div className="absolute bottom-4 left-4 right-4 flex flex-col gap-1">
+                  <div className="absolute bottom-4 left-4 right-4 z-10 flex flex-col gap-1">
+                    {hasHero && showcase?.artistHandle && (
+                      <div
+                        className="text-[10px] font-['JetBrains_Mono',monospace] uppercase tracking-wide opacity-70"
+                        style={{ color: "rgba(255,255,255,0.7)" }}
+                      >
+                        Latest · {showcase.artistHandle}
+                      </div>
+                    )}
                     <div
-                      className="text-[15px] font-semibold leading-tight"
-                      style={{ color: "var(--ink)" }}
+                      className="text-[16px] font-semibold leading-tight"
+                      style={{ color: hasHero ? "#fff" : "var(--ink)" }}
                     >
                       {p.label}
                     </div>
                     <div
                       className="text-[11.5px] leading-snug line-clamp-2"
-                      style={{ color: "var(--ink-tertiary)" }}
+                      style={{
+                        color: hasHero
+                          ? "rgba(255,255,255,0.65)"
+                          : "var(--ink-tertiary)",
+                      }}
                     >
                       {p.description}
                     </div>
@@ -1393,7 +1478,8 @@ export default function CreateView({
                 own Generate button (cartoon, link → video). Surfaces the
                 cross-format settings (script writer, etc.) without
                 duplicating the panel's Generate. */}
-              {(activePreset === "cartoon" || activePreset === "link_video") && (
+              {(activePreset === "cartoon" ||
+                activePreset === "link_video") && (
                 <div className="flex items-center justify-end gap-2 pt-2">
                   <button
                     type="button"
@@ -1427,124 +1513,6 @@ export default function CreateView({
           </div>
         )}
       </div>
-
-      {/* Right sidebar — artist + avatar picker */}
-      <aside
-        className="rounded-2xl p-5 flex flex-col gap-5 h-fit"
-        style={{
-          background: "var(--surface)",
-          borderTop: "0.5px solid var(--card-edge)",
-          position: "sticky",
-          top: 20,
-        }}
-      >
-        <div>
-          <SidebarLabel>Artist</SidebarLabel>
-          <div className="relative">
-            <select
-              value={selectedArtistId}
-              onChange={(e) => setSelectedArtistId(e.target.value)}
-              className="w-full h-10 pl-3 pr-9 rounded-[10px] text-[13px] font-medium outline-none appearance-none cursor-pointer"
-              style={{
-                background: "var(--bg-subtle)",
-                color: "var(--ink)",
-                border: "1px solid var(--border)",
-              }}
-            >
-              {MOCK_ARTISTS.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.name}
-                </option>
-              ))}
-            </select>
-            <ChevronDown
-              size={14}
-              className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none"
-              color="var(--ink-tertiary)"
-            />
-          </div>
-          {selectedArtist && (
-            <div
-              className="text-[11px] font-['JetBrains_Mono',monospace] mt-1.5"
-              style={{ color: "var(--ink-tertiary)" }}
-            >
-              {selectedArtist.handle} · {selectedArtist.labelName}
-            </div>
-          )}
-        </div>
-
-        <div>
-          <SidebarLabel>Avatar / Soul ID</SidebarLabel>
-          <div className="flex flex-col gap-1.5">
-            {[
-              { id: "av-native", label: "Native — artist voice" },
-              { id: "av-narrator", label: "Neutral narrator" },
-              { id: "av-fan", label: "Fan persona A" },
-              { id: "av-fan2", label: "Fan persona B" },
-            ].map((av) => (
-              <button
-                key={av.id}
-                type="button"
-                onClick={() => setSelectedAvatar(av.id)}
-                className="px-3 h-9 rounded-[10px] text-left text-[13px] flex items-center gap-2"
-                style={{
-                  background:
-                    selectedAvatar === av.id
-                      ? "var(--accent-light)"
-                      : "var(--bg-subtle)",
-                  color:
-                    selectedAvatar === av.id ? "var(--accent)" : "var(--ink)",
-                  border: `1px solid ${
-                    selectedAvatar === av.id ? "var(--accent)" : "var(--border)"
-                  }`,
-                }}
-              >
-                <div
-                  className="w-5 h-5 rounded-full"
-                  style={{
-                    background:
-                      selectedAvatar === av.id
-                        ? "var(--accent)"
-                        : "var(--border-hover, var(--border))",
-                  }}
-                />
-                <span className="truncate">{av.label}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div>
-          <SidebarLabel>Brand kit</SidebarLabel>
-          <div
-            className="rounded-[10px] p-3 flex items-center gap-3"
-            style={{
-              background: "var(--bg-subtle)",
-              border: "1px solid var(--border)",
-            }}
-          >
-            <div className="flex gap-1">
-              <Swatch color="#0b0b0c" />
-              <Swatch color="#e8430a" />
-              <Swatch color="#e8e2d4" />
-            </div>
-            <div className="min-w-0">
-              <div
-                className="text-[12px] font-semibold truncate"
-                style={{ color: "var(--ink)" }}
-              >
-                {selectedArtist?.name ?? "—"} · default kit
-              </div>
-              <div
-                className="text-[11px] truncate"
-                style={{ color: "var(--ink-tertiary)" }}
-              >
-                DM Sans · burn-orange accent
-              </div>
-            </div>
-          </div>
-        </div>
-      </aside>
 
       {/* Tune drawer — backdrop fade + panel slide in from the right.
           Backdrop click dismisses; e.stopPropagation on the panel keeps the
@@ -1801,17 +1769,6 @@ function SectionHeader({
   );
 }
 
-function SidebarLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <div
-      className="text-[10px] font-semibold uppercase tracking-wide mb-1.5"
-      style={{ color: "var(--ink-secondary)" }}
-    >
-      {children}
-    </div>
-  );
-}
-
 function Field({
   label,
   children,
@@ -2010,15 +1967,6 @@ function TuneGroup({
       </div>
       {children}
     </div>
-  );
-}
-
-function Swatch({ color }: { color: string }) {
-  return (
-    <div
-      className="w-6 h-6 rounded"
-      style={{ background: color, border: "1px solid var(--border)" }}
-    />
   );
 }
 

@@ -195,6 +195,7 @@ export interface LinkVideoRunSnapshot {
   renderedClipUrl?: string;
   jobStage?: string;
   jobError?: string;
+  retryCount?: number;
 }
 
 // Bump the suffix to invalidate prior-shape snapshots if the contract changes.
@@ -247,6 +248,7 @@ export function linkVideoSnapshotFromItem(
     renderedClipUrl: item.renderedClipUrl,
     jobStage: item.jobStage,
     jobError: item.jobError,
+    retryCount: item.retryCount,
   };
 }
 
@@ -272,6 +274,7 @@ export function linkVideoItemFromSnapshot(s: LinkVideoRunSnapshot): QueueItem {
     renderedClipUrl: s.renderedClipUrl,
     jobStage: s.jobStage,
     jobError: s.jobError,
+    retryCount: s.retryCount,
   };
 }
 

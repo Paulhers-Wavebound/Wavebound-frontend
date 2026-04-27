@@ -33,7 +33,12 @@ import {
   RISK_COLOR,
   artistById,
 } from "./mockData";
-import { CARTOON_STAGE_ORDER, type CartoonStage } from "./cartoonReconciler";
+import {
+  CARTOON_STAGE_ORDER,
+  type CartoonFormat,
+  type CartoonStage,
+  FORMAT_TITLE_PREFIX,
+} from "./cartoonReconciler";
 import KillFeedbackModal from "./KillFeedbackModal";
 import { toast } from "@/hooks/use-toast";
 
@@ -73,6 +78,68 @@ const CARTOON_STAGE_META: Record<
 const ALL_SOURCES: QueueSource[] = ["autopilot", "human", "fan_brief"];
 const ALL_RISKS: RiskLevel[] = ["low", "medium", "flagged"];
 
+// Unified recency timestamp (epoch ms) for sorting the queue across item
+// types. createdAt is mixed: cartoons + link_videos + retry placeholders
+// store ISO strings, fan briefs + brief placeholders + INITIAL_QUEUE mocks
+// store relative-time strings ("2h ago", "just now", etc.) for display.
+// Prefer approvedAtIso when present (real ISO from fan_briefs.created_at),
+// then fall back to parsing whatever createdAt contains.
+const RELATIVE_PATTERN = /^(\d+(?:\.\d+)?)\s*(s|m|h|d)\s*ago$/i;
+function recencyMs(item: QueueItem): number {
+  if (item.approvedAtIso) {
+    const t = Date.parse(item.approvedAtIso);
+    if (Number.isFinite(t)) return t;
+  }
+  const created = item.createdAt ?? "";
+  // Try ISO first.
+  const iso = Date.parse(created);
+  if (Number.isFinite(iso)) return iso;
+  // Then "just now".
+  if (/^just now$/i.test(created)) return Date.now();
+  // Then "Xh ago" / "Xm ago" / "Xd ago" / "Xs ago".
+  const m = created.match(RELATIVE_PATTERN);
+  if (m) {
+    const n = parseFloat(m[1]);
+    const unit = m[2].toLowerCase();
+    const ms =
+      unit === "s"
+        ? n * 1000
+        : unit === "m"
+          ? n * 60_000
+          : unit === "h"
+            ? n * 3_600_000
+            : n * 86_400_000;
+    return Date.now() - ms;
+  }
+  return 0;
+}
+
+// Display-time formatter for the timestamp pill on each card. The stored
+// `createdAt` was either set once at item-build time (so a "1h ago" string
+// frozen at build time becomes wrong an hour later) or is an ISO string.
+// Always re-derive from the ISO when we have one so the chip stays fresh
+// across re-renders, regardless of when the item entered the queue.
+function formatCreatedAt(item: QueueItem): string {
+  const iso = item.approvedAtIso ?? item.createdAt;
+  if (iso) {
+    const t = Date.parse(iso);
+    if (Number.isFinite(t)) {
+      const ms = Date.now() - t;
+      if (ms < 60_000) return "just now";
+      const min = Math.floor(ms / 60_000);
+      if (min < 60) return `${min}m ago`;
+      const hr = Math.floor(min / 60);
+      if (hr < 24) return `${hr}h ago`;
+      const day = Math.floor(hr / 24);
+      if (day < 7) return `${day}d ago`;
+      return new Date(t).toLocaleDateString();
+    }
+  }
+  // Fallback: createdAt was already a relative string (INITIAL_QUEUE mocks
+  // or pre-formatted fan-brief items). Show it verbatim.
+  return item.createdAt ?? "";
+}
+
 export default function ReviewView({
   queue,
   onApproveSchedule,
@@ -87,6 +154,16 @@ export default function ReviewView({
   const [riskFilter, setRiskFilter] = useState<RiskLevel | "all">("all");
   const [sourceFilter, setSourceFilter] = useState<QueueSource | "all">("all");
   const [outputFilter, setOutputFilter] = useState<OutputType | "all">("all");
+  // Story preset bundles cartoon + realfootage under outputType="cartoon".
+  // This second axis narrows by sub-format when the Story output filter is
+  // active; ignored otherwise.
+  const [cartoonFormatFilter, setCartoonFormatFilter] = useState<
+    CartoonFormat | "all"
+  >("all");
+  const setOutputFilterAndReset = useCallback((next: OutputType | "all") => {
+    setOutputFilter(next);
+    if (next !== "cartoon") setCartoonFormatFilter("all");
+  }, []);
   const [killTarget, setKillTarget] = useState<QueueItem | null>(null);
   const [viewTarget, setViewTarget] = useState<QueueItem | null>(null);
 
@@ -106,14 +183,34 @@ export default function ReviewView({
   }, [queue, reviewTab]);
 
   const filtered = useMemo(() => {
-    return tabItems.filter((q) => {
+    const rows = tabItems.filter((q) => {
       if (artistFilter !== "all" && q.artistId !== artistFilter) return false;
       if (riskFilter !== "all" && q.risk !== riskFilter) return false;
       if (sourceFilter !== "all" && q.source !== sourceFilter) return false;
       if (outputFilter !== "all" && q.outputType !== outputFilter) return false;
+      if (
+        outputFilter === "cartoon" &&
+        cartoonFormatFilter !== "all" &&
+        (q.cartoonFormat ?? "cartoon") !== cartoonFormatFilter
+      )
+        return false;
       return true;
     });
-  }, [tabItems, artistFilter, riskFilter, sourceFilter, outputFilter]);
+    // Sort newest-first across formats. The merge effects in
+    // ContentFactoryV2 each prepend their additions in whatever order their
+    // DB queries resolve, so without an explicit sort, "fan briefs first
+    // then cartoons" can show up reversed when cartoons fetch first. Use a
+    // unified recency timestamp; fall back to insertion order for items
+    // whose createdAt is unparseable.
+    return [...rows].sort((a, b) => recencyMs(b) - recencyMs(a));
+  }, [
+    tabItems,
+    artistFilter,
+    riskFilter,
+    sourceFilter,
+    outputFilter,
+    cartoonFormatFilter,
+  ]);
 
   const pendingTotal = useMemo(
     () =>
@@ -176,7 +273,7 @@ export default function ReviewView({
               setArtistFilter("all");
               setRiskFilter("all");
               setSourceFilter("all");
-              setOutputFilter("all");
+              setOutputFilterAndReset("all");
             }}
           >
             Clear all filters
@@ -256,22 +353,63 @@ export default function ReviewView({
         <FilterGroup title="Output type">
           <FilterRow
             active={outputFilter === "all"}
-            onClick={() => setOutputFilter("all")}
+            onClick={() => setOutputFilterAndReset("all")}
           >
             Any type
           </FilterRow>
           {ALL_OUTPUT_TYPES.map((o) => {
             const c = tabItems.filter((q) => q.outputType === o).length;
             if (c === 0) return null;
+            const isStoryActive = o === "cartoon" && outputFilter === "cartoon";
+            const cartoonItems = tabItems.filter(
+              (q) => q.outputType === "cartoon",
+            );
+            const subCounts = {
+              cartoon: cartoonItems.filter(
+                (q) => (q.cartoonFormat ?? "cartoon") === "cartoon",
+              ).length,
+              realfootage: cartoonItems.filter(
+                (q) => q.cartoonFormat === "realfootage",
+              ).length,
+            };
             return (
-              <FilterRow
-                key={o}
-                active={outputFilter === o}
-                onClick={() => setOutputFilter(o)}
-                count={c}
-              >
-                {OUTPUT_TYPE_LABEL[o]}
-              </FilterRow>
+              <div key={o} className="flex flex-col">
+                <FilterRow
+                  active={outputFilter === o}
+                  onClick={() => setOutputFilterAndReset(o)}
+                  count={c}
+                >
+                  {OUTPUT_TYPE_LABEL[o]}
+                </FilterRow>
+                {isStoryActive &&
+                  subCounts.cartoon + subCounts.realfootage > 0 && (
+                    <div
+                      className="flex flex-col"
+                      style={{ paddingLeft: 12, marginTop: 2 }}
+                    >
+                      <FilterRow
+                        active={cartoonFormatFilter === "all"}
+                        onClick={() => setCartoonFormatFilter("all")}
+                        count={subCounts.cartoon + subCounts.realfootage}
+                      >
+                        Both
+                      </FilterRow>
+                      {(["cartoon", "realfootage"] as const).map((f) => {
+                        if (subCounts[f] === 0) return null;
+                        return (
+                          <FilterRow
+                            key={f}
+                            active={cartoonFormatFilter === f}
+                            onClick={() => setCartoonFormatFilter(f)}
+                            count={subCounts[f]}
+                          >
+                            {FORMAT_TITLE_PREFIX[f]}
+                          </FilterRow>
+                        );
+                      })}
+                    </div>
+                  )}
+              </div>
             );
           })}
         </FilterGroup>
@@ -539,7 +677,7 @@ function QueueCard({
               className="text-[11px] font-['JetBrains_Mono',monospace] ml-auto"
               style={{ color: "var(--ink-tertiary)" }}
             >
-              {item.createdAt}
+              {formatCreatedAt(item)}
             </span>
           )}
         </div>
@@ -705,23 +843,11 @@ function ThumbFrame({
   const isRendering =
     !isGenerating && !isFailed && !!item.fanBriefId && !hasRender && !isStalled;
 
-  const inner = isGenerating ? (
-    <Loader2 size={32} color="var(--accent)" className="animate-spin" />
-  ) : isFailed ? (
-    <TriangleAlert size={32} color="#dc2626" />
-  ) : item.thumbnailUrl ? (
+  // Hover overlays + persistent badges shared across both the image-thumb
+  // branch and the rendered-clip-poster fallback. Pulled into a constant so
+  // both paths render the same play disc, "Rendering" pill, etc.
+  const overlays = (
     <>
-      <img
-        src={item.thumbnailUrl}
-        alt=""
-        loading="lazy"
-        className="w-full h-full object-cover"
-        onError={(e) => {
-          (e.currentTarget as HTMLImageElement).style.display = "none";
-        }}
-      />
-      {/* Hover overlay — burn-orange play disc when an edit is ready, or a
-          "Rendering" pill when render-clip.ts hasn't run yet. */}
       <div
         className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
         style={{ background: "rgba(0,0,0,0.5)" }}
@@ -745,7 +871,6 @@ function ThumbFrame({
           </span>
         )}
       </div>
-      {/* Persistent badge in the corner so the user sees the state at rest. */}
       {isRendering && (
         <div
           className="absolute bottom-1 left-1 px-1.5 py-0.5 rounded-md text-[9px] font-semibold uppercase tracking-wide flex items-center gap-1"
@@ -779,6 +904,40 @@ function ThumbFrame({
         </div>
       )}
     </>
+  );
+
+  const inner = isGenerating ? (
+    <Loader2 size={32} color="var(--accent)" className="animate-spin" />
+  ) : isFailed ? (
+    <TriangleAlert size={32} color="#dc2626" />
+  ) : item.thumbnailUrl ? (
+    <>
+      <img
+        src={item.thumbnailUrl}
+        alt=""
+        loading="lazy"
+        className="w-full h-full object-cover"
+        onError={(e) => {
+          (e.currentTarget as HTMLImageElement).style.display = "none";
+        }}
+      />
+      {overlays}
+    </>
+  ) : item.renderedClipUrl ? (
+    // No still-image thumbnail (TikTok-sourced lyric overlays, audio-source
+    // fan briefs, etc.) but the MP4 has been rendered — use the video's
+    // first frame as the poster. preload="metadata" pulls only the moov
+    // atom + first frame, not the full clip.
+    <>
+      <video
+        src={item.renderedClipUrl}
+        muted
+        playsInline
+        preload="metadata"
+        className="w-full h-full object-cover"
+      />
+      {overlays}
+    </>
   ) : item.thumbKind === "video" ? (
     <Film size={32} color="var(--ink-tertiary)" />
   ) : item.thumbKind === "brief" ? (
@@ -787,7 +946,10 @@ function ThumbFrame({
     <LinkIcon size={32} color="var(--ink-tertiary)" />
   );
 
-  if (!isGenerating && !isFailed && (hasRender || item.sourceUrl)) {
+  // Clickable when there's something useful in the modal: a finished render,
+  // an upstream source to fall back to, or a failure with retry/jobError to
+  // surface. Generating items stay non-interactive (nothing to show yet).
+  if (!isGenerating && (hasRender || item.sourceUrl || isFailed)) {
     return (
       <button
         type="button"
@@ -797,9 +959,11 @@ function ThumbFrame({
         title={
           hasRender
             ? "Watch the edit"
-            : isStalled
-              ? "Render didn't run — view source"
-              : "Render not ready — view source"
+            : isFailed
+              ? "Generation failed — view details + retry"
+              : isStalled
+                ? "Render didn't run — view source"
+                : "Render not ready — view source"
         }
       >
         {inner}
@@ -835,6 +999,10 @@ function BriefViewerModal({
   }
 
   const isStalled = !!item.renderStalled;
+  const isFailed = item.status === "failed";
+  // For the failed-state copy we want to surface the actual jobError when
+  // present (cartoon vo failure, link_video render error, etc.) instead of
+  // the spinner-state "in progress" fallback the modal previously showed.
   const showVideo = hasRender && !videoError;
   const headerLabel = showVideo
     ? "Rendered edit"
@@ -842,7 +1010,9 @@ function BriefViewerModal({
       ? "Couldn't load edit"
       : isStalled
         ? "Render didn't run"
-        : "Render in progress";
+        : isFailed
+          ? "Generation failed"
+          : "Render in progress";
 
   return (
     <motion.div
@@ -931,7 +1101,7 @@ function BriefViewerModal({
               border: "1px dashed var(--border)",
             }}
           >
-            {videoError || isStalled ? (
+            {videoError || isStalled || isFailed ? (
               <div
                 className="w-7 h-7 rounded-full flex items-center justify-center"
                 style={{ background: "var(--red-light)" }}
@@ -955,7 +1125,9 @@ function BriefViewerModal({
                 ? "Couldn't load the rendered clip"
                 : isStalled
                   ? renderErrorChipLabel(item.renderError)
-                  : "The edit hasn't rendered yet"}
+                  : isFailed
+                    ? "Generation failed"
+                    : "The edit hasn't rendered yet"}
             </div>
             <div
               className="text-[12px] max-w-[440px]"
@@ -965,9 +1137,12 @@ function BriefViewerModal({
                 ? "The MP4 may have been removed from storage or the URL is unreachable. View the source on YouTube instead."
                 : isStalled
                   ? renderErrorMessage(item.renderError)
-                  : "The brief is approved but the render worker hasn't produced the 9:16 MP4 yet. Once it lands, this card will pick it up automatically."}
+                  : isFailed
+                    ? (item.jobError ??
+                      "The pipeline errored before producing a clip. Retry uses the same artist + voice + ref URL you started with.")
+                    : "The brief is approved but the render worker hasn't produced the 9:16 MP4 yet. Once it lands, this card will pick it up automatically."}
             </div>
-            {isStalled && (
+            {(isStalled || isFailed) && (
               <div className="flex items-center gap-2 mt-1">
                 <button
                   type="button"
@@ -980,7 +1155,7 @@ function BriefViewerModal({
                   }}
                 >
                   <RefreshCw size={13} />
-                  Retry render
+                  Retry
                 </button>
                 {item.sourceUrl && (
                   <a

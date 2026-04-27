@@ -179,7 +179,15 @@ export interface QueueItem {
   // content-factory-generate with the same transcription engine the user
   // originally chose.
   linkVideoTranscribeProvider?: "audioshake" | "whisperx";
+  // Number of times the user has hit Retry on this card. Capped at
+  // RETRY_MAX in ReviewView so a permanently-broken source (yt_blocked,
+  // missing audio, etc.) can't burn unbounded ElevenLabs / Replicate
+  // spend. Persisted via the cartoon + link_video snapshots so the cap
+  // survives a refresh.
+  retryCount?: number;
 }
+
+export const RETRY_MAX = 3;
 
 export type AngleFamilyFilter = "all" | AngleFamily;
 
