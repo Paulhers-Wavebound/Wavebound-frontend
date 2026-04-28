@@ -19,13 +19,7 @@ import {
   Trash2,
   TriangleAlert,
 } from "lucide-react";
-import type {
-  QueueItem,
-  KillReason,
-  OutputType,
-  QueueSource,
-  RiskLevel,
-} from "./types";
+import type { QueueItem, OutputType, QueueSource, RiskLevel } from "./types";
 import {
   MOCK_ARTISTS,
   OUTPUT_TYPE_LABEL,
@@ -39,18 +33,18 @@ import {
   type CartoonStage,
   FORMAT_TITLE_PREFIX,
 } from "./cartoonReconciler";
-import KillFeedbackModal from "./KillFeedbackModal";
 import { toast } from "@/hooks/use-toast";
 
 interface ReviewViewProps {
   queue: QueueItem[];
   onApproveSchedule: (itemId: string) => void;
   onSendToTune: (itemId: string) => void;
-  onKillWithFeedback: (
-    itemId: string,
-    reason: KillReason,
-    note: string,
-  ) => void;
+  // Hard-delete: removes the queue item AND deletes the backing DB row
+  // (cartoon_scripts / realfootage_scripts / fan_briefs / cf_jobs).
+  // No going back — child rows cascade off the script/job FK. The kill
+  // feedback flow was retired here because killing without actually
+  // deleting left rows behind that re-appeared on refresh.
+  onDelete: (itemId: string) => void;
   onRetryRender: (itemId: string) => void;
 }
 
@@ -144,7 +138,7 @@ export default function ReviewView({
   queue,
   onApproveSchedule,
   onSendToTune,
-  onKillWithFeedback,
+  onDelete,
   onRetryRender,
 }: ReviewViewProps) {
   const [reviewTab, setReviewTab] = useState<"pending" | "scheduled">(
@@ -164,8 +158,25 @@ export default function ReviewView({
     setOutputFilter(next);
     if (next !== "cartoon") setCartoonFormatFilter("all");
   }, []);
-  const [killTarget, setKillTarget] = useState<QueueItem | null>(null);
   const [viewTarget, setViewTarget] = useState<QueueItem | null>(null);
+
+  // Hard-delete with a single confirm gate. The previous flow opened a
+  // KillFeedbackModal that collected a reason + note, but it never actually
+  // deleted the backing DB row — the asset re-appeared on refresh via
+  // recentCartoonScriptsQuery / recentRealfootageScriptsQuery. Replaced with
+  // a direct delete that the parent handler hard-removes from the matching
+  // table (cascades clear the child rows). Confirm copy is intentionally
+  // blunt — there's no undo path.
+  const requestDelete = useCallback(
+    (item: QueueItem) => {
+      const ok = window.confirm(
+        `Delete "${item.title}"? This removes the asset permanently — no going back.`,
+      );
+      if (!ok) return;
+      onDelete(item.id);
+    },
+    [onDelete],
+  );
 
   // Items in the currently-viewed sub-tab. The Pending tab also surfaces
   // generating + failed items so users see the full lifecycle in one place
@@ -512,7 +523,7 @@ export default function ReviewView({
                 item={item}
                 onApprove={() => onApproveSchedule(item.id)}
                 onTune={() => onSendToTune(item.id)}
-                onKill={() => setKillTarget(item)}
+                onKill={() => requestDelete(item)}
                 onView={() => setViewTarget(item)}
                 onRetry={() => onRetryRender(item.id)}
               />
@@ -520,16 +531,6 @@ export default function ReviewView({
           ))}
         </motion.div>
       </div>
-
-      <KillFeedbackModal
-        item={killTarget}
-        open={killTarget !== null}
-        onClose={() => setKillTarget(null)}
-        onSubmit={(id, reason, note) => {
-          onKillWithFeedback(id, reason, note);
-          setKillTarget(null);
-        }}
-      />
 
       <AnimatePresence>
         {viewTarget && (
@@ -790,7 +791,7 @@ function QueueCard({
           )}
           <ActionButton onClick={onKill} variant="danger">
             <Trash2 size={14} />
-            {isFailed ? "Dismiss" : isGenerating ? "Cancel" : "Kill + feedback"}
+            Delete
           </ActionButton>
         </div>
       </div>
@@ -842,6 +843,14 @@ function ThumbFrame({
   const isStalled = !!item.renderStalled;
   const isRendering =
     !isGenerating && !isFailed && !!item.fanBriefId && !hasRender && !isStalled;
+
+  // Realfootage thumbs are constructed optimistically against
+  // realfootage-thumbs/${scriptId}/poster.jpg; the backend writer that
+  // populates that bucket hasn't shipped yet (handoff
+  // 2026-04-27_realfootage-poster-frame.md). When the <img> 404s, fall
+  // through to the renderedClipUrl video poster instead of leaving an
+  // empty black frame with overlays floating on it.
+  const [thumbFailed, setThumbFailed] = useState(false);
 
   // Hover overlays + persistent badges shared across both the image-thumb
   // branch and the rendered-clip-poster fallback. Pulled into a constant so
@@ -910,16 +919,14 @@ function ThumbFrame({
     <Loader2 size={32} color="var(--accent)" className="animate-spin" />
   ) : isFailed ? (
     <TriangleAlert size={32} color="#dc2626" />
-  ) : item.thumbnailUrl ? (
+  ) : item.thumbnailUrl && !thumbFailed ? (
     <>
       <img
         src={item.thumbnailUrl}
         alt=""
         loading="lazy"
         className="w-full h-full object-cover"
-        onError={(e) => {
-          (e.currentTarget as HTMLImageElement).style.display = "none";
-        }}
+        onError={() => setThumbFailed(true)}
       />
       {overlays}
     </>

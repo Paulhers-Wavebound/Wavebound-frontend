@@ -190,5 +190,3 @@ export interface QueueItem {
 export const RETRY_MAX = 3;
 
 export type AngleFamilyFilter = "all" | AngleFamily;
-
-export type KillReason = "angle_wrong" | "tone_off" | "factual_issue" | "other";

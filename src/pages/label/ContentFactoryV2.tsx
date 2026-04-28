@@ -15,7 +15,6 @@ import ReviewView from "@/components/content-factory-v2/ReviewView";
 import { INITIAL_QUEUE } from "@/components/content-factory-v2/mockData";
 import {
   RETRY_MAX,
-  type KillReason,
   type OutputType,
   type QueueItem,
 } from "@/components/content-factory-v2/types";
@@ -1898,11 +1897,24 @@ export default function ContentFactoryV2() {
           });
 
           try {
+            // kickoff_source distinguishes user-clicked retry from the
+            // FE-reconciler initial kick and the BE pg_cron sweeper in
+            // dispatcher logs. See cartoonReconciler.ts for the matching
+            // tag on the initial-kick path.
+            console.info("[cf-dispatch-kick]", {
+              source: "fe-retry",
+              itemId,
+              chatJobId,
+              attempt: attemptNo,
+              format: item.cartoonFormat ?? "cartoon",
+              at: new Date().toISOString(),
+            });
             const { data, error } = await supabase.functions.invoke(
               "content-factory-vo-dispatch",
               {
                 body: {
                   chat_job_id: chatJobId,
+                  kickoff_source: "fe-retry",
                   voice_id: voiceId,
                   ...(voiceSettings ? { voice_settings: voiceSettings } : {}),
                 },
@@ -2144,31 +2156,75 @@ export default function ContentFactoryV2() {
     [queue, queryClient, labelId],
   );
 
-  const handleKillWithFeedback = useCallback(
-    async (itemId: string, reason: KillReason, note: string) => {
-      // TODO: feeds back into artist's Autopilot priors
+  // Hard-delete an Assets queue item. Yanks the in-memory card AND the
+  // backing DB row so the item doesn't re-appear on the next refresh.
+  // Replaces the old "Kill + feedback" archive-only flow that left
+  // cartoon_scripts / realfootage_scripts / cf_jobs rows behind, which
+  // recentCartoonScriptsQuery / recentRealfootageScriptsQuery / the
+  // link_video rehydrate would resurrect on the next page load.
+  //
+  // FK cascades clean up child rows (cartoon_videos, cartoon_image_*,
+  // realfootage_videos, realfootage_clip_*, etc.), so a single DELETE
+  // on the script row is enough. RLS DELETE policies were added by
+  // migration 20260427_cf_assets_label_user_delete_policies.sql.
+  //
+  // Edge case: a generating cartoon with only cartoonChatJobId (no script
+  // row yet) leaves an orphaned chat_jobs entry. chat_jobs has no DELETE
+  // policy for label users (it's the writer audit trail), so we let it
+  // orphan. The pg_cron kickoff sweeper would normally re-create the
+  // script row, but the user just deleted by intent — they'll only see
+  // it return on a subsequent refresh, where they can delete again.
+  // Acceptable for "for now"; revisit when chat_jobs gets a delete policy.
+  const handleDeleteItem = useCallback(
+    async (itemId: string) => {
       const item = queue.find((q) => q.id === itemId);
       setQueue((prev) => prev.filter((q) => q.id !== itemId));
+      if (!item) return;
 
-      // When the queue item was sourced from a live fan_briefs row, cascade
-      // the kill to the backend so it doesn't come back on the next sync.
-      if (item?.fanBriefId) {
+      let deleteError: string | null = null;
+
+      if (item.outputType === "cartoon" && item.cartoonScriptId) {
+        const table =
+          item.cartoonFormat === "realfootage"
+            ? "realfootage_scripts"
+            : "cartoon_scripts";
+        const { error } = await supabase
+          .from(table)
+          .delete()
+          .eq("id", item.cartoonScriptId);
+        if (error) deleteError = error.message;
+        await queryClient.invalidateQueries({
+          queryKey: ["cartoon-scripts-recent", labelId],
+        });
+        await queryClient.invalidateQueries({
+          queryKey: ["realfootage-scripts-recent", labelId],
+        });
+      } else if (item.outputType === "fan_brief" && item.fanBriefId) {
         const { error } = await supabase
           .from("fan_briefs")
-          .update({ status: "archived" })
+          .delete()
           .eq("id", item.fanBriefId);
-        if (error) {
-          toast({
-            title: "Kill saved locally — backend sync failed",
-            description: error.message,
-            variant: "destructive",
-          });
-        }
+        if (error) deleteError = error.message;
+      } else if (item.outputType === "link_video" && item.linkVideoJobId) {
+        const { error } = await supabase
+          .from("cf_jobs")
+          .delete()
+          .eq("id", item.linkVideoJobId);
+        if (error) deleteError = error.message;
+      }
+
+      if (deleteError) {
+        toast({
+          title: "Delete failed on the server",
+          description: `${deleteError} — the card was removed locally but may re-appear on refresh.`,
+          variant: "destructive",
+        });
+        return;
       }
 
       toast({
-        title: "Killed with feedback",
-        description: `Reason: ${reason.replace("_", " ")}${note ? ` · "${note.slice(0, 48)}"` : ""}`,
+        title: "Deleted",
+        description: `"${item.title}" is gone for good.`,
       });
     },
     [queue, labelId, queryClient],
@@ -2438,7 +2494,7 @@ export default function ContentFactoryV2() {
                   queue={queue}
                   onApproveSchedule={handleApproveSchedule}
                   onSendToTune={handleSendToTune}
-                  onKillWithFeedback={handleKillWithFeedback}
+                  onDelete={handleDeleteItem}
                   onRetryRender={handleRetryRender}
                 />
               )}

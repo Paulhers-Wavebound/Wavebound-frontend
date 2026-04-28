@@ -138,6 +138,15 @@ export function cartoonErrorLabel(status: string): string {
 // goes through this map so the two formats can never diverge again — the
 // prior bug was three different code paths each hard-coding their own
 // prefix string.
+//
+// Naming decision (don't re-litigate): "Real edit" is the user-facing term
+// across CartoonPanel.tsx (sub-format dropdown), presets.tsx (preset
+// description), and the Review filter. The 2026-04-27 backend handoff used
+// "Real footage" in its acceptance examples because that's the internal
+// table/pipeline name (realfootage_scripts/videos) — but the UI has
+// committed to "Real edit" since the rename in 478e8be. Keeping these
+// aligned matters because the user picks this exact phrase at create time
+// and a different label on the queue card breaks recognition.
 export const FORMAT_TITLE_PREFIX: Record<CartoonFormat, string> = {
   cartoon: "Cartoon",
   realfootage: "Real edit",
@@ -322,6 +331,21 @@ export async function reconcileCartoonItem(
       // Route through the dispatcher: it reads the chat-job's fenced JSON for
       // a `format` field and forwards to cartoon-vo OR realfootage-vo. The
       // response echoes which target ran so we can poll the correct tables.
+      //
+      // kickoff_source tags this as the FE-reconciler path so it can be
+      // distinguished in dispatcher logs from the server-side kickoff sweeper
+      // (chat-jobs-kickoff-sweeper pg_cron, fires every ~1 min for jobs the
+      // FE missed). Both paths are idempotent; the tag is purely for
+      // observability so we can prove the FE is firing in production. The
+      // dispatcher currently ignores unknown body fields — backend handoff
+      // 2026-04-27_cf-kickoff-sweeper-visibility.md will read this.
+      console.info("[cf-dispatch-kick]", {
+        source: "fe-reconciler",
+        itemId: item.id,
+        chatJobId: item.cartoonChatJobId,
+        artistName: item.artistName,
+        at: new Date().toISOString(),
+      });
       const res = await fetch(
         `${SUPABASE_URL}/functions/v1/content-factory-vo-dispatch`,
         {
@@ -333,6 +357,7 @@ export async function reconcileCartoonItem(
           },
           body: JSON.stringify({
             chat_job_id: item.cartoonChatJobId,
+            kickoff_source: "fe-reconciler",
             ...(item.cartoonVoiceId ? { voice_id: item.cartoonVoiceId } : {}),
             ...(item.cartoonVoiceSettings
               ? { voice_settings: item.cartoonVoiceSettings }
