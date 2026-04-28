@@ -572,12 +572,34 @@ async function fetchContentIntelligence(
     const analyses = drjData?.content_analysis_data?.individual_analyses ?? [];
     const rawVideos = drjData?.tiktok_data?.raw_videos ?? [];
     const drjHandle = drjData?.artist_handle ?? "";
+    // Lookup maps for resolving analysis entries → raw_videos.
+    // video_index is NOT a valid index into raw_videos (WF2's Select Key Videos
+    // sorts by views before assigning, while raw_videos preserves scrape order),
+    // so prefer aweme_id (new pipeline runs) and fall back to view-count match
+    // for legacy jobs, only using index as last resort.
+    const rawById = new Map<string, any>();
+    const rawByViews = new Map<number, any>();
+    for (const rv of rawVideos) {
+      const id = String(rv?.id ?? "");
+      if (id) rawById.set(id, rv);
+      const vw = Number(rv?.views ?? 0);
+      if (vw > 0 && !rawByViews.has(vw)) rawByViews.set(vw, rv);
+    }
     for (const v of analyses) {
       const fmt = (v.categories?.[0] ?? "Unknown") as string;
-      // Resolve video URL from raw_videos via video_index
+      // Resolve video URL from raw_videos via aweme_id → views → index fallback
       let videoUrl: string | null = null;
-      if (v.video_index != null && rawVideos[v.video_index]) {
-        const rv = rawVideos[v.video_index];
+      const awemeId = String(v.aweme_id ?? "");
+      const analysisViews = parseInt(v.views ?? "0", 10) || 0;
+      let rv: any = null;
+      if (awemeId && rawById.has(awemeId)) {
+        rv = rawById.get(awemeId);
+      } else if (analysisViews > 0 && rawByViews.has(analysisViews)) {
+        rv = rawByViews.get(analysisViews);
+      } else if (v.video_index != null && rawVideos[v.video_index]) {
+        rv = rawVideos[v.video_index];
+      }
+      if (rv) {
         videoUrl = rv.video_url || null;
         if (!videoUrl && rv.id && drjHandle) {
           videoUrl = `https://www.tiktok.com/@${drjHandle}/video/${rv.id}`;
