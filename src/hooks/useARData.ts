@@ -186,6 +186,10 @@ export function sortProspects(
         va = a.ghost_curve_match?.match_pct ?? 0;
         vb = b.ghost_curve_match?.match_pct ?? 0;
         break;
+      case "format_alpha":
+        va = a.format_alpha?.best_format_engagement_lift ?? 0;
+        vb = b.format_alpha?.best_format_engagement_lift ?? 0;
+        break;
       case "stage": {
         const order: Record<string, number> = {
           execution: 5,

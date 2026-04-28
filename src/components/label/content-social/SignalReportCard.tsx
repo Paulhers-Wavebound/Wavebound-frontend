@@ -512,7 +512,7 @@ export default function SignalReportCard({
     return !acknowledgedKeys.has(key) && !futureSnoozedKeys.has(key);
   });
 
-  const displayName = userName || "there";
+  const displayName = "Paul";
   const greeting =
     new Date().getHours() < 12
       ? "Good morning"

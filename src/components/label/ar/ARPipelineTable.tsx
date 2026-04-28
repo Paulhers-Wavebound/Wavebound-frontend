@@ -4,10 +4,12 @@
 import { useState, useMemo, useCallback, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
+  ChevronUp,
   Loader2,
   SlidersHorizontal,
   X,
@@ -36,15 +38,8 @@ type SortKey =
   | "seven_day_velocity"
   | "signability"
   | "ghost_curve"
-  | "stage";
-
-const SORT_OPTIONS: { value: SortKey; label: string }[] = [
-  { value: "rise_probability", label: "Rise Probability" },
-  { value: "seven_day_velocity", label: "Velocity" },
-  { value: "signability", label: "Signability" },
-  { value: "ghost_curve", label: "Ghost Curve" },
-  { value: "stage", label: "Stage" },
-];
+  | "stage"
+  | "format_alpha";
 
 const PAGE_SIZES = [20, 50, 100, 200] as const;
 
@@ -251,15 +246,19 @@ const REGION_OPTIONS: { value: Region | "all"; label: string }[] = [
 
 /* ─── Column Header ───────────────────────────────────────── */
 
-const COLUMNS = [
-  "Artist",
-  "Rise Prob",
-  "Stage",
-  "7d Velocity",
-  "Format Alpha",
-  "Top Signal",
-  "Signability",
-  "Ghost Curve",
+const COLUMNS: {
+  label: string;
+  align: "left" | "center";
+  sortKey?: SortKey;
+}[] = [
+  { label: "Artist", align: "left" },
+  { label: "Rise Prob", align: "center", sortKey: "rise_probability" },
+  { label: "Stage", align: "center", sortKey: "stage" },
+  { label: "7d Velocity", align: "center", sortKey: "seven_day_velocity" },
+  { label: "Format Alpha", align: "center", sortKey: "format_alpha" },
+  { label: "Top Signal", align: "left" },
+  { label: "Signability", align: "center", sortKey: "signability" },
+  { label: "Ghost Curve", align: "center", sortKey: "ghost_curve" },
 ];
 
 /* ─── Component ───────────────────────────────────────────── */
@@ -445,7 +444,7 @@ export default function ARPipelineTable({
           })}
         </div>
 
-        {/* Filters toggle + Sort dropdown */}
+        {/* Filters toggle + Region */}
         <div className="flex items-center gap-3">
           <button
             onClick={() => setShowFilters(!showFilters)}
@@ -485,22 +484,6 @@ export default function ARPipelineTable({
               }`}
             >
               {REGION_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] text-white/30 uppercase tracking-wider">
-              Sort
-            </span>
-            <select
-              value={sortKey}
-              onChange={(e) => handleSort(e.target.value as SortKey)}
-              className="text-[11px] bg-white/[0.04] border border-white/[0.06] rounded px-2 py-1 text-white/60 outline-none"
-            >
-              {SORT_OPTIONS.map((opt) => (
                 <option key={opt.value} value={opt.value}>
                   {opt.label}
                 </option>
@@ -563,22 +546,58 @@ export default function ARPipelineTable({
 
       {/* Column headers */}
       <div
-        className="grid items-center gap-3 px-5 py-2 border-b border-white/[0.06]"
+        className="grid items-center gap-3 px-5 py-2 border-b border-white/[0.06] min-w-[1100px]"
         style={{ gridTemplateColumns: GRID_COLS }}
       >
-        {COLUMNS.map((col) => (
-          <span
-            key={col}
-            className="text-[10px] font-semibold tracking-wider uppercase text-white/25"
-            style={
-              col !== "Artist" && col !== "Top Signal"
-                ? { textAlign: "center" }
-                : undefined
-            }
-          >
-            {col}
-          </span>
-        ))}
+        {COLUMNS.map((col) => {
+          const isActive = col.sortKey != null && sortKey === col.sortKey;
+          const justify =
+            col.align === "center" ? "justify-center" : "justify-start";
+          const baseCls = "text-[10px] font-semibold tracking-wider uppercase";
+
+          if (!col.sortKey) {
+            return (
+              <span
+                key={col.label}
+                className={`block text-white/25 ${baseCls} ${
+                  col.align === "center" ? "text-center" : "text-left"
+                }`}
+              >
+                {col.label}
+              </span>
+            );
+          }
+
+          return (
+            <button
+              key={col.label}
+              type="button"
+              onClick={() => handleSort(col.sortKey!)}
+              aria-sort={
+                isActive ? (sortDesc ? "descending" : "ascending") : "none"
+              }
+              className={`flex items-center gap-1 ${justify} ${baseCls} transition-colors ${
+                isActive ? "text-white/70" : "text-white/25 hover:text-white/55"
+              }`}
+            >
+              <span>{col.label}</span>
+              {isActive ? (
+                sortDesc ? (
+                  <ChevronDown size={11} strokeWidth={2.5} />
+                ) : (
+                  <ChevronUp size={11} strokeWidth={2.5} />
+                )
+              ) : (
+                <ChevronDown
+                  size={11}
+                  strokeWidth={2.5}
+                  className="opacity-0"
+                  aria-hidden
+                />
+              )}
+            </button>
+          );
+        })}
       </div>
 
       {/* Rows */}
