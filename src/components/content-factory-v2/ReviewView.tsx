@@ -580,13 +580,20 @@ function QueueCard({
 
   return (
     <div
-      className="group rounded-2xl p-5 flex gap-5 transition-[transform,border-color,box-shadow,opacity] duration-[var(--dur-state)] ease-[cubic-bezier(0.16,1,0.3,1)] hover:-translate-y-0.5"
+      className="group relative rounded-[14px] p-5 flex gap-5 transition-[transform,border-color,box-shadow,opacity] duration-[var(--dur-state)] ease-[cubic-bezier(0.16,1,0.3,1)] hover:-translate-y-1"
       style={{
         background: "var(--surface)",
         border: "1px solid var(--border)",
-        boxShadow:
-          "inset 0 1px 0 rgba(255,255,255,0.04), 0 1px 2px rgba(0,0,0,0.25)",
-        opacity: isGenerating ? 0.92 : 1,
+        boxShadow: isGenerating
+          ? "0 0 0 1px var(--accent-hairline), 0 0 32px var(--accent-glow)"
+          : "inset 0 1px 0 rgba(255,255,255,0.04)",
+        opacity: 1,
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.borderColor = "var(--border-strong)";
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.borderColor = "var(--border)";
       }}
     >
       {/* Thumb — clickable when there's something to show. Opens the in-page
@@ -606,13 +613,19 @@ function QueueCard({
         <div className="flex flex-wrap items-center gap-2">
           {isGenerating ? (
             <span
-              className="px-2 py-0.5 rounded-full text-[11px] font-semibold flex items-center gap-1.5"
+              className="px-2.5 py-1 rounded-full text-[11px] font-semibold flex items-center gap-2"
               style={{
-                background: "var(--accent-light)",
+                background: "var(--accent-soft)",
                 color: "var(--accent)",
+                fontFamily: "JetBrains Mono, monospace",
+                letterSpacing: "0.05em",
+                textTransform: "uppercase",
               }}
             >
-              <Loader2 size={11} className="animate-spin" />
+              <span
+                className="inline-block w-1.5 h-1.5 rounded-full higgs-orb-running"
+                style={{ background: "var(--accent)" }}
+              />
               Generating
             </span>
           ) : isFailed ? (
@@ -684,8 +697,15 @@ function QueueCard({
         </div>
 
         <div
-          className="text-[15px] font-semibold leading-snug"
-          style={{ color: "var(--ink)" }}
+          className="leading-tight"
+          style={{
+            fontFamily: "var(--display-font)",
+            fontSize: 17,
+            fontWeight: 700,
+            textTransform: "uppercase",
+            letterSpacing: "-0.005em",
+            color: "var(--ink)",
+          }}
         >
           {item.title}
         </div>
@@ -1215,8 +1235,14 @@ function FilterGroup({
   return (
     <div className="flex flex-col gap-1.5">
       <div
-        className="text-[10px] font-semibold uppercase tracking-wide"
-        style={{ color: "var(--ink-secondary)" }}
+        style={{
+          fontFamily: "var(--display-font)",
+          fontSize: 10,
+          fontWeight: 700,
+          textTransform: "uppercase",
+          letterSpacing: "0.16em",
+          color: "var(--ink-tertiary)",
+        }}
       >
         {title}
       </div>
@@ -1285,11 +1311,16 @@ function SubTab({
     <button
       type="button"
       onClick={onClick}
-      className="h-8 px-3 rounded-[9px] flex items-center gap-1.5 text-[12px] font-semibold transition-colors"
+      className="h-9 px-3.5 rounded-[10px] flex items-center gap-2 transition-colors"
       style={{
         background: active ? "var(--surface)" : "transparent",
         color: active ? "var(--ink)" : "var(--ink-secondary)",
         border: active ? "1px solid var(--border)" : "1px solid transparent",
+        fontFamily: "var(--display-font)",
+        fontSize: 12,
+        fontWeight: 700,
+        textTransform: "uppercase",
+        letterSpacing: "0.04em",
       }}
     >
       <span style={{ color: active ? "var(--accent)" : "var(--ink-tertiary)" }}>
@@ -1297,11 +1328,13 @@ function SubTab({
       </span>
       <span>{label}</span>
       <span
-        className="px-1.5 py-0.5 rounded-full text-[10px] font-['JetBrains_Mono',monospace] tabular-nums"
+        className="inline-flex items-center justify-center min-w-[22px] h-5 px-1.5 rounded-full text-[10px] tabular-nums"
         style={{
-          background: active ? "var(--accent-light)" : "var(--surface)",
+          fontFamily: "JetBrains Mono, monospace",
+          fontWeight: 600,
+          background: active ? "var(--accent-soft)" : "rgba(255,255,255,0.08)",
           color: active ? "var(--accent)" : "var(--ink-secondary)",
-          border: `1px solid ${active ? "var(--accent)" : "var(--border)"}`,
+          letterSpacing: 0,
         }}
       >
         {count}

@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import type { LeadHunterLead } from "@/types/cartoonLeadHunter";
 import type { QueueItem } from "./types";
 
 const SUPABASE_URL = "https://kxvgbowrkmowuyezoeke.supabase.co";
@@ -189,6 +190,8 @@ export interface CartoonRunSnapshot {
     style: number;
     use_speaker_boost: boolean;
   };
+  cartoonLeadHunterJobId?: string;
+  cartoonSelectedLead?: LeadHunterLead;
   retryCount?: number;
 }
 
@@ -239,6 +242,8 @@ export function snapshotFromItem(item: QueueItem): CartoonRunSnapshot | null {
     jobError: item.jobError,
     cartoonVoiceId: item.cartoonVoiceId,
     cartoonVoiceSettings: item.cartoonVoiceSettings,
+    cartoonLeadHunterJobId: item.cartoonLeadHunterJobId,
+    cartoonSelectedLead: item.cartoonSelectedLead,
     retryCount: item.retryCount,
   };
 }
@@ -278,6 +283,8 @@ export function itemFromSnapshot(s: CartoonRunSnapshot): QueueItem {
     jobError: s.jobError,
     cartoonVoiceId: s.cartoonVoiceId,
     cartoonVoiceSettings: s.cartoonVoiceSettings,
+    cartoonLeadHunterJobId: s.cartoonLeadHunterJobId,
+    cartoonSelectedLead: s.cartoonSelectedLead,
     retryCount: s.retryCount,
   };
 }

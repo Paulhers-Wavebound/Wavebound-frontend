@@ -2,23 +2,30 @@
 
 ## What it does
 
-Adds a "Cartoon" preset to the Content Factory v2 → Create tab that fires the
-end-to-end Image-Zoom Cartoon backend pipeline (script → VO → images → 60s 9:16
-MP4) for a chosen artist. Each generated cartoon lands as a QueueItem in
-Review with a live 5-stage timeline; once the MP4 is ready, the same QueueCard
-plays the rendered video and exposes a Copy-link action.
+Adds a "Story" preset to the Content Factory v2 → Create tab. The user picks an
+artist, runs Lead Hunter to choose a story angle, then fires either the cartoon
+pipeline (script → VO → images → 60s 9:16 MP4) or the real-edit pipeline
+(script → VO → real footage → 60s 9:16 MP4). Each generated story lands as a
+QueueItem in Review with a live 5-stage timeline; once the MP4 is ready, the
+same QueueCard plays the rendered video and exposes a Copy-link action.
 
 ## Who uses it and why
 
-Label users (logged-in, scoped to a label) who want to spin up cartoon-format
-posts from the dashboard without dropping into the Label Assistant chat. It
-replaces the previous workflow of typing the prompt manually in chat and
-copy/pasting chat_job IDs into a follow-up edge function call.
+Label users (logged-in, scoped to a label) who want to spin up artist-positive
+story posts from the dashboard without dropping into the Label Assistant chat.
+Lead Hunter gives them control over the narrative before the expensive render
+pipeline starts.
 
 ## Architecture
 
 - `src/components/content-factory-v2/CartoonPanel.tsx` — wizard only. Picks
-  artist + count + cost preview. Fires the parent's `onGenerate` callback.
+  artist, runs Lead Hunter, renders the selectable lead board, then collects
+  style + voice + count + cost preview. Fires the parent's `onGenerate`
+  callback with the selected lead.
+- `src/services/cartoonLeadHunterService.ts` — small authenticated client for
+  `cartoon-lead-hunter-create` and `cartoon-lead-hunter-get`.
+- `src/types/cartoonLeadHunter.ts` — frontend contract for lead-hunter jobs,
+  progress, result JSON, and individual leads.
 - `src/pages/label/ContentFactoryV2.tsx` — orchestrator. Owns the SSE
   label-chat call (one per cartoon), captures `chat_job_id` from each, and
   pushes placeholder QueueItems into the queue with `status='generating'`.
@@ -29,44 +36,61 @@ copy/pasting chat_job IDs into a follow-up edge function call.
   label-scoped, last 24h) as the **authoritative** rehydrate so a hard
   refresh / HMR / cross-browser session can never orphan a cartoon.
 - `src/components/content-factory-v2/cartoonReconciler.ts` — pure helpers:
-  localStorage shape, snapshot ↔ QueueItem conversion, reconcile function
-  that reads chat_jobs / cartoon_scripts / cartoon_videos and returns the
-  patch to apply.
+  localStorage shape, snapshot ↔ QueueItem conversion, selected-lead
+  persistence, reconcile function that reads chat_jobs / script/video tables
+  and returns the patch to apply.
 - `src/components/content-factory-v2/ReviewView.tsx` — renders the 5-stage
   timeline (`CartoonStageTimeline`) inside QueueCard for cartoon items in
   flight, and a `CopyLinkButton` whenever `cartoonFinalUrl` is set.
 
 ## Correct behavior
 
-- Cartoon preset card visible alongside the existing presets in
+- Story preset card visible alongside the existing presets in
   `/label/content-factory-v2?tab=create`.
 - Wizard only renders when a `labelId` is present; otherwise shows a
   "requires logged-in label session" notice.
 - Artist picker reads from `useLabelArtists(labelId)` (the canonical roster
   hook — also used by `/label/roster`). Roster fetch failure falls back to a
-  manual `@handle` text input. Artists without a `tiktok_handle` are filtered
+  manual `@handle` text input. Artists without an `artist_handle` are filtered
   out client-side.
-- Count picker is **1–10**. Cost preview reads `~$8 × N — Opus + ElevenLabs
-v3 + gpt-image-2 + Creatomate`.
+- Lead Hunter starts only after an artist is selected. While it runs, the panel
+  shows phase, lead count, web-search count, dossier-search count, elapsed time,
+  and current focus.
+- Lead Hunter completion renders a selectable lead board. Generate is disabled
+  until one lead is selected.
+- Count picker is currently **1** while ElevenLabs is on the 5-concurrent tier.
+  Cost preview reads `~$8 × N — Opus + ElevenLabs v3 + gpt-image-2 +
+  Creatomate` for cartoon, or `~$1.10 × N — Opus + ElevenLabs v3 + yt-dlp clips
+  + Creatomate` for real edit.
 - Generate is enabled even while other cartoons are mid-flight — users can
   queue more right now. An informational pill ("X cartoons in flight —
   watch the timeline in Review") surfaces when `cartoonsInFlight > 0`.
 - On Generate, the wizard invokes `onCartoonGenerate({ artistName,
-artistHandle, count })` and resets its form for the next batch.
+artistHandle, count, selectedLead, leadHunterJobId, subFormat, voiceId,
+voiceSettings })`.
 - ContentFactoryV2 then, for each of N cartoons:
   1. Pushes a placeholder QueueItem (`outputType='cartoon'`,
-     `status='generating'`, `cartoonStage='script'`).
+     `status='generating'`, `cartoonStage='script'`) with
+     `cartoonSelectedLead` and `cartoonLeadHunterJobId`.
   2. Switches the active tab to Review so the user sees the timeline.
   3. Opens a `streamChatMessage` SSE against `/functions/v1/label-chat` with
-     `{ message, role: "cartoon_writer", session_id: <uuid> }`. The
-     `onJobId` callback writes `cartoonChatJobId` onto the QueueItem.
+     `{ message, role: "cartoon_writer", session_id: <uuid> }`. The user
+     message (built by `buildStoryWriterMessage`) wraps the selected lead in
+     an `<operator_selected_lead>` JSON block and tells the writer to treat
+     it as **creative direction, not locked legal copy** — verify enough to
+     avoid obviously false claims, soften shaky specifics rather than pivot,
+     and only abandon the lead if the core claim is clearly unsupported. The
+     backend `cartoon_writer` system prompt has a matching OPERATOR-SELECTED
+     LEAD MODE section that codifies the same contract. The `onJobId`
+     callback writes `cartoonChatJobId` onto the QueueItem.
 - **Reconcile loop** — on Realtime UPDATE / 15s poll / visibility-change,
   for each in-flight cartoon QueueItem:
   1. If `cartoonChatJobId` is set but `cartoonScriptId` is not, query
      `chat_jobs` by id. On `status='complete'`, POST
-     `/functions/v1/content-factory-cartoon-vo` with `{ chat_job_id }` and
-     write `cartoonScriptId` (defensively reads `script_id` or `id` from
-     the response). On `status='failed'`, mark the QueueItem failed.
+     `/functions/v1/content-factory-vo-dispatch` with `{ chat_job_id }`,
+     selected voice settings, and kickoff source. Write `cartoonScriptId`
+     (defensively reads `script_id` or `id` from the response). On
+     `status='failed'`, mark the QueueItem failed.
   2. If `cartoonScriptId` is set, query `cartoon_scripts` (status,
      error_message, hook_title) + `cartoon_videos` (status, final_url,
      error_message) in parallel. Map `cartoon_scripts.status` to UI stage:
@@ -111,9 +135,13 @@ artistHandle, count })` and resets its form for the next batch.
 
 - **Empty state** — Pending tab shows a "queue is clear" hint when no cartoon
   or other items match.
-- **Multiple concurrent cartoons** — Wizard fires N parallel SSE calls; the
-  reconciler handles each item independently. No artificial cap on
-  concurrent runs (V1 had a "1 at a time" gate; lifted in v1.5).
+- **Lead Hunter failure** — inline error stays in the Story panel; the user can
+  run Lead Hunter again before generating.
+- **No selected lead** — Generate remains disabled even if artist, style, voice,
+  and count are selected.
+- **Multiple concurrent stories** — count is currently capped to 1 per click,
+  but the user may start another run while previous stories are in flight. The
+  reconciler handles each item independently.
 - **Tab hidden** — visibility-change listener forces a fresh reconcile when
   the tab regains focus, closing the gap from background-tab timer
   throttling.

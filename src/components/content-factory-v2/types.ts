@@ -1,3 +1,5 @@
+import type { LeadHunterLead } from "@/types/cartoonLeadHunter";
+
 export type AngleFamily =
   | "sensational"
   | "self_help"
@@ -144,6 +146,10 @@ export interface QueueItem {
     style: number;
     use_speaker_boost: boolean;
   };
+  // Lead Hunter decision gate. Set for Story items created from the new
+  // Lead Hunter board so retries keep the same operator-approved angle.
+  cartoonLeadHunterJobId?: string;
+  cartoonSelectedLead?: LeadHunterLead;
   cartoonStage?: "script" | "vo" | "images" | "video";
   // Sub-state for the current stage. Set when the cartoon is sitting at a
   // backend handoff (e.g. status='vo_complete' waiting for the image-render

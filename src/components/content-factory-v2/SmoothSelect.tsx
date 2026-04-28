@@ -67,22 +67,22 @@ export default function SmoothSelect({
       <PopoverTrigger asChild disabled={disabled}>
         <button
           type="button"
-          className="group w-full h-12 px-3 pr-10 rounded-[10px] text-left flex items-center gap-3 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="group w-full h-12 px-3 pr-10 rounded-xl text-left flex items-center gap-3 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           style={{
-            background: "var(--bg-subtle)",
-            border: "1px solid var(--border)",
+            background: "var(--surface-2)",
+            border: "1px solid var(--accent-hairline)",
             color: "var(--ink)",
           }}
           onMouseEnter={(e) => {
             if (!disabled) {
               (e.currentTarget as HTMLButtonElement).style.borderColor =
-                "var(--border-hover)";
+                "var(--accent)";
             }
           }}
           onMouseLeave={(e) => {
             if (!disabled) {
               (e.currentTarget as HTMLButtonElement).style.borderColor =
-                "var(--border)";
+                "var(--accent-hairline)";
             }
           }}
         >
@@ -126,14 +126,13 @@ export default function SmoothSelect({
       </PopoverTrigger>
       <PopoverContent
         align="start"
-        sideOffset={4}
-        className="w-[var(--radix-popover-trigger-width)] p-0 overflow-hidden"
+        sideOffset={6}
+        className="w-[var(--radix-popover-trigger-width)] p-0 overflow-hidden rounded-[14px]"
         style={
           {
-            background: "#1a1a18",
-            border: "1px solid #2e2e2b",
-            boxShadow:
-              "0 12px 32px rgba(0,0,0,0.55), 0 2px 6px rgba(0,0,0,0.35)",
+            background: "var(--surface-2)",
+            border: "1px solid var(--border-strong)",
+            boxShadow: "0 24px 48px rgba(0,0,0,0.55)",
             // Override tailwindcss-animate's `enter` / `exit` keyframe vars
             // so the popover slides + fades like a real dropdown instead of
             // zooming in like a card. The scale jump (95% → 100%) is what
@@ -187,16 +186,19 @@ export default function SmoothSelect({
                     setOpen(false);
                     setQuery("");
                   }}
-                  className="w-full px-3 py-2 text-left flex items-center gap-3 transition-[background-color,transform] duration-[var(--dur-state)] ease-[cubic-bezier(0.16,1,0.3,1)] active:scale-[0.99] active:duration-[var(--dur-instant)]"
+                  className="w-full px-3 py-2.5 text-left flex items-center gap-3 transition-[background-color,transform] duration-[var(--dur-state)] ease-[cubic-bezier(0.16,1,0.3,1)] active:scale-[0.99] active:duration-[var(--dur-instant)]"
                   style={{
                     background: isSelected
-                      ? "var(--accent-light)"
+                      ? "var(--accent-soft)"
                       : "transparent",
+                    borderLeft: isSelected
+                      ? "2px solid var(--accent)"
+                      : "2px solid transparent",
                   }}
                   onMouseEnter={(e) => {
                     if (!isSelected) {
                       (e.currentTarget as HTMLButtonElement).style.background =
-                        "rgba(255,255,255,0.04)";
+                        "rgba(255,255,255,0.05)";
                     }
                   }}
                   onMouseLeave={(e) => {

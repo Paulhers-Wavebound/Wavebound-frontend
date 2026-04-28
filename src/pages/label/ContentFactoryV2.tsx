@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { AnimatePresence, motion, MotionConfig } from "framer-motion";
 import { Factory, Inbox, Loader2, Sparkles } from "lucide-react";
+import RailArrow from "@/components/content-factory-v2/_carousel/RailArrow";
 import ExploreView from "@/components/content-factory-v2/ExploreView";
 import CreateView from "@/components/content-factory-v2/CreateView";
 import type {
@@ -46,6 +47,7 @@ import { useUserProfile } from "@/contexts/UserProfileContext";
 import { supabase } from "@/integrations/supabase/client";
 import { streamChatMessage } from "@/services/chatJobService";
 import { toast } from "@/hooks/use-toast";
+import type { LeadHunterLead } from "@/types/cartoonLeadHunter";
 
 type TabKey = "explore" | "create" | "assets";
 
@@ -100,6 +102,186 @@ function migrateLegacyTab(v: string | null): TabKey | null {
   if (v === "angles") return "explore";
   if (v === "review") return "assets";
   return null;
+}
+
+function buildStoryWriterMessage({
+  artistName,
+  isRealfootage,
+  selectedLead,
+}: {
+  artistName: string;
+  isRealfootage: boolean;
+  selectedLead?: LeadHunterLead;
+}): string {
+  const formatInstruction = isRealfootage
+    ? 'IMPORTANT: include "format": "realfootage" at the top level of the fenced JSON output so the renderer routes to the real-footage pipeline.'
+    : "";
+
+  if (!selectedLead) {
+    return isRealfootage
+      ? `Make a 60-second real-footage story for ${artistName}. Pick the most compelling, factually-grounded story angle from their dossier — viral moment, hidden lore, fan obsession, chart breakthrough, anything that hooks in 3 words. Run the dossier tools first. ${formatInstruction}`
+      : `Make a cartoon for ${artistName}. Pick the most compelling, factually-grounded story angle from their dossier — viral moment, hidden lore, fan obsession, chart breakthrough, anything that hooks in 3 words. Run the dossier tools first.`;
+  }
+
+  const leadContext = {
+    lead_id: selectedLead.lead_id,
+    working_title: selectedLead.working_title,
+    one_sentence_angle: selectedLead.one_sentence_angle,
+    raw_story_arc: selectedLead.raw_story_arc,
+    why_fans_would_care: selectedLead.why_fans_would_care,
+    artist_positive_frame: selectedLead.artist_positive_frame,
+    tension_source: selectedLead.tension_source,
+    curiosity_engine: selectedLead.curiosity_engine,
+    possible_hook_energy: selectedLead.possible_hook_energy,
+    known_or_suspected_facts: selectedLead.known_or_suspected_facts,
+    source_breadcrumbs: selectedLead.source_breadcrumbs,
+    verification_questions: selectedLead.verification_questions,
+    risk_notes: selectedLead.risk_notes,
+    scores: selectedLead.scores,
+  };
+
+  return `Make a ${isRealfootage ? "60-second real-footage story" : "cartoon"} for ${artistName} using the operator-selected Lead Hunter story below.
+
+Treat the selected lead as the CHOSEN CREATIVE DIRECTION, not as a fully verified script. A human already picked this story because each render is expensive — do not pick a different angle just because another shiny fact is in the dossier.
+
+Verify enough to avoid obviously false claims. If a specific detail is weak, conflicting between sources, or shakier than the rest of the lead, SOFTEN it — don't change the story. Drop the exact number, drop the exact dollar amount, drop the unverifiable quote, and keep the human beat. Example: if "$93 vs $40" is in conflict, write "he busked on the pier and strangers actually stopped" instead of guessing the number.
+
+Only abandon this lead if the CORE CLAIM (the one_sentence_angle) is clearly unsupported once you research it, OR landing it would make the artist look bad in a way the artist_positive_frame can't repair. If you do abandon, say so briefly in Part 1 and pivot to the closest verified artist-positive version of this story — not a totally unrelated angle from the dossier.
+
+Run the dossier tools first to verify the selected lead, fill gaps, and replace any obviously broken specifics. Keep the artist-positive frame: the artist should feel more magnetic, impressive, resilient, or misunderstood in a good way.
+${formatInstruction}
+
+<operator_selected_lead>
+${JSON.stringify(leadContext, null, 2)}
+</operator_selected_lead>`;
+}
+
+interface ActiveJob {
+  jobId: string;
+  artistHandle: string;
+  source: OutputType;
+  count: number;
+  stage: string;
+}
+
+function ActiveJobsRail({
+  activeJobs,
+  onOpen,
+}: {
+  activeJobs: ActiveJob[];
+  onOpen: () => void;
+}) {
+  const railRef = useRef<HTMLDivElement | null>(null);
+
+  const scrollBy = useCallback((delta: number) => {
+    railRef.current?.scrollBy({ left: delta, behavior: "smooth" });
+  }, []);
+
+  return (
+    <div className="mb-12 group relative">
+      <div className="flex items-end justify-between mb-4">
+        <div
+          className="flex items-center gap-3"
+          style={{
+            fontFamily: "var(--display-font)",
+            fontSize: 11,
+            fontWeight: 600,
+            textTransform: "uppercase",
+            letterSpacing: "0.18em",
+            color: "var(--accent)",
+          }}
+        >
+          <span
+            className="inline-block w-1.5 h-1.5 rounded-full higgs-orb-running"
+            style={{ background: "var(--accent)" }}
+          />
+          Currently generating · {activeJobs.length}
+        </div>
+        <div
+          className="text-[11px]"
+          style={{
+            color: "var(--ink-tertiary)",
+            fontFamily: "JetBrains Mono, monospace",
+          }}
+        >
+          click to open
+        </div>
+      </div>
+      <div
+        ref={railRef}
+        className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1 snap-x scroll-smooth"
+        style={{ scrollbarWidth: "none" }}
+      >
+        {activeJobs.map((job) => (
+          <button
+            key={job.jobId}
+            type="button"
+            onClick={onOpen}
+            className="relative w-[220px] aspect-square shrink-0 rounded-[14px] overflow-hidden text-left snap-start group/card"
+            style={{
+              background: "var(--surface)",
+              boxShadow: "inset 0 0 0 1px var(--accent-hairline)",
+            }}
+          >
+            <div
+              className="absolute inset-0"
+              style={{ background: "var(--accent-soft)" }}
+            />
+            <div
+              className="absolute inset-0 opacity-40 pointer-events-none"
+              style={{
+                backgroundImage:
+                  "repeating-linear-gradient(135deg, transparent 0 18px, rgba(255,255,255,0.04) 18px 19px)",
+              }}
+            />
+            <div
+              className="absolute inset-0 pointer-events-none"
+              style={{
+                background:
+                  "linear-gradient(transparent 50%, rgba(0,0,0,0.85) 100%)",
+              }}
+            />
+            <span
+              className="absolute top-3 right-3 w-2 h-2 rounded-full higgs-orb-running"
+              style={{ background: "var(--accent)" }}
+            />
+            <span
+              className="absolute inset-0 rounded-[14px] pointer-events-none opacity-0 group-hover/card:opacity-100"
+              style={{
+                boxShadow:
+                  "inset 0 0 0 1px var(--accent), 0 0 32px var(--accent-glow)",
+                transition: "opacity 0.2s cubic-bezier(0.16, 1, 0.3, 1)",
+              }}
+            />
+            <div className="absolute bottom-3 left-3 right-3">
+              <div
+                className="truncate"
+                style={{
+                  fontFamily: "var(--display-font)",
+                  fontSize: 14,
+                  fontWeight: 700,
+                  textTransform: "uppercase",
+                  letterSpacing: "-0.005em",
+                  color: "#fff",
+                }}
+              >
+                @{job.artistHandle}
+              </div>
+              <div
+                className="text-[11px] truncate mt-0.5"
+                style={{ color: "rgba(255,255,255,0.7)" }}
+              >
+                {job.stage} · {job.count} brief
+                {job.count === 1 ? "" : "s"}
+              </div>
+            </div>
+          </button>
+        ))}
+      </div>
+      <RailArrow direction="left" onClick={() => scrollBy(-240)} yOffset={14} />
+      <RailArrow direction="right" onClick={() => scrollBy(240)} yOffset={14} />
+    </div>
+  );
 }
 
 export default function ContentFactoryV2() {
@@ -1307,6 +1489,8 @@ export default function ContentFactoryV2() {
         count,
         voiceId,
         voiceSettings,
+        leadHunterJobId,
+        selectedLead,
         subFormat,
       } = input;
       const isRealfootage = subFormat === "realfootage";
@@ -1316,7 +1500,7 @@ export default function ContentFactoryV2() {
         artistId: `cartoon-${artistHandle}`,
         artistDisplayName: artistName,
         artistDisplayHandle: artistHandle,
-        title: `${FORMAT_TITLE_PREFIX[subFormat]} · ${artistName}`,
+        title: `${FORMAT_TITLE_PREFIX[subFormat]} · ${artistName} — ${selectedLead.working_title}`,
         outputType: "cartoon",
         source: "human",
         status: "generating",
@@ -1327,6 +1511,8 @@ export default function ContentFactoryV2() {
         cartoonStage: "script",
         cartoonVoiceId: voiceId,
         cartoonVoiceSettings: voiceSettings,
+        cartoonLeadHunterJobId: leadHunterJobId,
+        cartoonSelectedLead: selectedLead,
         // Optimistic — vo-dispatch's response confirms it but the UI can show
         // the right label from the moment the placeholder lands.
         cartoonFormat: subFormat,
@@ -1340,9 +1526,11 @@ export default function ContentFactoryV2() {
       // which content-factory-vo-dispatch reads to route to cartoon-vo vs
       // realfootage-vo. We pass the hint in the user message so the writer
       // tags the JSON correctly.
-      const writerMessage = isRealfootage
-        ? `Make a 60-second real-footage story for ${artistName}. Pick the most compelling, factually-grounded story angle from their dossier — viral moment, hidden lore, fan obsession, chart breakthrough, anything that hooks in 3 words. Run the dossier tools first. IMPORTANT: include "format": "realfootage" at the top level of the fenced JSON output so the renderer routes to the real-footage pipeline.`
-        : `Make a cartoon for ${artistName}. Pick the most compelling, factually-grounded story angle from their dossier — viral moment, hidden lore, fan obsession, chart breakthrough, anything that hooks in 3 words. Run the dossier tools first.`;
+      const writerMessage = buildStoryWriterMessage({
+        artistName,
+        isRealfootage,
+        selectedLead,
+      });
 
       // Same key the Tune drawer in CreateView writes to. Reading at dispatch
       // time avoids prop-drilling the model preference through 4 layers.
@@ -1411,8 +1599,8 @@ export default function ContentFactoryV2() {
       }
 
       toast({
-        title: `Generating ${count} cartoon${count === 1 ? "" : "s"}`,
-        description: `for ${artistName} — script first, end-to-end ~15-20 min.`,
+        title: `Generating ${count} stor${count === 1 ? "y" : "ies"}`,
+        description: `Using “${selectedLead.working_title}” for ${artistName} — script first, end-to-end ~15-20 min.`,
       });
     },
     [labelId, setActiveTab],
@@ -1886,7 +2074,8 @@ export default function ContentFactoryV2() {
                     createdAt: new Date().toISOString(),
                     retryCount: attemptNo,
                     // KEEP: cartoonChatJobId, cartoonFormat, cartoonVoiceId,
-                    // cartoonVoiceSettings — the dispatcher needs these.
+                    // cartoonVoiceSettings, cartoonSelectedLead — the
+                    // dispatcher/retry path needs these.
                   }
                 : q,
             ),
@@ -2001,9 +2190,11 @@ export default function ContentFactoryV2() {
           description: `for ${artistName} — script first, end-to-end ~15-20 min.`,
         });
 
-        const writerMessage = isRealfootageRetry
-          ? `Make a 60-second real-footage story for ${artistName}. Pick the most compelling, factually-grounded story angle from their dossier — viral moment, hidden lore, fan obsession, chart breakthrough, anything that hooks in 3 words. Run the dossier tools first. IMPORTANT: include "format": "realfootage" at the top level of the fenced JSON output so the renderer routes to the real-footage pipeline.`
-          : `Make a cartoon for ${artistName}. Pick the most compelling, factually-grounded story angle from their dossier — viral moment, hidden lore, fan obsession, chart breakthrough, anything that hooks in 3 words. Run the dossier tools first.`;
+        const writerMessage = buildStoryWriterMessage({
+          artistName,
+          isRealfootage: isRealfootageRetry,
+          selectedLead: item.cartoonSelectedLead,
+        });
         const sessionId = crypto.randomUUID();
         void streamChatMessage(
           {
@@ -2296,66 +2487,113 @@ export default function ContentFactoryV2() {
   return (
     <MotionConfig reducedMotion="user">
       <div
+        data-cfv2="true"
+        data-label-theme="dark"
         className="min-h-[calc(100vh-64px)]"
-        style={{ background: "var(--bg)" }}
+        style={{ background: "var(--bg)", color: "var(--ink)" }}
       >
-        <div className="mx-auto px-6 pt-6 pb-16" style={{ maxWidth: 1320 }}>
-          {/* Page header */}
-          <div className="mb-5 flex items-end justify-between gap-4">
+        <div
+          className="mx-auto pt-12 pb-24"
+          style={{
+            maxWidth: 1440,
+            paddingLeft: "clamp(20px, 4vw, 64px)",
+            paddingRight: "clamp(20px, 4vw, 64px)",
+          }}
+        >
+          {/* Page header — oversized Space Grotesk caps, accent eyebrow */}
+          <div className="mb-10 flex items-end justify-between gap-6 flex-wrap">
             <div>
               <div
-                className="text-[11px] font-semibold uppercase tracking-wide mb-1 font-['DM_Sans',sans-serif]"
-                style={{ color: "var(--ink-secondary)" }}
+                className="mb-3"
+                style={{
+                  fontFamily: "var(--display-font)",
+                  fontSize: 11,
+                  fontWeight: 600,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.18em",
+                  color: "var(--accent)",
+                }}
               >
-                Content Factory v2 · prototype
+                Content Factory · v2
               </div>
               <h1
-                className="text-[28px] font-bold font-['DM_Sans',sans-serif]"
-                style={{ color: "var(--ink)" }}
+                style={{
+                  fontFamily: "var(--display-font)",
+                  fontSize: "clamp(40px, 6vw, 64px)",
+                  fontWeight: 700,
+                  textTransform: "uppercase",
+                  letterSpacing: "-0.02em",
+                  lineHeight: 1,
+                  color: "var(--ink)",
+                  margin: 0,
+                }}
               >
                 {tabTitle}
               </h1>
             </div>
             <div
-              className="text-[12px] font-['JetBrains_Mono',monospace]"
-              style={{ color: "var(--ink-tertiary)" }}
+              className="text-[11px] uppercase tracking-wider"
+              style={{
+                color: "var(--ink-tertiary)",
+                fontFamily: "JetBrains Mono, monospace",
+              }}
             >
-              mock data · existing routes untouched
+              mock data · routes untouched
             </div>
           </div>
 
-          {/* Top-nav — flat horizontal label list. Bright text on active /
-            hover, muted otherwise; 2px accent underline on the active tab.
-            Higgsfield-style — no pill backgrounds, just labels + a thin
-            divider running underneath the row. */}
+          {/* Top-nav — flat horizontal label list, Higgsfield style. Caps
+            Space Grotesk, 3px accent underline with glow on the active tab. */}
           <div
-            className="mb-6 flex items-center gap-1 font-['DM_Sans',sans-serif]"
+            className="mb-10 flex items-center gap-2"
             style={{ borderBottom: "1px solid var(--border)" }}
           >
             {TABS.map((t) => {
               const active = activeTab === t.key;
               const badge = t.key === "assets" ? assetsBadgeCount : null;
-              const colorClass = active
-                ? "text-[var(--ink)]"
-                : "text-[var(--ink-tertiary)] hover:text-[var(--accent)]";
-              const badgeClass = active
-                ? "bg-[var(--accent-light)] text-[var(--accent)] border-[var(--accent)]"
-                : "bg-white/[0.06] text-[var(--ink-secondary)] border-[var(--border)] group-hover:bg-[var(--accent-light)] group-hover:text-[var(--accent)] group-hover:border-[var(--accent)]";
               return (
                 <button
                   key={t.key}
                   type="button"
                   onClick={() => setActiveTab(t.key)}
-                  className={`group relative h-11 px-4 flex items-center gap-2 text-[14px] font-semibold transition-colors ${colorClass}`}
+                  className="group relative h-14 px-5 flex items-center gap-2.5 transition-colors"
+                  style={{
+                    fontFamily: "var(--display-font)",
+                    fontSize: 13,
+                    fontWeight: 700,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.04em",
+                    color: active ? "var(--ink)" : "var(--ink-tertiary)",
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!active)
+                      e.currentTarget.style.color = "var(--ink-secondary)";
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!active)
+                      e.currentTarget.style.color = "var(--ink-tertiary)";
+                  }}
                 >
                   <t.icon
-                    size={14}
+                    size={15}
                     color={active ? "var(--accent)" : "currentColor"}
                   />
                   <span>{t.label}</span>
                   {badge != null && badge > 0 && (
                     <span
-                      className={`px-1.5 py-0.5 rounded-full border text-[10px] font-['JetBrains_Mono',monospace] tabular-nums transition-colors ${badgeClass}`}
+                      className="inline-flex items-center justify-center h-6 px-2 rounded-full text-[11px] tabular-nums"
+                      style={{
+                        fontFamily: "JetBrains Mono, monospace",
+                        fontWeight: 600,
+                        background: active
+                          ? "var(--accent-soft)"
+                          : "rgba(255,255,255,0.08)",
+                        color: active
+                          ? "var(--accent)"
+                          : "var(--ink-secondary)",
+                        minWidth: 24,
+                        letterSpacing: 0,
+                      }}
                     >
                       {badge}
                     </span>
@@ -2363,14 +2601,14 @@ export default function ContentFactoryV2() {
                   {active && (
                     <motion.span
                       layoutId="cf2-tab-underline"
-                      className="absolute left-3 right-3 -bottom-px h-[2px]"
+                      className="absolute left-4 right-4 -bottom-[1px] h-[3px] rounded-full"
                       style={{
                         background: "var(--accent)",
-                        boxShadow: "0 0 12px rgba(242,93,36,0.55)",
+                        boxShadow: "0 0 24px var(--accent-glow)",
                       }}
                       transition={{
                         type: "tween",
-                        duration: 0.24,
+                        duration: 0.28,
                         ease: [0.16, 1, 0.3, 1],
                       }}
                     />
@@ -2380,79 +2618,17 @@ export default function ContentFactoryV2() {
             })}
           </div>
 
-          {/* Active jobs strip — visible across all tabs while a fan-brief
-            pipeline run is in flight. Click a card to jump to Review. */}
+          {/* "Currently generating" rail — visible across all tabs while a
+            fan-brief pipeline run is in flight. Horizontal scroll of square
+            cards, each with a breathing status orb. Click to jump to Review.
+            Arrow buttons follow the higgsfield-aesthetic skill recipe:
+            frosted-glass round buttons that fade in on rail hover, hidden on
+            touch viewports where the rail scrolls directly. */}
           {activeJobs.length > 0 && (
-            <div className="mb-6">
-              <div className="flex items-center justify-between mb-2 font-['DM_Sans',sans-serif]">
-                <div
-                  className="text-[11px] font-semibold uppercase tracking-wide flex items-center gap-2"
-                  style={{ color: "var(--ink-secondary)" }}
-                >
-                  <Loader2
-                    size={12}
-                    className="animate-spin"
-                    color="var(--accent)"
-                  />
-                  Active jobs · {activeJobs.length}
-                </div>
-                <div
-                  className="text-[11px] font-['JetBrains_Mono',monospace]"
-                  style={{ color: "var(--ink-tertiary)" }}
-                >
-                  click to open in Review
-                </div>
-              </div>
-              <div
-                className="grid gap-2"
-                style={{
-                  gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
-                }}
-              >
-                {activeJobs.map((job) => (
-                  <button
-                    key={job.jobId}
-                    type="button"
-                    onClick={() => setActiveTab("assets")}
-                    className="text-left rounded-2xl px-4 py-3 transition-colors flex items-start gap-3"
-                    style={{
-                      background: "var(--surface)",
-                      borderTop: "0.5px solid var(--card-edge)",
-                      borderLeft: "2px solid var(--accent)",
-                      fontFamily: '"DM Sans", sans-serif',
-                    }}
-                  >
-                    <div
-                      className="w-9 h-9 rounded-full flex items-center justify-center shrink-0"
-                      style={{
-                        background: "var(--accent-light)",
-                      }}
-                    >
-                      <Loader2
-                        size={16}
-                        color="var(--accent)"
-                        className="animate-spin"
-                      />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div
-                        className="text-[13px] font-semibold truncate"
-                        style={{ color: "var(--ink)" }}
-                      >
-                        @{job.artistHandle} · {job.count} brief
-                        {job.count === 1 ? "" : "s"}
-                      </div>
-                      <div
-                        className="text-[11px] truncate"
-                        style={{ color: "var(--ink-tertiary)" }}
-                      >
-                        {job.stage}
-                      </div>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
+            <ActiveJobsRail
+              activeJobs={activeJobs}
+              onOpen={() => setActiveTab("assets")}
+            />
           )}
 
           {/* Tab content — keyed crossfade. The wrapper (not the inner view)

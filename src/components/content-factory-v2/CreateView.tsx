@@ -1750,16 +1750,25 @@ function SectionHeader({
   tight?: boolean;
 }) {
   return (
-    <div className={tight ? "" : "mb-3"}>
+    <div
+      className={tight ? "" : "mb-4 pb-3"}
+      style={tight ? undefined : { borderBottom: "1px solid var(--border)" }}
+    >
       <div
-        className="text-[11px] font-semibold uppercase tracking-wide"
-        style={{ color: "var(--ink-secondary)" }}
+        style={{
+          fontFamily: "var(--display-font)",
+          fontSize: 14,
+          fontWeight: 700,
+          textTransform: "uppercase",
+          letterSpacing: "0.06em",
+          color: "var(--ink)",
+        }}
       >
         {title}
       </div>
       {subtitle && (
         <div
-          className="text-[12px] mt-0.5"
+          className="text-[12px] mt-1"
           style={{ color: "var(--ink-tertiary)" }}
         >
           {subtitle}
@@ -1777,10 +1786,16 @@ function Field({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex flex-col gap-1.5 min-w-0">
+    <div className="flex flex-col gap-2 min-w-0">
       <label
-        className="text-[11px] font-semibold uppercase tracking-wide"
-        style={{ color: "var(--ink-secondary)" }}
+        style={{
+          fontFamily: "var(--display-font)",
+          fontSize: 10,
+          fontWeight: 700,
+          textTransform: "uppercase",
+          letterSpacing: "0.16em",
+          color: "var(--ink-tertiary)",
+        }}
       >
         {label}
       </label>
@@ -1958,10 +1973,16 @@ function TuneGroup({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex flex-col gap-1.5">
+    <div className="flex flex-col gap-2">
       <div
-        className="text-[11px] font-semibold uppercase tracking-wide"
-        style={{ color: "var(--ink-secondary)" }}
+        style={{
+          fontFamily: "var(--display-font)",
+          fontSize: 10,
+          fontWeight: 700,
+          textTransform: "uppercase",
+          letterSpacing: "0.16em",
+          color: "var(--ink-tertiary)",
+        }}
       >
         {title}
       </div>

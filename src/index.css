@@ -409,6 +409,139 @@ All colors MUST be HSL. Glassmorphism with teal-blue gradients.
   }
 
   /* ========================================
+     CONTENT FACTORY V2 — HIGGSFIELD AESTHETIC
+     Scoped overrides applied only when [data-cfv2="true"] is on the page root.
+     Deeper neutral-cool darks, single-family display font, accent glow tokens.
+     Wavebound burn orange stays as --accent.
+     See ~/.claude/skills/higgsfield-aesthetic for the full design language.
+  ======================================== */
+  [data-cfv2="true"] {
+    /* Surface tiers — neutral-cool, slightly cooler than the default dark theme */
+    --bg: #0f1113;
+    --bg-subtle: #14171a;
+    --surface: #1c1e20;
+    --surface-2: #2a2c2f;
+    --surface-hover: #2e3134;
+
+    /* Ink — never pure white */
+    --ink: #f7f7f8;
+    --ink-secondary: rgba(255, 255, 255, 0.62);
+    --ink-tertiary: rgba(255, 255, 255, 0.42);
+    --ink-faint: rgba(255, 255, 255, 0.22);
+
+    /* Borders — thin, low-opacity */
+    --border: rgba(255, 255, 255, 0.08);
+    --border-hover: rgba(255, 255, 255, 0.12);
+    --border-strong: rgba(255, 255, 255, 0.16);
+
+    /* Accent — Wavebound burn orange + Higgsfield-style tint stops (5/12/24/45/100%) */
+    --accent: #f25d24;
+    --accent-on: #0f1113;
+    --accent-soft: rgba(242, 93, 36, 0.12);
+    --accent-hover: rgba(242, 93, 36, 0.24);
+    --accent-glow: rgba(242, 93, 36, 0.45);
+    --accent-light: rgba(242, 93, 36, 0.05);
+    /* Hairline border for prompt-dock surfaces — sits between "fully invisible"
+       and "active focus." Matches the higgsfield.ai image-form perimeter recipe.
+       Use this for the OUTER border of any dock/select/picker; ramp to var(--accent)
+       on hover/focus. Tinted backgrounds keep using --accent-soft. */
+    --accent-hairline: rgba(242, 93, 36, 0.12);
+
+    /* Display font — Space Grotesk for headlines, falls back to DM Sans */
+    --display-font: "Space Grotesk", "DM Sans", "Inter", system-ui, sans-serif;
+
+    /* Tag colors — used sparingly */
+    --tag-new: #ff005b;
+    --tag-soon: rgba(255, 255, 255, 0.16);
+
+    /* Overlay tokens — kept for components that read them */
+    --overlay-hover: rgba(255, 255, 255, 0.05);
+    --overlay-subtle: rgba(255, 255, 255, 0.03);
+    --overlay-active: rgba(255, 255, 255, 0.08);
+    --border-subtle: rgba(255, 255, 255, 0.06);
+    --card-edge: rgba(255, 255, 255, 0.04);
+    --chart-grid: rgba(255, 255, 255, 0.06);
+    --chart-tooltip-bg: rgba(0, 0, 0, 0.92);
+    --chart-tooltip-border: rgba(255, 255, 255, 0.08);
+  }
+
+  /* "Thinking" gradient bar — used in AI status panels (Lead Hunter, render queue).
+     The shimmer travels left-to-right every 1.4s. Communicates "running" without
+     a determinate progress number. */
+  @keyframes higgs-shimmer {
+    0% {
+      transform: translateX(-100%);
+    }
+    100% {
+      transform: translateX(100%);
+    }
+  }
+  .higgs-thinking-bar {
+    position: relative;
+    width: 100%;
+    height: 2px;
+    background: var(--border);
+    overflow: hidden;
+    border-radius: 2px;
+  }
+  .higgs-thinking-bar::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      var(--accent) 50%,
+      transparent 100%
+    );
+    animation: higgs-shimmer 1.4s linear infinite;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .higgs-thinking-bar::after {
+      animation: none;
+      background: var(--accent);
+      opacity: 0.6;
+    }
+  }
+
+  /* Slow breathing pulse — used on status orbs for running AI jobs. 1.6s,
+     ease-in-out — slow enough to read as confident, not nervous. */
+  @keyframes higgs-pulse {
+    0% {
+      box-shadow: 0 0 0 0 var(--accent-glow);
+    }
+    70% {
+      box-shadow: 0 0 0 12px transparent;
+    }
+    100% {
+      box-shadow: 0 0 0 0 transparent;
+    }
+  }
+  .higgs-orb-running {
+    animation: higgs-pulse 1.6s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .higgs-orb-running {
+      animation: none;
+    }
+  }
+
+  /* Skeleton shimmer for loading placeholders */
+  @keyframes higgs-skeleton {
+    0%,
+    100% {
+      opacity: 0.4;
+    }
+    50% {
+      opacity: 0.7;
+    }
+  }
+  .higgs-skeleton {
+    background: var(--surface-2);
+    animation: higgs-skeleton 1.6s ease-in-out infinite;
+  }
+
+  /* ========================================
      THEME: Rose (Premium - Feminine)
      Soft pink and rose tones
   ======================================== */
