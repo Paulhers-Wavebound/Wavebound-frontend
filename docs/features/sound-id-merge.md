@@ -19,6 +19,9 @@ Label Content & Social managers use this when the same song is scattered across 
 - Users can attach the current raw Sound Intelligence analysis to an existing merged sound from the raw detail page.
 - Users can create a new merged sound from the raw detail page by combining the current sound ID with pasted TikTok `/music/` links.
 - Sound Intelligence suggests likely merges when unmerged jobs share ISRC, Spotify IDs, or normalized title/artist metadata.
+- Users can snooze suggested merges for 7 days or dismiss them permanently for the label.
+- High-confidence roster-only ISRC/Spotify suggestions can be auto-merged from an explicit overview action.
+- Raw Sound Intelligence detail pages show a merged-sound badge and turn the Merge action into **View Merge** when the job already belongs to a canonical group.
 - The group detail loads member entries, analyses, and monitoring state through a group-aware RPC instead of fetching each member analysis one by one.
 - The **All IDs** monitoring chart uses real grouped monitoring snapshots aggregated across member jobs.
 - Raw underlying analysis pages still exist and are reachable from the member table.
@@ -32,16 +35,20 @@ Label Content & Social managers use this when the same song is scattered across 
 - Mixed roster/competitor groups: source filters include the group when any member matches that source.
 - Monitoring charts: the aggregate view uses grouped snapshot history when at least two group-level buckets exist; selecting one ID still shows that ID's own monitoring history.
 - Suggested duplicates: suggestions ignore jobs already attached to a merged sound; low-confidence title/artist matches are marked separately from stronger ISRC/Spotify matches.
+- Snoozed suggestions: snoozed candidates stay hidden until `snoozed_until`; if the sound IDs are still unmerged after that date, the suggestion can return.
+- Dismissed suggestions: dismissed candidates stay hidden for the label until a future admin reset is added.
+- Auto-merge: auto-merge only handles roster-only candidates matched by ISRC, Spotify track ID, or Spotify ID. Mixed roster/competitor and title/artist-only suggestions require manual review.
 - Existing raw detail merge: adding a sound ID that already belongs to another merged sound is blocked by the database unique index and returns a clear error.
 
 ## Key files
 
 - `supabase/migrations/20260429183722_sound_canonical_groups.sql` — canonical group/member tables, indexes, and RLS.
 - `supabase/migrations/20260429185209_sound_group_rpc.sql` — group list/detail RPCs, grouped monitoring history, and duplicate suggestion RPC.
-- `src/utils/soundGroupApi.ts` — creates groups, adds IDs, lists groups, and resolves links into existing or newly triggered jobs.
+- `supabase/migrations/20260429193212_sound_duplicate_decisions_auto_merge.sql` — suggested-merge decision table, filtered suggestion RPC, and roster auto-merge RPC.
+- `src/utils/soundGroupApi.ts` — creates groups, adds IDs, lists groups, resolves links into jobs, records suggestion decisions, and runs controlled roster auto-merge.
 - `src/utils/soundGroupAggregation.ts` — builds overview summaries and aggregate `SoundAnalysis` objects from member analyses.
-- `src/pages/label/SoundIntelligenceOverview.tsx` — multi-link submit flow, suggested merge cards, and merged sound cards.
+- `src/pages/label/SoundIntelligenceOverview.tsx` — multi-link submit flow, suggested merge cards, snooze/dismiss actions, auto-merge action, and merged sound cards.
 - `src/pages/label/SoundGroupDetail.tsx` — aggregate detail page with per-ID filters, group monitoring, and add-ID dialog.
-- `src/pages/label/SoundIntelligenceDetail.tsx` — raw analysis merge dialog for attaching an existing sound ID to canonical groups.
+- `src/pages/label/SoundIntelligenceDetail.tsx` — raw analysis merge dialog, already-merged badge, and canonical group navigation.
 - `src/components/sound-intelligence/MonitoringTrendChart.tsx` — supports both single-job and canonical-group monitoring histories.
 - `src/App.tsx` and `src/pages/label/LabelLayout.tsx` — route and breadcrumb support.

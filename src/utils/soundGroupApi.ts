@@ -5,6 +5,7 @@ import type {
   SoundAnalysis,
   SoundCanonicalGroup,
   SoundCanonicalGroupMember,
+  SoundDuplicateAutoMergeResult,
   SoundDuplicateCandidate,
   SoundMonitoring,
 } from "@/types/soundIntelligence";
@@ -39,11 +40,27 @@ export interface SoundGroupBundle {
   members: SoundGroupBundleMember[];
 }
 
+type RawSoundGroup = Omit<SoundCanonicalGroup, "members"> & {
+  members?: SoundCanonicalGroupMember[];
+};
+
+type RawSoundGroupBundle = {
+  group?: RawSoundGroup;
+  members?: SoundGroupBundleMember[];
+};
+
+type GroupMonitoringHistoryResponse = {
+  snapshots?: MonitoringSnapshot[];
+  summary?: MonitoringHistorySummary;
+};
+
 function soundGroupsTable() {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- generated Supabase types do not include this local migration table yet.
   return (supabase as any).from("sound_canonical_groups");
 }
 
 function soundGroupMembersTable() {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- generated Supabase types do not include this local migration table yet.
   return (supabase as any).from("sound_canonical_group_members");
 }
 
@@ -51,6 +68,7 @@ function rpc<T>(name: string, args: Record<string, unknown>): Promise<{
   data: T | null;
   error: { message: string; code?: string } | null;
 }> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- generated Supabase types do not include these RPCs yet.
   return (supabase as any).rpc(name, args);
 }
 
@@ -102,7 +120,7 @@ function attachMembers(
 export async function listSoundGroups(
   labelId: string,
 ): Promise<SoundCanonicalGroup[]> {
-  const { data: rpcGroups, error: rpcError } = await rpc<any[]>(
+  const { data: rpcGroups, error: rpcError } = await rpc<RawSoundGroup[]>(
     "get_sound_canonical_groups",
     { p_label_id: labelId },
   );
@@ -164,12 +182,28 @@ export async function getSoundGroup(
   return { ...group, members: members ?? [] };
 }
 
-function coerceBundleMember(raw: any): SoundGroupBundleMember {
+export async function getSoundGroupForJob(
+  jobId: string,
+  labelId: string,
+): Promise<SoundCanonicalGroup | null> {
+  const { data: member, error } = await soundGroupMembersTable()
+    .select("group_id")
+    .eq("job_id", jobId)
+    .eq("label_id", labelId)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  if (!member?.group_id) return null;
+  return getSoundGroup(member.group_id, labelId);
+}
+
+function coerceBundleMember(raw: unknown): SoundGroupBundleMember {
+  const member = raw as Partial<SoundGroupBundleMember>;
   return {
-    member: raw.member,
-    entry: raw.entry,
-    analysis: raw.analysis,
-    monitoring: raw.monitoring,
+    member: member.member as SoundCanonicalGroupMember,
+    entry: member.entry ?? null,
+    analysis: member.analysis ?? null,
+    monitoring: member.monitoring ?? null,
   };
 }
 
@@ -177,10 +211,13 @@ export async function getSoundGroupBundle(
   groupId: string,
   labelId: string,
 ): Promise<SoundGroupBundle | null> {
-  const { data, error } = await rpc<any>("get_sound_group_detail", {
-    p_group_id: groupId,
-    p_label_id: labelId,
-  });
+  const { data, error } = await rpc<RawSoundGroupBundle>(
+    "get_sound_group_detail",
+    {
+      p_group_id: groupId,
+      p_label_id: labelId,
+    },
+  );
 
   if (error) throw new Error(error.message);
   if (!data?.group) return null;
@@ -203,11 +240,14 @@ export async function getSoundGroupMonitoringHistory(
   snapshots: MonitoringSnapshot[];
   summary: MonitoringHistorySummary;
 }> {
-  const { data, error } = await rpc<any>("get_sound_group_monitoring_history", {
-    p_group_id: groupId,
-    p_label_id: labelId,
-    p_hours: hours ?? 24,
-  });
+  const { data, error } = await rpc<GroupMonitoringHistoryResponse>(
+    "get_sound_group_monitoring_history",
+    {
+      p_group_id: groupId,
+      p_label_id: labelId,
+      p_hours: hours ?? 24,
+    },
+  );
 
   if (error) throw new Error(error.message);
   return {
@@ -233,6 +273,36 @@ export async function listSoundDuplicateCandidates(
 
   if (error) throw new Error(error.message);
   return Array.isArray(data) ? data : [];
+}
+
+export async function setSoundDuplicateCandidateDecision(params: {
+  labelId: string;
+  matchType: SoundDuplicateCandidate["match_type"];
+  matchKey: string;
+  status: "dismissed" | "snoozed";
+  snoozedUntil?: string | null;
+}): Promise<void> {
+  const { error } = await rpc("upsert_sound_duplicate_candidate_decision", {
+    p_label_id: params.labelId,
+    p_match_type: params.matchType,
+    p_match_key: params.matchKey,
+    p_status: params.status,
+    p_snoozed_until: params.snoozedUntil ?? null,
+  });
+
+  if (error) throw new Error(error.message);
+}
+
+export async function autoMergeHighConfidenceSoundDuplicates(
+  labelId: string,
+): Promise<SoundDuplicateAutoMergeResult> {
+  const { data, error } = await rpc<SoundDuplicateAutoMergeResult>(
+    "auto_merge_high_confidence_sound_duplicates",
+    { p_label_id: labelId },
+  );
+
+  if (error) throw new Error(error.message);
+  return data ?? { created_count: 0, groups: [] };
 }
 
 async function resolveSoundJobsForUrls(

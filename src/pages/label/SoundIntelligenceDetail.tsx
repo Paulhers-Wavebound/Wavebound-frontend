@@ -27,6 +27,7 @@ import {
   GitMerge,
   Music,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useLabelPermissions } from "@/hooks/useLabelPermissions";
 import {
@@ -44,6 +45,7 @@ import {
   addExistingJobToSoundGroup,
   createSoundGroupFromUrls,
   extractSoundUrls,
+  getSoundGroupForJob,
   listSoundGroups,
 } from "@/utils/soundGroupApi";
 import {
@@ -137,6 +139,9 @@ export default function SoundIntelligenceDetail() {
   const [merging, setMerging] = useState(false);
   const [soundGroups, setSoundGroups] = useState<SoundCanonicalGroup[]>([]);
   const [mergeEntries, setMergeEntries] = useState<ListAnalysisEntry[]>([]);
+  const [currentGroup, setCurrentGroup] = useState<SoundCanonicalGroup | null>(
+    null,
+  );
 
   // Check subscription status + source on mount
   useEffect(() => {
@@ -222,6 +227,26 @@ export default function SoundIntelligenceDetail() {
     };
   }, [labelId, mergeOpen]);
 
+  useEffect(() => {
+    if (!jobId || !labelId) {
+      setCurrentGroup(null);
+      return;
+    }
+
+    let isActive = true;
+    getSoundGroupForJob(jobId, labelId)
+      .then((group) => {
+        if (isActive) setCurrentGroup(group);
+      })
+      .catch(() => {
+        if (isActive) setCurrentGroup(null);
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, [jobId, labelId]);
+
   const handleToggleSubscribe = async () => {
     if (!jobId) return;
     setSubscribing(true);
@@ -300,13 +325,14 @@ export default function SoundIntelligenceDetail() {
             setLoadingStatus(res.status);
             if (res.progress) setProgress(res.progress);
           }
-        } catch (err: any) {
+        } catch (err: unknown) {
+          const message = err instanceof Error ? err.message : "Request failed";
           stopPolling();
           setIsLoading(false);
-          setError(err.message);
+          setError(message);
           toast({
             title: "Error",
-            description: err.message,
+            description: message,
             variant: "destructive",
           });
         }
@@ -335,10 +361,11 @@ export default function SoundIntelligenceDetail() {
     try {
       await exportAnalysisPDF(exportRef.current, analysis);
       toast({ title: "PDF exported" });
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Export failed";
       toast({
         title: "Export failed",
-        description: err.message,
+        description: message,
         variant: "destructive",
       });
     } finally {
@@ -590,6 +617,40 @@ export default function SoundIntelligenceDetail() {
                 )}
               </span>
             )}
+            {currentGroup && (
+              <button
+                onClick={() =>
+                  navigate(`/label/sound-intelligence/groups/${currentGroup.id}`)
+                }
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 5,
+                  maxWidth: 280,
+                  padding: "3px 10px",
+                  borderRadius: 6,
+                  border: "1px solid rgba(232,67,10,0.24)",
+                  background: "rgba(232,67,10,0.10)",
+                  color: "var(--accent)",
+                  fontFamily: '"DM Sans", sans-serif',
+                  fontSize: 11,
+                  fontWeight: 650,
+                  cursor: "pointer",
+                }}
+                title={currentGroup.name}
+              >
+                <GitMerge size={10} style={{ flexShrink: 0 }} />
+                <span
+                  style={{
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  Merged: {currentGroup.name}
+                </span>
+              </button>
+            )}
           </div>
 
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
@@ -691,9 +752,20 @@ export default function SoundIntelligenceDetail() {
 
                 <ExportButton
                   icon={GitMerge}
-                  label="Merge"
-                  onClick={() => setMergeOpen(true)}
-                  disabled={!labelId || !currentSoundId || !currentSoundUrl}
+                  label={currentGroup ? "View Merge" : "Merge"}
+                  onClick={() => {
+                    if (currentGroup) {
+                      navigate(
+                        `/label/sound-intelligence/groups/${currentGroup.id}`,
+                      );
+                      return;
+                    }
+                    setMergeOpen(true);
+                  }}
+                  disabled={
+                    !currentGroup &&
+                    (!labelId || !currentSoundId || !currentSoundUrl)
+                  }
                 />
                 <ExportButton
                   icon={FileText}
@@ -1327,7 +1399,7 @@ function ExportButton({
   disabled,
   accent,
 }: {
-  icon: any;
+  icon: LucideIcon;
   label: string;
   onClick: () => void;
   disabled?: boolean;

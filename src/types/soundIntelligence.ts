@@ -478,13 +478,28 @@ export interface SoundDuplicateCandidate {
   confidence: number;
   match_key: string;
   job_count: number;
+  roster_job_count?: number;
+  all_roster?: boolean;
+  can_auto_merge?: boolean;
   job_ids: string[];
   sound_ids: string[];
   sound_urls: string[];
+  sources?: string[];
   track_name: string | null;
   artist_name: string | null;
   cover_url: string | null;
   total_views: number;
+}
+
+export interface SoundDuplicateAutoMergeResult {
+  created_count: number;
+  groups: {
+    group_id: string;
+    match_type: string;
+    match_key: string;
+    job_count: number;
+    name: string;
+  }[];
 }
 
 export interface SoundIntelligenceState {

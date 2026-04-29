@@ -36,6 +36,7 @@ import {
   Zap,
   GitMerge,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { exportOverviewPDF } from "@/utils/exportAnalysis";
 import MonitoringBadge from "@/components/sound-intelligence/MonitoringBadge";
 import NextCheckCountdown from "@/components/sound-intelligence/NextCheckCountdown";
@@ -45,11 +46,13 @@ import {
   SoundGroupSummary,
 } from "@/utils/soundGroupAggregation";
 import {
+  autoMergeHighConfidenceSoundDuplicates,
   createSoundGroupFromUrls,
   extractSoundUrls,
   getGroupedJobIds,
   listSoundDuplicateCandidates,
   listSoundGroups,
+  setSoundDuplicateCandidateDecision,
   soundCandidateName,
   soundCandidateToUrls,
 } from "@/utils/soundGroupApi";
@@ -71,7 +74,7 @@ function daysRemaining(expiresAt: string | null): number | null {
 
 const velocityStatusConfig: Record<
   string,
-  { label: string; color: string; Icon: any }
+  { label: string; color: string; Icon: LucideIcon }
 > = {
   accelerating: { label: "Accelerating", color: "#30D158", Icon: TrendingUp },
   active: { label: "Active", color: "#FF9F0A", Icon: Minus },
@@ -95,6 +98,10 @@ function duplicateMatchLabel(matchType: SoundDuplicateCandidate["match_type"]) {
   }
 }
 
+function candidateKey(candidate: SoundDuplicateCandidate): string {
+  return `${candidate.match_type}:${candidate.match_key}`;
+}
+
 export default function SoundIntelligenceOverview() {
   const navigate = useNavigate();
   const { labelId } = useUserProfile();
@@ -112,6 +119,7 @@ export default function SoundIntelligenceOverview() {
   const [duplicateCandidates, setDuplicateCandidates] = useState<
     SoundDuplicateCandidate[]
   >([]);
+  const [autoMerging, setAutoMerging] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [fetchError, setFetchError] = useState(false);
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
@@ -294,6 +302,10 @@ export default function SoundIntelligenceOverview() {
     () => duplicateCandidates.slice(0, 4),
     [duplicateCandidates],
   );
+  const autoMergeCandidateCount = useMemo(
+    () => duplicateCandidates.filter((candidate) => candidate.can_auto_merge).length,
+    [duplicateCandidates],
+  );
 
   const handleSubmit = async () => {
     if (!searchInput.trim() || isSubmitting) return;
@@ -382,10 +394,11 @@ export default function SoundIntelligenceOverview() {
       setSearchInput("");
       setGroupNameInput("");
       setShowCompetitorInput(false);
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Request failed";
       toast({
         title: "Error",
-        description: err.message,
+        description: message,
         variant: "destructive",
       });
     } finally {
@@ -424,6 +437,78 @@ export default function SoundIntelligenceOverview() {
       });
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleCandidateDecision = async (
+    candidate: SoundDuplicateCandidate,
+    status: "dismissed" | "snoozed",
+  ) => {
+    if (!labelId) return;
+
+    const previous = duplicateCandidates;
+    setDuplicateCandidates((prev) =>
+      prev.filter((item) => candidateKey(item) !== candidateKey(candidate)),
+    );
+
+    try {
+      const snoozedUntil =
+        status === "snoozed"
+          ? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
+          : null;
+      await setSoundDuplicateCandidateDecision({
+        labelId,
+        matchType: candidate.match_type,
+        matchKey: candidate.match_key,
+        status,
+        snoozedUntil,
+      });
+      toast({
+        title: status === "snoozed" ? "Suggestion snoozed" : "Suggestion dismissed",
+        description:
+          status === "snoozed"
+            ? "It will come back in 7 days if the IDs are still unmerged."
+            : "This match will stay hidden for this label.",
+      });
+    } catch (err: unknown) {
+      setDuplicateCandidates(previous);
+      const message = err instanceof Error ? err.message : "Request failed";
+      toast({
+        title: "Could not update suggestion",
+        description: message,
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleAutoMergeRoster = async () => {
+    if (!labelId || autoMerging || autoMergeCandidateCount === 0) return;
+    setAutoMerging(true);
+
+    try {
+      const result = await autoMergeHighConfidenceSoundDuplicates(labelId);
+      await fetchList();
+      toast({
+        title:
+          result.created_count > 0
+            ? "Roster sounds merged"
+            : "No roster merges created",
+        description:
+          result.created_count > 0
+            ? `${result.created_count} high-confidence ${
+                result.created_count === 1 ? "match" : "matches"
+              } grouped into canonical sounds.`
+            : "No auto-ready candidates were still eligible.",
+      });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Request failed";
+      toast({
+        title: "Could not auto-merge roster sounds",
+        description: message,
+        variant: "destructive",
+      });
+    } finally {
+      setAutoMerging(false);
     }
   };
 
@@ -962,10 +1047,14 @@ export default function SoundIntelligenceOverview() {
                                   "Pipeline restarted from " + entry.status,
                               });
                               fetchList();
-                            } catch (err: any) {
+                            } catch (err: unknown) {
+                              const message =
+                                err instanceof Error
+                                  ? err.message
+                                  : "Request failed";
                               toast({
                                 title: "Retry failed",
-                                description: err.message,
+                                description: message,
                                 variant: "destructive",
                               });
                             }
@@ -1058,15 +1147,48 @@ export default function SoundIntelligenceOverview() {
               >
                 Suggested Merges
               </h2>
-              <span
-                style={{
-                  fontFamily: '"DM Sans", sans-serif',
-                  fontSize: 12,
-                  color: "var(--ink-faint)",
-                }}
-              >
-                Same song signal from Spotify, ISRC, or metadata
-              </span>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <span
+                  style={{
+                    fontFamily: '"DM Sans", sans-serif',
+                    fontSize: 12,
+                    color: "var(--ink-faint)",
+                  }}
+                >
+                  Same song signal from Spotify, ISRC, or metadata
+                </span>
+                {autoMergeCandidateCount > 0 && (
+                  <button
+                    onClick={handleAutoMergeRoster}
+                    disabled={autoMerging || isSubmitting}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6,
+                      padding: "6px 12px",
+                      borderRadius: 8,
+                      border: "1px solid rgba(48,209,88,0.24)",
+                      background: "rgba(48,209,88,0.10)",
+                      color: "#30D158",
+                      fontFamily: '"DM Sans", sans-serif',
+                      fontSize: 12,
+                      fontWeight: 700,
+                      cursor: autoMerging ? "wait" : "pointer",
+                      opacity: autoMerging || isSubmitting ? 0.6 : 1,
+                    }}
+                  >
+                    {autoMerging ? (
+                      <Loader2
+                        size={13}
+                        style={{ animation: "spin 1s linear infinite" }}
+                      />
+                    ) : (
+                      <Zap size={13} />
+                    )}
+                    Auto-merge roster ({autoMergeCandidateCount})
+                  </button>
+                )}
+              </div>
             </div>
             <div
               style={{
@@ -1077,10 +1199,14 @@ export default function SoundIntelligenceOverview() {
             >
               {visibleDuplicateCandidates.map((candidate) => (
                 <DuplicateCandidateCard
-                  key={`${candidate.match_type}:${candidate.match_key}`}
+                  key={candidateKey(candidate)}
                   candidate={candidate}
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || autoMerging}
                   onMerge={() => handleMergeCandidate(candidate)}
+                  onSnooze={() => handleCandidateDecision(candidate, "snoozed")}
+                  onDismiss={() =>
+                    handleCandidateDecision(candidate, "dismissed")
+                  }
                 />
               ))}
             </div>
@@ -2117,10 +2243,14 @@ function DuplicateCandidateCard({
   candidate,
   disabled,
   onMerge,
+  onSnooze,
+  onDismiss,
 }: {
   candidate: SoundDuplicateCandidate;
   disabled: boolean;
   onMerge: () => void;
+  onSnooze: () => void;
+  onDismiss: () => void;
 }) {
   return (
     <div
@@ -2224,6 +2354,7 @@ function DuplicateCandidateCard({
         style={{
           display: "flex",
           alignItems: "center",
+          flexWrap: "wrap",
           gap: 6,
           marginBottom: 12,
           fontFamily: '"DM Sans", sans-serif',
@@ -2233,6 +2364,24 @@ function DuplicateCandidateCard({
       >
         <GitMerge size={13} color="var(--accent)" />
         Matched by {duplicateMatchLabel(candidate.match_type)}
+        {candidate.can_auto_merge && (
+          <span
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
+              padding: "2px 7px",
+              borderRadius: 7,
+              background: "rgba(48,209,88,0.12)",
+              color: "#30D158",
+              fontSize: 11,
+              fontWeight: 700,
+            }}
+          >
+            <Zap size={10} />
+            Roster auto-ready
+          </span>
+        )}
       </div>
 
       <div
@@ -2276,28 +2425,81 @@ function DuplicateCandidateCard({
         )}
       </div>
 
-      <button
-        onClick={onMerge}
-        disabled={disabled}
+      <div
         style={{
-          display: "inline-flex",
+          display: "flex",
           alignItems: "center",
-          gap: 6,
-          padding: "8px 14px",
-          borderRadius: 9,
-          border: "none",
-          background: "var(--accent)",
-          color: "rgba(255,255,255,0.92)",
-          fontFamily: '"DM Sans", sans-serif',
-          fontSize: 12,
-          fontWeight: 700,
-          cursor: disabled ? "wait" : "pointer",
-          opacity: disabled ? 0.6 : 1,
+          justifyContent: "space-between",
+          gap: 10,
         }}
       >
-        <GitMerge size={14} />
-        Merge suggestion
-      </button>
+        <button
+          onClick={onMerge}
+          disabled={disabled}
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+            padding: "8px 14px",
+            borderRadius: 9,
+            border: "none",
+            background: "var(--accent)",
+            color: "rgba(255,255,255,0.92)",
+            fontFamily: '"DM Sans", sans-serif',
+            fontSize: 12,
+            fontWeight: 700,
+            cursor: disabled ? "wait" : "pointer",
+            opacity: disabled ? 0.6 : 1,
+          }}
+        >
+          <GitMerge size={14} />
+          Merge suggestion
+        </button>
+        <div style={{ display: "flex", gap: 6 }}>
+          <button
+            onClick={onSnooze}
+            disabled={disabled}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 5,
+              padding: "8px 10px",
+              borderRadius: 9,
+              border: "1px solid var(--border)",
+              background: "transparent",
+              color: "var(--ink-tertiary)",
+              fontFamily: '"DM Sans", sans-serif',
+              fontSize: 12,
+              fontWeight: 650,
+              cursor: disabled ? "wait" : "pointer",
+              opacity: disabled ? 0.6 : 1,
+            }}
+          >
+            <Clock size={13} />
+            Snooze
+          </button>
+          <button
+            onClick={onDismiss}
+            disabled={disabled}
+            aria-label="Dismiss merge suggestion"
+            style={{
+              width: 34,
+              height: 34,
+              borderRadius: 9,
+              border: "1px solid var(--border)",
+              background: "transparent",
+              color: "var(--ink-tertiary)",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              cursor: disabled ? "wait" : "pointer",
+              opacity: disabled ? 0.6 : 1,
+            }}
+          >
+            <X size={14} />
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
