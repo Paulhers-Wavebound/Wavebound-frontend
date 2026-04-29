@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { extractSoundId } from "@/utils/soundIdParser";
 import type {
   SoundMonitoring,
   SoundAlert,
@@ -7,6 +8,8 @@ import type {
   SoundSubscription,
   SoundComparisonResponse,
 } from "@/types/soundIntelligence";
+
+export { extractSoundId };
 
 const BASE_URL = "https://kxvgbowrkmowuyezoeke.supabase.co/functions/v1";
 const ANON_KEY =
@@ -24,16 +27,6 @@ async function getAuthHeaders() {
     apikey: ANON_KEY,
     "Content-Type": "application/json",
   };
-}
-
-/** Extract the numeric sound_id from a TikTok music URL */
-export function extractSoundId(input: string): string | null {
-  const musicPath = input.match(/\/music\/([^/?#]+)/);
-  if (musicPath) {
-    const trailingDigits = musicPath[1].match(/(\d+)$/);
-    if (trailingDigits) return trailingDigits[1];
-  }
-  return null;
 }
 
 /** Check if a URL is a valid TikTok music URL we can parse */
