@@ -67,7 +67,7 @@ export default function SmoothSelect({
       <PopoverTrigger asChild disabled={disabled}>
         <button
           type="button"
-          className="group w-full h-12 px-3 pr-10 rounded-xl text-left flex items-center gap-3 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="group w-full h-12 px-3 pr-10 rounded-xl text-left flex items-center gap-3 transition-colors disabled:opacity-50 disabled:cursor-not-allowed outline-none focus-visible:outline-none focus-visible:[border-color:var(--accent)] focus-visible:[box-shadow:0_0_0_3px_var(--accent-soft)]"
           style={{
             background: "var(--surface-2)",
             border: "1px solid var(--accent-hairline)",

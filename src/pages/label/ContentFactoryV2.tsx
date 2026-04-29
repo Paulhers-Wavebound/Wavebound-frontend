@@ -320,6 +320,19 @@ export default function ContentFactoryV2() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [legacy]);
 
+  // Extend the CFV2 token scope to Radix portals (popovers, dialogs) while
+  // this page is mounted. Without this, anything that portals to body — every
+  // shadcn Popover, including the artist/voice/narrator pickers and the Lead
+  // Hunter Recent popover — loses the CFV2 token namespace and renders
+  // transparent. The matching CSS selector lives in src/index.css alongside
+  // the [data-cfv2="true"] block.
+  useEffect(() => {
+    document.body.classList.add("cfv2-portal-tokens");
+    return () => {
+      document.body.classList.remove("cfv2-portal-tokens");
+    };
+  }, []);
+
   // Handoff state — Explore's tool cards set draftPreset, then push the user
   // into the Create tab with the right form pre-selected. Cleared after the
   // CreateView consumes it.
@@ -2421,9 +2434,10 @@ export default function ContentFactoryV2() {
     [queue, labelId, queryClient],
   );
 
-  // Aggregate generating placeholders by fanBriefJobId so the global "Active
-  // jobs" strip can render one card per job instead of one per placeholder.
-  // The user clicks a card to jump straight to Review.
+  // Aggregate generating placeholders for the global "Active jobs" rail.
+  // Multi-output fan-brief runs share a fanBriefJobId — group those into one
+  // tile. Other generating jobs (story preset, lyric overlay, etc.) get one
+  // tile each, keyed by the queue row's own id. Click → jump to Review.
   const activeJobs = useMemo(() => {
     const byJob = new Map<
       string,
@@ -2436,15 +2450,15 @@ export default function ContentFactoryV2() {
       }
     >();
     for (const q of queue) {
-      if (q.status !== "generating" || !q.fanBriefJobId) continue;
-      const existing = byJob.get(q.fanBriefJobId);
+      if (q.status !== "generating") continue;
+      const key = q.fanBriefJobId ?? q.id;
+      const existing = byJob.get(key);
       if (existing) {
         existing.count += 1;
-        // Prefer a non-default stage label if any placeholder has one.
         if (q.jobStage && !existing.stage) existing.stage = q.jobStage;
       } else {
-        byJob.set(q.fanBriefJobId, {
-          jobId: q.fanBriefJobId,
+        byJob.set(key, {
+          jobId: key,
           artistHandle: q.artistDisplayHandle ?? "—",
           source: q.outputType,
           count: 1,

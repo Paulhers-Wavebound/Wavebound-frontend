@@ -413,9 +413,14 @@ All colors MUST be HSL. Glassmorphism with teal-blue gradients.
      Scoped overrides applied only when [data-cfv2="true"] is on the page root.
      Deeper neutral-cool darks, single-family display font, accent glow tokens.
      Wavebound burn orange stays as --accent.
-     See ~/.claude/skills/higgsfield-aesthetic for the full design language.
+     The second selector extends the same scope to Radix popover/dialog portals
+     while CFV2 is mounted (body.cfv2-portal-tokens is toggled by the page
+     useEffect). Without it, popovers portal to body and lose every CFV2 token,
+     rendering transparent. See ~/.claude/skills/higgsfield-aesthetic.
   ======================================== */
-  [data-cfv2="true"] {
+  [data-cfv2="true"],
+  body.cfv2-portal-tokens [data-radix-popper-content-wrapper],
+  body.cfv2-portal-tokens [data-radix-portal] {
     /* Surface tiers — neutral-cool, slightly cooler than the default dark theme */
     --bg: #0f1113;
     --bg-subtle: #14171a;
