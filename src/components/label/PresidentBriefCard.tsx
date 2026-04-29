@@ -4,6 +4,7 @@ import { MessageCircle, Check } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { formatDistanceToNow } from "date-fns";
 import InfoPopover from "@/components/sound-intelligence/InfoPopover";
+import { renderBriefText } from "@/utils/briefText";
 
 function getGreeting(): string {
   const h = new Date().getHours();
@@ -171,13 +172,13 @@ export default function PresidentBriefCard({
             return (
               <div>
                 <p className="text-[15px] leading-[1.85]" style={pStyle}>
-                  {situation}
+                  {renderBriefText(situation)}
                 </p>
                 {action && (
                   <>
                     <hr className="border-t border-white/[0.06] my-5" />
                     <p className="text-[15px] leading-[1.85]" style={pStyle}>
-                      {action}
+                      {renderBriefText(action)}
                     </p>
                   </>
                 )}

@@ -46,6 +46,7 @@ import {
   saveToReachLabel,
   getTierGroup,
 } from "@/data/contentDashboardHelpers";
+import { renderBriefText } from "@/utils/briefText";
 
 /* ─── Artist avatar with initials fallback ────────────────── */
 
@@ -672,7 +673,7 @@ function ExpandedRow({
                     {artist.weekly_pulse.focused_sound.title}
                   </span>
                   <p className="text-[11px] text-white/55 leading-relaxed mt-1">
-                    {artist.weekly_pulse.focused_sound.reason}
+                    {renderBriefText(artist.weekly_pulse.focused_sound.reason)}
                   </p>
                 </div>
               </motion.div>
@@ -693,7 +694,7 @@ function ExpandedRow({
                   <span className="font-semibold">Catalog alert:</span> &quot;
                   {artist.weekly_pulse.catalogue_alert.title}&quot;{" "}
                   {artist.weekly_pulse.catalogue_alert.delta} &mdash;{" "}
-                  {artist.weekly_pulse.catalogue_alert.reason}
+                  {renderBriefText(artist.weekly_pulse.catalogue_alert.reason)}
                 </p>
               </motion.div>
             )}
@@ -740,7 +741,7 @@ function ExpandedRow({
               >
                 <Lightbulb size={13} className="shrink-0 text-[#e8430a]/70" />
                 <p className="text-[11px] text-[#e8430a]/90 leading-tight">
-                  {derivePriorityAction(artist)}
+                  {renderBriefText(derivePriorityAction(artist))}
                 </p>
               </motion.div>
             )}
@@ -867,7 +868,10 @@ function ColumnTooltip({ text }: { text: string }) {
             <HelpCircle size={11} />
           </button>
         </TooltipTrigger>
-        <TooltipContent side="top" className="max-w-[220px] text-xs leading-relaxed">
+        <TooltipContent
+          side="top"
+          className="max-w-[220px] text-xs leading-relaxed"
+        >
           {text}
         </TooltipContent>
       </Tooltip>
@@ -893,7 +897,9 @@ function SortHeader({
   tooltip?: string;
 }) {
   return (
-    <span className={`flex items-center gap-1 ${align === "right" ? "ml-auto" : ""}`}>
+    <span
+      className={`flex items-center gap-1 ${align === "right" ? "ml-auto" : ""}`}
+    >
       <button
         onClick={() => onSort(sk)}
         className={`flex items-center gap-0.5 text-[10px] font-semibold tracking-wider uppercase transition-colors ${
@@ -1036,7 +1042,7 @@ function ArtistCard({
               {focused.title}
             </p>
             <p className="text-[10px] text-white/45 leading-relaxed">
-              {focused.reason}
+              {renderBriefText(focused.reason)}
             </p>
           </div>
         </div>

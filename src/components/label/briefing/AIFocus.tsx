@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import InfoTooltip from "@/components/label/intelligence/InfoTooltip";
 import { STAT_TOOLTIPS } from "@/lib/statTooltips";
+import { renderBriefText } from "@/utils/briefText";
 
 // ─── Types ───────────────────────────────────────────────────────
 
@@ -243,7 +244,7 @@ export default function AIFocus({ pulse, generatedAt }: AIFocusProps) {
                 WebkitFontSmoothing: "antialiased",
               }}
             >
-              {focus.reason}
+              {renderBriefText(focus.reason)}
             </div>
 
             {/* Decision — the actionable takeaway */}
@@ -276,7 +277,7 @@ export default function AIFocus({ pulse, generatedAt }: AIFocusProps) {
                   color: "rgba(255,255,255,0.80)",
                 }}
               >
-                {focus.action}
+                {renderBriefText(focus.action)}
               </div>
             </div>
           </div>
@@ -363,7 +364,7 @@ export default function AIFocus({ pulse, generatedAt }: AIFocusProps) {
                 marginBottom: 12,
               }}
             >
-              {pulse.catalogue_alert.reason}
+              {renderBriefText(pulse.catalogue_alert.reason)}
             </div>
             <div
               style={{
@@ -374,7 +375,7 @@ export default function AIFocus({ pulse, generatedAt }: AIFocusProps) {
                 fontStyle: "italic",
               }}
             >
-              {pulse.catalogue_alert.action}
+              {renderBriefText(pulse.catalogue_alert.action)}
             </div>
           </div>
         </div>
@@ -454,7 +455,7 @@ export default function AIFocus({ pulse, generatedAt }: AIFocusProps) {
                         color: "rgba(255,255,255,0.45)",
                       }}
                     >
-                      {opp.reason}
+                      {renderBriefText(opp.reason)}
                     </div>
                   </div>
                 </div>

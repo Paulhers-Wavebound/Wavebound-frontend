@@ -6,6 +6,7 @@ import { formatDistanceToNow } from "date-fns";
 import type { ContentBriefing } from "@/data/contentDashboardHelpers";
 import type { BriefSection } from "@/hooks/useIntelligenceBriefs";
 import InfoPopover from "@/components/sound-intelligence/InfoPopover";
+import { renderBriefText } from "@/utils/briefText";
 
 export default function ContentBriefingCard({
   briefing,
@@ -153,7 +154,7 @@ export default function ContentBriefingCard({
                 className="text-[15px] leading-[1.85]"
                 style={{ color: "rgba(255,255,255,0.75)" }}
               >
-                {p}
+                {renderBriefText(p)}
               </p>
             ))}
 
