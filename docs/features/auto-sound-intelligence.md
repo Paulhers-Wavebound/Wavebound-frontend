@@ -21,6 +21,7 @@ Label managers use this to monitor how their roster artists' sounds perform on T
 
 - Filter tabs: All / Roster / Competitor — filter by `source` field
 - "Track Sound" button opens collapsible input for manually adding competitor sounds
+- Pasting multiple TikTok `/music/` links creates a merged canonical sound, documented in `docs/features/sound-id-merge.md`
 - Source badges on all cards: "Auto @handle" (orange) or "Manual" (subtle)
 - Grid and list views both show source information
 - PDF export and view toggle in top action bar

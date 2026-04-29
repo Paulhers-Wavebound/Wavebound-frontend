@@ -34,12 +34,23 @@ import {
   ChevronRight,
   Clock,
   Zap,
-  User,
+  GitMerge,
 } from "lucide-react";
 import { exportOverviewPDF } from "@/utils/exportAnalysis";
 import MonitoringBadge from "@/components/sound-intelligence/MonitoringBadge";
 import NextCheckCountdown from "@/components/sound-intelligence/NextCheckCountdown";
 import SoundAlertBell from "@/components/sound-intelligence/SoundAlertBell";
+import {
+  buildSoundGroupSummary,
+  SoundGroupSummary,
+} from "@/utils/soundGroupAggregation";
+import {
+  createSoundGroupFromUrls,
+  extractSoundUrls,
+  getGroupedJobIds,
+  listSoundGroups,
+} from "@/utils/soundGroupApi";
+import type { SoundCanonicalGroup } from "@/types/soundIntelligence";
 
 /** Stall threshold: 3 min for refreshing (fast), 15 min for others */
 function stallThresholdMs(status: string): number {
@@ -67,6 +78,7 @@ export default function SoundIntelligenceOverview() {
   const navigate = useNavigate();
   const { labelId } = useUserProfile();
   const [searchInput, setSearchInput] = useState("");
+  const [groupNameInput, setGroupNameInput] = useState("");
   const [urlWarning, setUrlWarning] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showCompetitorInput, setShowCompetitorInput] = useState(false);
@@ -75,6 +87,7 @@ export default function SoundIntelligenceOverview() {
     Map<string, { scraped: number; analyzed: number; lastChanged: number }>
   >(new Map());
   const [entries, setEntries] = useState<ListAnalysisEntry[]>([]);
+  const [soundGroups, setSoundGroups] = useState<SoundCanonicalGroup[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [fetchError, setFetchError] = useState(false);
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
@@ -83,8 +96,12 @@ export default function SoundIntelligenceOverview() {
   const fetchList = useCallback(async () => {
     if (!labelId) return;
     try {
-      const data = await listSoundAnalyses(labelId);
+      const [data, groups] = await Promise.all([
+        listSoundAnalyses(labelId),
+        listSoundGroups(labelId),
+      ]);
       setEntries(data);
+      setSoundGroups(groups);
 
       const now = Date.now();
       const snaps = progressSnapshots.current;
@@ -156,10 +173,48 @@ export default function SoundIntelligenceOverview() {
     return entries.filter((e) => e.source !== "auto_discovery");
   }, [entries, sourceFilter]);
 
+  const groupedJobIds = useMemo(
+    () => getGroupedJobIds(soundGroups),
+    [soundGroups],
+  );
+  const ungroupedEntries = useMemo(
+    () => entries.filter((entry) => !groupedJobIds.has(entry.job_id)),
+    [entries, groupedJobIds],
+  );
+  const groupedSummaries = useMemo(
+    () =>
+      soundGroups
+        .map((group) => buildSoundGroupSummary(group, entries))
+        .filter((summary) => summary.totalCount > 0),
+    [soundGroups, entries],
+  );
+
+  const groupMatchesSource = useCallback(
+    (group: SoundCanonicalGroup) => {
+      if (sourceFilter === "all") return true;
+      const groupEntries = group.members
+        .map((member) => entries.find((entry) => entry.job_id === member.job_id))
+        .filter((entry): entry is ListAnalysisEntry => Boolean(entry));
+      if (sourceFilter === "roster") {
+        return groupEntries.some((entry) => entry.source === "auto_discovery");
+      }
+      return groupEntries.some((entry) => entry.source !== "auto_discovery");
+    },
+    [entries, sourceFilter],
+  );
+
+  const visibleGroupSummaries = useMemo(
+    () =>
+      groupedSummaries.filter((summary) => groupMatchesSource(summary.group)),
+    [groupMatchesSource, groupedSummaries],
+  );
+
   const processing = filteredEntries.filter((e) =>
     (PROCESSING_STATUSES as readonly string[]).includes(e.status),
   );
-  const completed = filteredEntries.filter((e) => e.status === "completed");
+  const completed = filteredEntries.filter(
+    (e) => e.status === "completed" && !groupedJobIds.has(e.job_id),
+  );
 
   // Group roster sounds by artist
   const rosterByArtist = useMemo(() => {
@@ -174,25 +229,81 @@ export default function SoundIntelligenceOverview() {
     return groups;
   }, [entries]);
 
-  const rosterCount = entries.filter(
-    (e) => e.source === "auto_discovery",
-  ).length;
-  const manualCount = entries.filter(
-    (e) => e.source !== "auto_discovery",
-  ).length;
+  const canonicalItems = useMemo(() => {
+    const groupItems = groupedSummaries.map((summary) => ({
+      type: "group" as const,
+      group: summary.group,
+    }));
+    const entryItems = ungroupedEntries.map((entry) => ({
+      type: "entry" as const,
+      entry,
+    }));
+    return [...groupItems, ...entryItems];
+  }, [groupedSummaries, ungroupedEntries]);
+
+  const rosterCount = canonicalItems.filter((item) => {
+    if (item.type === "entry") return item.entry.source === "auto_discovery";
+    return item.group.members.some((member) =>
+      entries.some(
+        (entry) =>
+          entry.job_id === member.job_id && entry.source === "auto_discovery",
+      ),
+    );
+  }).length;
+  const manualCount = canonicalItems.filter((item) => {
+    if (item.type === "entry") return item.entry.source !== "auto_discovery";
+    return item.group.members.some((member) =>
+      entries.some(
+        (entry) =>
+          entry.job_id === member.job_id && entry.source !== "auto_discovery",
+      ),
+    );
+  }).length;
+  const allCount = canonicalItems.length;
+  const pastedSoundUrls = useMemo(
+    () => extractSoundUrls(searchInput),
+    [searchInput],
+  );
 
   const handleSubmit = async () => {
     if (!searchInput.trim() || isSubmitting) return;
 
-    const validation = validateSoundUrl(searchInput.trim());
+    const soundUrls = extractSoundUrls(searchInput);
+    const isMergedSubmit = soundUrls.length > 1;
+    const validation = isMergedSubmit
+      ? { valid: true as const }
+      : validateSoundUrl(searchInput.trim());
     if (!validation.valid) {
       setUrlWarning(validation.reason || "Invalid URL");
+      return;
+    }
+    if (!labelId) {
+      setUrlWarning("Your label profile is still loading. Try again in a moment.");
+      return;
+    }
+    if (isMergedSubmit && soundUrls.length < 2) {
+      setUrlWarning("Paste at least two distinct TikTok sound URLs to merge.");
       return;
     }
     setUrlWarning(null);
 
     setIsSubmitting(true);
     try {
+      if (isMergedSubmit) {
+        const group = await createSoundGroupFromUrls({
+          labelId,
+          urls: soundUrls,
+          name: groupNameInput,
+          existingEntries: entries,
+        });
+        await fetchList();
+        navigate(`/label/sound-intelligence/groups/${group.id}`);
+        setSearchInput("");
+        setGroupNameInput("");
+        setShowCompetitorInput(false);
+        return;
+      }
+
       const soundId = extractSoundId(searchInput.trim());
 
       if (soundId) {
@@ -239,6 +350,7 @@ export default function SoundIntelligenceOverview() {
         ]);
       }
       setSearchInput("");
+      setGroupNameInput("");
       setShowCompetitorInput(false);
     } catch (err: any) {
       toast({
@@ -373,7 +485,7 @@ export default function SoundIntelligenceOverview() {
           <div style={{ display: "flex", gap: 4 }}>
             {(
               [
-                { key: "all", label: "All", count: entries.length },
+                { key: "all", label: "All", count: allCount },
                 { key: "roster", label: "Roster", count: rosterCount },
                 { key: "manual", label: "Competitor", count: manualCount },
               ] as const
@@ -509,35 +621,83 @@ export default function SoundIntelligenceOverview() {
           <div style={{ marginBottom: 24 }}>
             <div
               style={{
-                display: "flex",
+                display: "grid",
+                gridTemplateColumns: "20px minmax(0, 1fr) auto",
                 gap: 12,
                 background: "var(--surface)",
                 borderRadius: 16,
-                padding: "8px 8px 8px 20px",
+                padding: "14px 14px 14px 20px",
                 borderTop: "0.5px solid var(--card-edge)",
-                alignItems: "center",
+                alignItems: "start",
               }}
             >
-              <Search size={18} color="var(--ink-tertiary)" />
-              <input
-                value={searchInput}
-                onChange={(e) => {
-                  setSearchInput(e.target.value);
-                  setUrlWarning(null);
-                }}
-                onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
-                aria-label="TikTok sound URL"
-                placeholder="Paste a TikTok sound URL to track a competitor sound"
-                style={{
-                  flex: 1,
-                  background: "none",
-                  border: "none",
-                  outline: "none",
-                  fontFamily: '"DM Sans", sans-serif',
-                  fontSize: 15,
-                  color: "var(--ink)",
-                }}
+              <Search
+                size={18}
+                color="var(--ink-tertiary)"
+                style={{ marginTop: 10 }}
               />
+              <div style={{ minWidth: 0 }}>
+                {pastedSoundUrls.length > 1 && (
+                  <input
+                    value={groupNameInput}
+                    onChange={(e) => setGroupNameInput(e.target.value)}
+                    aria-label="Merged sound name"
+                    placeholder="Merged sound name (optional)"
+                    style={{
+                      width: "100%",
+                      background: "var(--bg-subtle)",
+                      border: "1px solid var(--border)",
+                      borderRadius: 10,
+                      outline: "none",
+                      fontFamily: '"DM Sans", sans-serif',
+                      fontSize: 14,
+                      color: "var(--ink)",
+                      padding: "9px 12px",
+                      marginBottom: 8,
+                    }}
+                  />
+                )}
+                <textarea
+                  value={searchInput}
+                  onChange={(e) => {
+                    setSearchInput(e.target.value);
+                    setUrlWarning(null);
+                  }}
+                  aria-label="TikTok sound URLs"
+                  placeholder="Paste one TikTok sound URL, or multiple /music/ links on separate lines to merge IDs under one sound"
+                  rows={pastedSoundUrls.length > 1 ? 4 : 1}
+                  style={{
+                    width: "100%",
+                    minHeight: pastedSoundUrls.length > 1 ? 104 : 42,
+                    resize: "vertical",
+                    background: "none",
+                    border: "none",
+                    outline: "none",
+                    fontFamily: '"DM Sans", sans-serif',
+                    fontSize: 15,
+                    lineHeight: 1.45,
+                    color: "var(--ink)",
+                    padding: "9px 0",
+                  }}
+                />
+                {pastedSoundUrls.length > 1 && (
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                      fontFamily: '"DM Sans", sans-serif',
+                      fontSize: 12,
+                      color: "var(--ink-tertiary)",
+                      marginTop: 6,
+                    }}
+                  >
+                    <GitMerge size={13} color="var(--accent)" />
+                    {pastedSoundUrls.length} sound IDs will be merged into one
+                    canonical monitored sound.
+                  </div>
+                )}
+              </div>
               <button
                 onClick={handleSubmit}
                 disabled={isSubmitting || !searchInput.trim()}
@@ -555,7 +715,13 @@ export default function SoundIntelligenceOverview() {
                   transition: "opacity 150ms",
                 }}
               >
-                {isSubmitting ? "Analyzing..." : "Analyze Sound"}
+                {isSubmitting
+                  ? pastedSoundUrls.length > 1
+                    ? "Merging..."
+                    : "Analyzing..."
+                  : pastedSoundUrls.length > 1
+                    ? "Merge IDs"
+                    : "Analyze Sound"}
               </button>
             </div>
             {urlWarning && (
@@ -801,6 +967,61 @@ export default function SoundIntelligenceOverview() {
                   </div>
                 );
               })}
+            </div>
+          </div>
+        )}
+
+        {/* Merged canonical sounds */}
+        {visibleGroupSummaries.length > 0 && (
+          <div style={{ marginBottom: 40 }}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                marginBottom: 16,
+              }}
+            >
+              <h2
+                style={{
+                  fontFamily: '"DM Sans", sans-serif',
+                  fontSize: 14,
+                  fontWeight: 600,
+                  color: "var(--ink-tertiary)",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.05em",
+                }}
+              >
+                Merged Sounds
+              </h2>
+              <span
+                style={{
+                  fontFamily: '"DM Sans", sans-serif',
+                  fontSize: 12,
+                  color: "var(--ink-faint)",
+                }}
+              >
+                Combined read, individual sound ID filters inside
+              </span>
+            </div>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fill, minmax(360px, 1fr))",
+                gap: 16,
+              }}
+            >
+              {visibleGroupSummaries.map((summary) => (
+                <MergedSoundCard
+                  key={summary.group.id}
+                  summary={summary}
+                  onClick={() =>
+                    navigate(
+                      `/label/sound-intelligence/groups/${summary.group.id}`,
+                    )
+                  }
+                />
+              ))}
             </div>
           </div>
         )}
@@ -1489,5 +1710,289 @@ export default function SoundIntelligenceOverview() {
         }
       `}</style>
     </>
+  );
+}
+
+function MergedSoundCard({
+  summary,
+  onClick,
+}: {
+  summary: SoundGroupSummary;
+  onClick: () => void;
+}) {
+  const vCfg =
+    velocityStatusConfig[summary.velocityStatus] || velocityStatusConfig.active;
+  const StatusIcon = vCfg.Icon;
+
+  return (
+    <div
+      onClick={onClick}
+      style={{
+        background: "var(--surface)",
+        borderRadius: 16,
+        padding: 24,
+        borderTop: "0.5px solid var(--card-edge)",
+        cursor: "pointer",
+        transition: "transform 150ms, background 150ms",
+      }}
+      onMouseEnter={(e) => {
+        (e.currentTarget as HTMLDivElement).style.transform =
+          "translateY(-2px)";
+        (e.currentTarget as HTMLDivElement).style.background =
+          "var(--surface-hover)";
+      }}
+      onMouseLeave={(e) => {
+        (e.currentTarget as HTMLDivElement).style.transform = "translateY(0)";
+        (e.currentTarget as HTMLDivElement).style.background = "var(--surface)";
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          gap: 12,
+          marginBottom: 14,
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            gap: 12,
+            alignItems: "center",
+            minWidth: 0,
+          }}
+        >
+          {summary.coverUrl ? (
+            <img
+              src={summary.coverUrl}
+              alt={`${summary.trackName} cover art`}
+              style={{
+                width: 42,
+                height: 42,
+                borderRadius: 8,
+                objectFit: "cover",
+                flexShrink: 0,
+                background: "var(--surface-hover)",
+              }}
+            />
+          ) : (
+            <div
+              style={{
+                width: 42,
+                height: 42,
+                borderRadius: 8,
+                flexShrink: 0,
+                background: "var(--surface-hover)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Music size={18} color="var(--ink-tertiary)" />
+            </div>
+          )}
+          <div style={{ minWidth: 0 }}>
+            <div
+              style={{
+                fontFamily: '"DM Sans", sans-serif',
+                fontSize: 17,
+                fontWeight: 700,
+                color: "var(--ink)",
+                marginBottom: 4,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {summary.trackName}
+            </div>
+            <div
+              style={{
+                fontFamily: '"DM Sans", sans-serif',
+                fontSize: 13,
+                color: "var(--ink-tertiary)",
+              }}
+            >
+              {summary.artistName}
+            </div>
+          </div>
+        </div>
+        <div
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 5,
+            alignSelf: "flex-start",
+            padding: "4px 10px",
+            borderRadius: 8,
+            background: "rgba(232,67,10,0.12)",
+            color: "var(--accent)",
+            fontFamily: '"DM Sans", sans-serif',
+            fontSize: 11,
+            fontWeight: 700,
+            textTransform: "uppercase",
+            flexShrink: 0,
+          }}
+        >
+          <GitMerge size={12} />
+          {summary.totalCount} IDs
+        </div>
+      </div>
+
+      <div
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          gap: 6,
+          marginBottom: 16,
+        }}
+      >
+        {summary.soundIds.slice(0, 4).map((soundId) => (
+          <span
+            key={soundId}
+            style={{
+              padding: "4px 8px",
+              borderRadius: 8,
+              background: "var(--bg-subtle)",
+              color: "var(--ink-tertiary)",
+              fontFamily: '"JetBrains Mono", monospace',
+              fontSize: 11,
+              fontWeight: 700,
+            }}
+          >
+            {soundId}
+          </span>
+        ))}
+        {summary.soundIds.length > 4 && (
+          <span
+            style={{
+              padding: "4px 8px",
+              borderRadius: 8,
+              background: "var(--bg-subtle)",
+              color: "var(--ink-faint)",
+              fontFamily: '"DM Sans", sans-serif',
+              fontSize: 11,
+              fontWeight: 700,
+            }}
+          >
+            +{summary.soundIds.length - 4}
+          </span>
+        )}
+      </div>
+
+      <div
+        style={{
+          display: "flex",
+          gap: 20,
+          marginBottom: 16,
+          flexWrap: "wrap",
+        }}
+      >
+        {[
+          { label: "Videos", value: formatNumber(summary.videosAnalyzed) },
+          { label: "Views", value: formatNumber(summary.totalViews) },
+          {
+            label: "Engagement",
+            value:
+              summary.engagementRate == null
+                ? "-"
+                : `${summary.engagementRate.toFixed(1)}%`,
+          },
+          {
+            label: "Shares",
+            value:
+              summary.shareRate == null
+                ? "-"
+                : `${summary.shareRate.toFixed(1)}%`,
+          },
+        ].map((stat) => (
+          <div key={stat.label}>
+            <div
+              style={{
+                fontFamily: '"DM Sans", sans-serif',
+                fontSize: 11,
+                color: "var(--ink-faint)",
+                marginBottom: 2,
+                textTransform: "uppercase",
+              }}
+            >
+              {stat.label}
+            </div>
+            <div
+              style={{
+                fontFamily: '"DM Sans", sans-serif',
+                fontSize: 15,
+                fontWeight: 600,
+                color: "var(--ink)",
+              }}
+            >
+              {stat.value}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 12,
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 4,
+              padding: "4px 10px",
+              borderRadius: 20,
+              background: `${vCfg.color}18`,
+            }}
+          >
+            <StatusIcon size={12} color={vCfg.color} />
+            <span
+              style={{
+                fontFamily: '"DM Sans", sans-serif',
+                fontSize: 11,
+                fontWeight: 700,
+                color: vCfg.color,
+                textTransform: "uppercase",
+              }}
+            >
+              {vCfg.label}
+            </span>
+          </div>
+          {summary.winnerFormat && (
+            <span
+              style={{
+                fontFamily: '"DM Sans", sans-serif',
+                fontSize: 12,
+                color: "var(--ink-secondary)",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {summary.winnerFormat}
+              {summary.winnerMultiplier > 0
+                ? ` ${summary.winnerMultiplier.toFixed(1)}x`
+                : ""}
+            </span>
+          )}
+        </div>
+        <span
+          style={{
+            fontFamily: '"DM Sans", sans-serif',
+            fontSize: 11,
+            color: "var(--ink-faint)",
+            flexShrink: 0,
+          }}
+        >
+          {summary.lastUpdated ? timeAgo(summary.lastUpdated) : "Queued"}
+        </span>
+      </div>
+    </div>
   );
 }

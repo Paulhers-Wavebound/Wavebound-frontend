@@ -15,6 +15,7 @@ const SoundIntelligenceOverview = lazy(
 const SoundIntelligenceDetail = lazy(
   () => import("./pages/label/SoundIntelligenceDetail"),
 );
+const SoundGroupDetail = lazy(() => import("./pages/label/SoundGroupDetail"));
 const SoundComparison = lazy(() => import("./pages/label/SoundComparison"));
 const LabelAmplification = lazy(
   () => import("./pages/label/LabelAmplification"),
@@ -313,6 +314,17 @@ const App = () => {
                                           preview={<SoundIntelligencePreview />}
                                         >
                                           <SoundComparison />
+                                        </PreviewGate>
+                                      }
+                                    />
+                                    <Route
+                                      path="sound-intelligence/groups/:groupId"
+                                      element={
+                                        <PreviewGate
+                                          featureId="sound-intelligence"
+                                          preview={<SoundIntelligencePreview />}
+                                        >
+                                          <SoundGroupDetail />
                                         </PreviewGate>
                                       }
                                     />

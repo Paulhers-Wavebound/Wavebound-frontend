@@ -186,6 +186,14 @@ function useBreadcrumbs(): Crumb[] {
       return [{ label: exactLabel, path: pathname }];
     }
 
+    // Dynamic: /label/sound-intelligence/groups/:groupId
+    if (pathname.startsWith("/label/sound-intelligence/groups/")) {
+      return [
+        { label: "Sound Intelligence", path: "/label/sound-intelligence" },
+        { label: pageTitle || "Merged Sound", path: pathname },
+      ];
+    }
+
     // Dynamic: /label/sound-intelligence/:jobId
     if (
       pathname.startsWith("/label/sound-intelligence/") &&

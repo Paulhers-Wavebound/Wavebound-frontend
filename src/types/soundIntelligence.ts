@@ -448,6 +448,31 @@ export interface SoundComparisonDeltas {
   >;
 }
 
+export interface SoundCanonicalGroupMember {
+  id: string;
+  group_id: string;
+  label_id: string;
+  job_id: string;
+  sound_id: string;
+  sound_url: string;
+  alias_label: string | null;
+  added_by: string | null;
+  created_at: string;
+}
+
+export interface SoundCanonicalGroup {
+  id: string;
+  label_id: string;
+  name: string;
+  artist_name: string | null;
+  cover_url: string | null;
+  primary_job_id: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+  members: SoundCanonicalGroupMember[];
+}
+
 export interface SoundIntelligenceState {
   jobId: string | null;
   soundId: string | null;
