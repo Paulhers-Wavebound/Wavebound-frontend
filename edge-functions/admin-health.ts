@@ -151,6 +151,8 @@ Deno.serve(async (req: Request) => {
       handleHealthResult,
       songEntitiesResult,
       songsObservedTodayResult,
+      cadenceMetricsResult,
+      cadenceDriftResult,
       ...dbtCountResults
     ] = await Promise.all([
       // Scraper runs — latest per scraper
@@ -176,6 +178,17 @@ Deno.serve(async (req: Request) => {
           "observed_at",
           new Date(Date.now() - 26 * 60 * 60 * 1000).toISOString(),
         ),
+      // Content & Social cadence truth — shared view + drift detector
+      supabase
+        .from("content_social_cadence_metrics")
+        .select("*", { count: "exact", head: true }),
+      supabase
+        .from("tiktok_cadence_drift_check")
+        .select(
+          "artist_handle,current_posting_cadence,expected_posting_cadence,current_days_since_last_post,expected_days_since_last_post",
+          { count: "exact" },
+        )
+        .limit(5),
       // dbt model row counts
       ...dbtCountQueries,
     ]);
@@ -282,9 +295,11 @@ Deno.serve(async (req: Request) => {
     var hasOverdue = scrapers.some(function (s: any) {
       return s.health === "overdue";
     });
+    var hasCadenceDrift =
+      !cadenceDriftResult.error && (cadenceDriftResult.count || 0) > 0;
     var overallHealth = hasRecentError
       ? "red"
-      : hasOverdue
+      : hasOverdue || hasCadenceDrift
         ? "yellow"
         : "green";
 
@@ -611,6 +626,31 @@ Deno.serve(async (req: Request) => {
                 : "low_coverage",
     };
 
+    var cadenceDriftError =
+      cadenceMetricsResult.error?.message ||
+      cadenceDriftResult.error?.message ||
+      null;
+    var cadenceDriftCount = cadenceDriftResult.error
+      ? null
+      : cadenceDriftResult.count || 0;
+    var cadenceArtistsChecked = cadenceMetricsResult.error
+      ? null
+      : cadenceMetricsResult.count || 0;
+    var cadenceDriftHealth = {
+      status: cadenceDriftError
+        ? "unknown"
+        : cadenceDriftCount === 0
+          ? "healthy"
+          : "drift",
+      drift_count: cadenceDriftCount,
+      artists_checked: cadenceArtistsChecked,
+      sample:
+        !cadenceDriftResult.error && cadenceDriftResult.data
+          ? cadenceDriftResult.data
+          : [],
+      error: cadenceDriftError,
+    };
+
     return jsonResponse({
       overall_health: overallHealth,
       scrapers_by_group: groups,
@@ -629,6 +669,7 @@ Deno.serve(async (req: Request) => {
       data_quality: dataQuality,
       handle_health: handleHealth,
       song_stream_coverage: songStreamCoverage,
+      cadence_drift: cadenceDriftHealth,
       // Ops dashboard additions
       api_quotas: ext ? apiQuotas : null,
       platform_id_trend: platformIdTrend.length > 0 ? platformIdTrend : null,

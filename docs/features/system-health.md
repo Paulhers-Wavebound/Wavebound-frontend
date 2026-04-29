@@ -13,16 +13,17 @@ Shows operational health in priority order:
 1. **Morning Briefing** — severity-ranked alert cards (errors, overdue scrapers, stale data, low API credits, unresolved entities)
 2. **Concurrent Scrapers** — how many scrapers are running right now
 3. **API Quota Gauges** — ScrapeCreators credits remaining + burn rate + projected exhaustion; YouTube Data API daily usage
-4. **Data Freshness** — per-platform staleness (fresh <8h, stale 8-26h, critical >26h)
-5. **Scraper Status** — grouped by schedule (4x_daily, daily, free_apis, dbt) with expandable run history
-6. **Cron Gap Detection** — highlights scrapers where gap between runs exceeds 2x expected interval
-7. **Data Totals** — row counts with daily pace bars
-8. **Platform Coverage Trend** — sparklines showing wb_platform_ids per platform over 7 days
-9. **Content Pipeline** — HITL pipeline status (TikTok + Reels)
-10. **Coverage Analysis** — geo, multi-platform, song coverage percentages
-11. **Unresolved Entities** — artists with 0 platform_ids (identity resolution failures)
-12. **Platform Breakdown** — per-platform observation/entity/country counts
-13. **dbt Health, Top Entities, Data Quality** — collapsible informational sections
+4. **Cadence Drift** — count of Content & Social artists where `tiktok_video_summary` has drifted from the shared roster-derived cadence view
+5. **Data Freshness** — per-platform staleness (fresh <8h, stale 8-26h, critical >26h)
+6. **Scraper Status** — grouped by schedule (4x_daily, daily, free_apis, dbt) with expandable run history
+7. **Cron Gap Detection** — highlights scrapers where gap between runs exceeds 2x expected interval
+8. **Data Totals** — row counts with daily pace bars
+9. **Platform Coverage Trend** — sparklines showing wb_platform_ids per platform over 7 days
+10. **Content Pipeline** — HITL pipeline status (TikTok + Reels)
+11. **Coverage Analysis** — geo, multi-platform, song coverage percentages
+12. **Unresolved Entities** — artists with 0 platform_ids (identity resolution failures)
+13. **Platform Breakdown** — per-platform observation/entity/country counts
+14. **dbt Health, Top Entities, Data Quality** — collapsible informational sections
 
 ## Sub-pages
 
@@ -50,6 +51,7 @@ Each sub-page fetches its own data independently. All pages share the sidebar na
 - Morning Briefing shows 0 items + green "All systems operational" when healthy
 - Morning Briefing surfaces up to 7 items ranked: critical (red) > warning (amber) > info (blue)
 - API quota gauges show green (>50%), amber (20-50%), red (<20%) based on remaining capacity
+- Cadence Drift summary tile shows `OK` when no rows drift, the drift count when non-zero, and a warning in Morning Briefing when drift exists
 - Cron gaps only appear when a scraper misses 1.5x its expected interval
 - Overview data comes from a single edge function call (`admin-health`)
 - Loading states show animated skeleton placeholders (not plain text)
@@ -60,6 +62,8 @@ Each sub-page fetches its own data independently. All pages share the sidebar na
 - **No API quota data yet**: ApiQuotaGauges section hidden until backend RPC returns the fields
 - **No platform_id_daily data**: PlatformCoverageTrend hidden
 - **No scraper_run_history**: CronGapDetection hidden
+- **Cadence drift view unavailable**: Summary tile shows `?` and "cadence view unavailable" without crashing the overview
+- **Cadence drift > 0**: Overall health becomes yellow and Morning Briefing shows a warning item
 - **All scrapers healthy**: Morning Briefing renders single green banner
 - **Auth failure**: Full-page error with HTTP status
 - **Sub-page crash**: Local ErrorBoundary catches the error, displays dark-themed fallback within the layout — sidebar stays visible for navigation

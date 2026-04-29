@@ -154,7 +154,8 @@ export interface BriefingItem {
     | "scraper_overdue"
     | "data_stale"
     | "api_quota"
-    | "unresolved";
+    | "unresolved"
+    | "cadence_drift";
   title: string;
   detail: string;
   scraper_name?: string;
@@ -249,6 +250,24 @@ export interface HandleHealthData {
   recent_changes: HandleHealthChange[];
 }
 
+/* ── Content & Social Cadence Drift ─────────────────── */
+
+export interface CadenceDriftSample {
+  artist_handle: string;
+  current_posting_cadence: string | null;
+  expected_posting_cadence: string | null;
+  current_days_since_last_post: number | null;
+  expected_days_since_last_post: number | null;
+}
+
+export interface CadenceDriftHealth {
+  status: "healthy" | "drift" | "unknown";
+  drift_count: number | null;
+  artists_checked: number | null;
+  sample: CadenceDriftSample[];
+  error: string | null;
+}
+
 /* ── Main response ───────────────────────────────────── */
 
 export interface HealthData {
@@ -271,4 +290,5 @@ export interface HealthData {
   unresolved_entities: UnresolvedEntities | null;
   scraper_run_history: ScraperRunHistoryEntry[] | null;
   handle_health: HandleHealthData | null;
+  cadence_drift: CadenceDriftHealth | null;
 }

@@ -55,6 +55,15 @@ type ReleaseCalendarRow = {
   last_seen_at: string | null;
   status: "ai_detected" | "confirmed" | "dismissed" | "manual";
 };
+type CadenceMetricRow = {
+  artist_handle: string;
+  posting_cadence: string | null;
+  consistency_score: number | null;
+  days_since_last_post: number | null;
+  posting_freq_7d: number | null;
+  posting_freq_30d: number | null;
+  has_drift: boolean;
+};
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -99,6 +108,9 @@ export function useContentDashboardData(): ContentDashboardData {
   const [releaseCalendarRaw, setReleaseCalendarRaw] = useState<
     ReleaseCalendarRow[]
   >([]);
+  const [cadenceMetricsRaw, setCadenceMetricsRaw] = useState<
+    CadenceMetricRow[]
+  >([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -118,6 +130,7 @@ export function useContentDashboardData(): ContentDashboardData {
       setSoundVelocityRaw([]);
       setWeeklyPulseRaw([]);
       setReleaseCalendarRaw([]);
+      setCadenceMetricsRaw([]);
       setLoading(false);
       return;
     }
@@ -168,12 +181,28 @@ export function useContentDashboardData(): ContentDashboardData {
         .then((rows) => rows as ReleaseCalendarRow[])
         .catch(() => [] as ReleaseCalendarRow[]);
 
+      const cadenceMetricsQuery = fetch(
+        `${SUPABASE_URL_RAW}/rest/v1/content_social_cadence_metrics?select=artist_handle,posting_cadence,consistency_score,days_since_last_post,posting_freq_7d,posting_freq_30d,has_drift&label_id=eq.${labelId}`,
+        {
+          headers: {
+            apikey: SUPABASE_ANON_KEY,
+            Authorization: `Bearer ${
+              authData.session?.access_token ?? SUPABASE_ANON_KEY
+            }`,
+          },
+        },
+      )
+        .then((res) => (res.ok ? res.json() : []))
+        .then((rows) => rows as CadenceMetricRow[])
+        .catch(() => [] as CadenceMetricRow[]);
+
       const [
         rosterRes,
         anomalyRes,
         siSoundsRes,
         soundVelocityRes,
         releaseCalendarRes,
+        cadenceMetricsRes,
       ] =
         await Promise.all([
           rosterQuery,
@@ -181,6 +210,7 @@ export function useContentDashboardData(): ContentDashboardData {
           siSoundsQuery,
           soundVelocityQuery,
           releaseCalendarQuery,
+          cadenceMetricsQuery,
         ]);
 
       if (rosterRes.error) {
@@ -197,6 +227,7 @@ export function useContentDashboardData(): ContentDashboardData {
       setSiSoundsRaw(siSoundsRes.data || []);
       setSoundVelocityRaw(soundVelocityRes.data || []);
       setReleaseCalendarRaw(releaseCalendarRes);
+      setCadenceMetricsRaw(cadenceMetricsRes);
 
       // Phase 2: Content DNA + Evolution (depend on roster handles)
       const handles = roster.map((r) => normalizeHandle(r.artist_handle));
@@ -347,6 +378,11 @@ export function useContentDashboardData(): ContentDashboardData {
       }
     }
 
+    const cadenceByHandle = new Map<string, CadenceMetricRow>();
+    for (const cadence of cadenceMetricsRaw) {
+      cadenceByHandle.set(normalizeHandle(cadence.artist_handle), cadence);
+    }
+
     // Sentiment: keyed by entity_id, take first (most recent) per entity
     const sentimentByHandle = new Map<string, SentimentRow>();
     for (const s of sentimentRaw) {
@@ -364,6 +400,7 @@ export function useContentDashboardData(): ContentDashboardData {
       const sentiment = sentimentByHandle.get(h);
       const sv = soundVelocityByHandle.get(h);
       const pulse = pulseByHandle.get(h);
+      const cadence = cadenceByHandle.get(h);
       const weeklyPulse = pulse?.weekly_pulse;
       const calendarRelease = releaseByHandle.get(h);
       const pulseRelease = weeklyPulse?.next_release;
@@ -404,9 +441,10 @@ export function useContentDashboardData(): ContentDashboardData {
         avatar_url: r.avatar_url,
         label_id: r.label_id,
         momentum_tier: r.momentum_tier,
-        days_since_last_post: r.days_since_last_post,
-        posting_freq_30d: r.posting_freq_30d,
-        posting_freq_7d: r.posting_freq_7d,
+        days_since_last_post:
+          cadence?.days_since_last_post ?? r.days_since_last_post,
+        posting_freq_30d: cadence?.posting_freq_30d ?? r.posting_freq_30d,
+        posting_freq_7d: cadence?.posting_freq_7d ?? r.posting_freq_7d,
         avg_views_30d: r.avg_views_30d,
         avg_views_7d: r.avg_views_7d,
         avg_engagement_30d: r.avg_engagement_30d,
@@ -449,8 +487,10 @@ export function useContentDashboardData(): ContentDashboardData {
         recent_top_format: evo?.recent_top_format ?? null,
         prior_top_format: evo?.prior_top_format ?? null,
         // Video summary
-        posting_cadence: summary?.posting_cadence ?? null,
-        consistency_score: summary?.consistency_score ?? null,
+        posting_cadence:
+          cadence?.posting_cadence ?? summary?.posting_cadence ?? null,
+        consistency_score:
+          cadence?.consistency_score ?? summary?.consistency_score ?? null,
         avg_engagement_rate: summary?.avg_engagement_rate ?? null,
         plays_trend_pct: summary?.plays_trend_pct ?? null,
         engagement_trend_pct: summary?.engagement_trend_pct ?? null,
@@ -486,6 +526,7 @@ export function useContentDashboardData(): ContentDashboardData {
     soundVelocityRaw,
     weeklyPulseRaw,
     releaseCalendarRaw,
+    cadenceMetricsRaw,
   ]);
 
   const anomalies = useMemo<ContentAnomaly[]>(

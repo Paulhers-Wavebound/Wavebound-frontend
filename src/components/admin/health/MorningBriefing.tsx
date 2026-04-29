@@ -101,6 +101,18 @@ function buildBriefingItems(data: HealthData): BriefingItem[] {
     });
   }
 
+  // 6. Content & Social cadence drift — warning
+  if (data.cadence_drift?.status === "drift") {
+    const driftCount = data.cadence_drift.drift_count ?? 0;
+    items.push({
+      severity: "warning",
+      category: "cadence_drift",
+      title: `${driftCount} cadence row${driftCount === 1 ? "" : "s"} drifting`,
+      detail:
+        "Content & Social posting cadence differs from the shared roster-derived view",
+    });
+  }
+
   // Sort: critical first, then warning, then info
   const order = { critical: 0, warning: 1, info: 2 };
   items.sort((a, b) => order[a.severity] - order[b.severity]);

@@ -107,6 +107,27 @@ export default function SystemStatusSummary({ data }: { data: HealthData }) {
   const FreshIcon =
     freshCount === totalPlatforms ? CheckCircle2 : AlertTriangle;
 
+  // Content & Social cadence drift
+  const cadence = data.cadence_drift;
+  const cadenceColor =
+    !cadence || cadence.status === "unknown"
+      ? "#9ca3af"
+      : cadence.status === "healthy"
+        ? "#34d399"
+        : "#f59e0b";
+  const CadenceIcon =
+    cadence?.status === "healthy" ? CheckCircle2 : AlertTriangle;
+  const cadenceValue =
+    !cadence || cadence.status === "unknown"
+      ? "?"
+      : cadence.drift_count === 0
+        ? "OK"
+        : `${cadence.drift_count}`;
+  const cadenceSub =
+    !cadence || cadence.status === "unknown"
+      ? "cadence view unavailable"
+      : `${cadence.artists_checked ?? 0} artists checked`;
+
   return (
     <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
       <StatCard
@@ -129,6 +150,13 @@ export default function SystemStatusSummary({ data }: { data: HealthData }) {
         sub="platforms fresh (<8h)"
         color={freshColor}
         icon={FreshIcon}
+      />
+      <StatCard
+        label="Cadence Drift"
+        value={cadenceValue}
+        sub={cadenceSub}
+        color={cadenceColor}
+        icon={CadenceIcon}
       />
     </div>
   );

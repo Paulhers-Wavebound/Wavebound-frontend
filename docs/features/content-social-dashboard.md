@@ -14,6 +14,7 @@ Label Content & Social managers use this to monitor roster posting health, conte
 - Posting Window column marks artists as `DROP IN Xd` for high/medium-confidence announced releases within 14 days, `FRESH RELEASE` for songs released in the last 30 days, or `QUIET` outside that window
 - Consistency pill is based on numeric 7-day/30-day posting frequency first, with categorical `posting_cadence` only as fallback; one recent post cannot make a low-cadence artist look `Hot`
 - Consistency pill shows the actual posts-per-week and recency evidence (`0.6/wk · 2d ago`, `3/wk · today`, etc.) and flags stale cadence conflicts with a warning tooltip
+- Roster cadence values prefer `content_social_cadence_metrics`, a shared DB view derived from `roster_dashboard_metrics`, before falling back to `tiktok_video_summary`
 - Upcoming-release pills expose provenance on hover: release title when known, source URL, evidence sentence, source type, and confidence
 - Artist profile Overview tab shows a Release Intel panel with the latest AI release scan result, source/evidence when found, and the last checked timestamp
 - Artist profile Release Intel panel lets a label user confirm a missed public upcoming release by entering the release date and source URL; the confirmed row immediately becomes the source for Posting Window logic
@@ -35,7 +36,7 @@ Label Content & Social managers use this to monitor roster posting health, conte
 - **Missing content DNA**: Artists without Gemini analysis show "—" for format/genre fields
 - **No upcoming-release brief**: Posting Window falls back to `days_since_release`; artists still show `FRESH RELEASE` when they released in the last 30 days
 - **Stale cadence category**: If `tiktok_video_summary.posting_cadence` says daily but roster frequency says under weekly, the numeric frequency wins, the artist shows `Inconsistent`/`At Risk` instead of `Hot`, and the pill can show a warning tooltip until the summary is backfilled
-- **Cadence drift**: `daily-tiktok-cadence-drift-sync` runs daily at `20 11 * * *` to realign `tiktok_video_summary.posting_cadence` and `days_since_last_post` with fresher roster metrics
+- **Cadence drift**: `content_social_cadence_metrics` is the shared derived source for roster/profile/health surfaces; `daily-tiktok-cadence-drift-sync` runs daily at `20 11 * * *` to realign `tiktok_video_summary.posting_cadence` and `days_since_last_post` with it
 - **Fresh null release scan**: Artist profile shows "No dated release found" plus the scan freshness, so a verified null is visibly different from "Not scanned yet"
 - **AI missed a public release**: A label user can confirm the date/source on the artist profile; the row is stored as `confirmed` with `source_type = manual` and high confidence
 - **Invalid or stale upcoming date**: Posting Window ignores invalid or past `next_release_date` values and falls back to recent-release detection
@@ -50,6 +51,7 @@ Label Content & Social managers use this to monitor roster posting health, conte
 | Table                       | What it provides                                                           |
 | --------------------------- | -------------------------------------------------------------------------- |
 | roster_dashboard_metrics    | Posting freq, views, engagement, release dates, momentum tier, risk flags  |
+| content_social_cadence_metrics | Shared roster-derived TikTok cadence, recency, consistency score, drift flag |
 | content_anomalies           | Performance spikes/drops, posting droughts                                 |
 | artist_intelligence         | AI brief `weekly_pulse.next_release` freshness and fallback fields         |
 | artist_release_calendar     | Structured upcoming release date, source URL, evidence, confidence, status |
