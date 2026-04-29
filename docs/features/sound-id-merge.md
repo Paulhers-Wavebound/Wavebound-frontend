@@ -31,10 +31,12 @@ Label Content & Social managers use this when the same song is scattered across 
 - Empty group members: the group shell can exist, but the detail page shows an analysis-pending state until at least one member completes.
 - Processing member IDs: completed IDs contribute to the aggregate immediately; queued/running IDs appear in the member table and fill in after the pipeline completes.
 - Duplicate IDs in pasted input: duplicate `sound_id`s are collapsed client-side before creation.
+- Stored TikTok URLs can be either `/music/Track-123`, `/music/123`, or `/music/-123`; all three parse to the same numeric sound ID.
 - ID already in a group: the database unique index blocks attaching the same job to another merged sound for the same label.
 - Mixed roster/competitor groups: source filters include the group when any member matches that source.
 - Monitoring charts: the aggregate view uses grouped snapshot history when at least two group-level buckets exist; selecting one ID still shows that ID's own monitoring history.
 - Suggested duplicates: suggestions ignore jobs already attached to a merged sound; low-confidence title/artist matches are marked separately from stronger ISRC/Spotify matches.
+- Suggested duplicates with fewer than two distinct `sound_id`s are hidden because they do not represent a true cross-ID merge.
 - Snoozed suggestions: snoozed candidates stay hidden until `snoozed_until`; if the sound IDs are still unmerged after that date, the suggestion can return.
 - Dismissed suggestions: dismissed candidates stay hidden for the label until a future admin reset is added.
 - Auto-merge: auto-merge only handles roster-only candidates matched by ISRC, Spotify track ID, or Spotify ID. Mixed roster/competitor and title/artist-only suggestions require manual review.

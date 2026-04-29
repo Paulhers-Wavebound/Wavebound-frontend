@@ -28,12 +28,11 @@ async function getAuthHeaders() {
 
 /** Extract the numeric sound_id from a TikTok music URL */
 export function extractSoundId(input: string): string | null {
-  // /music/Track-Name-1234567890 (standard)
-  const named = input.match(/\/music\/[^/]+-(\d+)/);
-  if (named) return named[1];
-  // /music/1234567890 (no track name, just digits)
-  const bare = input.match(/\/music\/(\d+)/);
-  if (bare) return bare[1];
+  const musicPath = input.match(/\/music\/([^/?#]+)/);
+  if (musicPath) {
+    const trailingDigits = musicPath[1].match(/(\d+)$/);
+    if (trailingDigits) return trailingDigits[1];
+  }
   return null;
 }
 

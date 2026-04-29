@@ -272,7 +272,9 @@ export async function listSoundDuplicateCandidates(
   );
 
   if (error) throw new Error(error.message);
-  return Array.isArray(data) ? data : [];
+  return Array.isArray(data)
+    ? data.filter((candidate) => soundCandidateToUrls(candidate).length >= 2)
+    : [];
 }
 
 export async function setSoundDuplicateCandidateDecision(params: {
@@ -496,7 +498,31 @@ export async function addExistingJobToSoundGroup(params: {
 export function soundCandidateToUrls(
   candidate: SoundDuplicateCandidate,
 ): string[] {
-  return candidate.sound_urls.filter(Boolean);
+  const urlsBySoundId = new Map<string, string>();
+
+  for (let index = 0; index < candidate.sound_ids.length; index += 1) {
+    const soundId = candidate.sound_ids[index];
+    if (!soundId || urlsBySoundId.has(soundId)) continue;
+
+    const storedUrl = candidate.sound_urls[index];
+    const parsedStoredId = storedUrl ? extractSoundId(storedUrl) : null;
+    urlsBySoundId.set(
+      soundId,
+      parsedStoredId === soundId
+        ? storedUrl
+        : `https://www.tiktok.com/music/${soundId}`,
+    );
+  }
+
+  for (const storedUrl of candidate.sound_urls) {
+    if (!storedUrl) continue;
+    const soundId = extractSoundId(storedUrl);
+    if (soundId && !urlsBySoundId.has(soundId)) {
+      urlsBySoundId.set(soundId, storedUrl);
+    }
+  }
+
+  return Array.from(urlsBySoundId.values());
 }
 
 export function soundCandidateName(candidate: SoundDuplicateCandidate): string {
