@@ -1,10 +1,17 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { SoundAnalysis, SoundMonitoring } from "@/types/soundIntelligence";
 import {
+  SoundAnalysis,
+  SoundCanonicalGroup,
+  SoundMonitoring,
+} from "@/types/soundIntelligence";
+import {
+  extractSoundId,
   getSoundAnalysis,
   formatNumber,
   JOB_STATUS_LABELS,
+  listSoundAnalyses,
+  ListAnalysisEntry,
 } from "@/utils/soundIntelligenceApi";
 import { toast } from "@/hooks/use-toast";
 import {
@@ -17,6 +24,8 @@ import {
   Star,
   Zap,
   Search,
+  GitMerge,
+  Music,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useLabelPermissions } from "@/hooks/useLabelPermissions";
@@ -31,6 +40,20 @@ import SoundAlertBell from "@/components/sound-intelligence/SoundAlertBell";
 import MonitoringTrendChart from "@/components/sound-intelligence/MonitoringTrendChart";
 import { useUserProfile } from "@/contexts/UserProfileContext";
 import { useSetPageTitle } from "@/contexts/PageTitleContext";
+import {
+  addExistingJobToSoundGroup,
+  createSoundGroupFromUrls,
+  extractSoundUrls,
+  listSoundGroups,
+} from "@/utils/soundGroupApi";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
 
 // V2 Zone Components
 import VerdictStrip from "@/components/sound-intelligence/VerdictStrip";
@@ -40,6 +63,43 @@ import PlaylistActivityFeed from "@/components/sound-intelligence/PlaylistActivi
 import FormatBreakdownTable from "@/components/sound-intelligence/FormatBreakdownTable";
 import CreatorActionList from "@/components/sound-intelligence/CreatorActionList";
 import DeepDiveSection from "@/components/sound-intelligence/DeepDiveSection";
+
+type SoundJobMeta = {
+  sound_id: string | null;
+  sound_url: string | null;
+  track_name: string | null;
+  artist_name: string | null;
+  album_name: string | null;
+  cover_url: string | null;
+  status: string | null;
+  videos_scraped: number | null;
+  videos_analyzed: number | null;
+  created_at: string | null;
+  completed_at: string | null;
+  last_refresh_at: string | null;
+  refresh_count: number | null;
+  source: "manual" | "auto_discovery" | null;
+  artist_handle: string | null;
+  tracking_expires_at: string | null;
+};
+
+const LIST_STATUSES = new Set<ListAnalysisEntry["status"]>([
+  "pending",
+  "scraping",
+  "classifying",
+  "synthesizing",
+  "refreshing",
+  "completed",
+  "failed",
+]);
+
+function coerceListStatus(
+  status: string | null | undefined,
+): ListAnalysisEntry["status"] {
+  return LIST_STATUSES.has(status as ListAnalysisEntry["status"])
+    ? (status as ListAnalysisEntry["status"])
+    : "completed";
+}
 
 export default function SoundIntelligenceDetail() {
   const { jobId } = useParams<{ jobId: string }>();
@@ -71,6 +131,12 @@ export default function SoundIntelligenceDetail() {
     null,
   );
   const [artistHandle, setArtistHandle] = useState<string | null>(null);
+  const [jobMeta, setJobMeta] = useState<SoundJobMeta | null>(null);
+  const [mergeOpen, setMergeOpen] = useState(false);
+  const [mergeInput, setMergeInput] = useState("");
+  const [merging, setMerging] = useState(false);
+  const [soundGroups, setSoundGroups] = useState<SoundCanonicalGroup[]>([]);
+  const [mergeEntries, setMergeEntries] = useState<ListAnalysisEntry[]>([]);
 
   // Check subscription status + source on mount
   useEffect(() => {
@@ -98,18 +164,63 @@ export default function SoundIntelligenceDetail() {
       try {
         const { data: job } = await supabase
           .from("sound_intelligence_jobs")
-          .select("source, artist_handle")
+          .select(
+            "sound_id,sound_url,track_name,artist_name,album_name,cover_url,status,videos_scraped,videos_analyzed,created_at,completed_at,last_refresh_at,refresh_count,source,artist_handle,tracking_expires_at",
+          )
           .eq("id", jobId)
           .maybeSingle();
         if (job) {
-          setSource(job.source ?? "manual");
+          const jobSource =
+            job.source === "auto_discovery" ? "auto_discovery" : "manual";
+          setSource(jobSource);
           setArtistHandle(job.artist_handle ?? null);
+          setJobMeta({
+            sound_id: job.sound_id ?? null,
+            sound_url: job.sound_url ?? null,
+            track_name: job.track_name ?? null,
+            artist_name: job.artist_name ?? null,
+            album_name: job.album_name ?? null,
+            cover_url: job.cover_url ?? null,
+            status: job.status ?? null,
+            videos_scraped: job.videos_scraped ?? null,
+            videos_analyzed: job.videos_analyzed ?? null,
+            created_at: job.created_at ?? null,
+            completed_at: job.completed_at ?? null,
+            last_refresh_at: job.last_refresh_at ?? null,
+            refresh_count: job.refresh_count ?? null,
+            source: jobSource,
+            artist_handle: job.artist_handle ?? null,
+            tracking_expires_at: job.tracking_expires_at ?? null,
+          });
         }
       } catch {
         // non-critical
       }
     })();
   }, [jobId]);
+
+  useEffect(() => {
+    if (!mergeOpen || !labelId) return;
+    let isActive = true;
+
+    Promise.all([
+      listSoundGroups(labelId),
+      listSoundAnalyses(labelId).catch(() => [] as ListAnalysisEntry[]),
+    ])
+      .then(([groups, entries]) => {
+        if (!isActive) return;
+        setSoundGroups(groups);
+        setMergeEntries(entries);
+      })
+      .catch(() => {
+        if (!isActive) return;
+        setSoundGroups([]);
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, [labelId, mergeOpen]);
 
   const handleToggleSubscribe = async () => {
     if (!jobId) return;
@@ -254,6 +365,152 @@ export default function SoundIntelligenceDetail() {
     }
     toast({ title: `"${analysis?.track_name ?? "Analysis"}" deleted` });
     navigate("/label/sound-intelligence", { replace: true });
+  };
+
+  const currentSoundId =
+    jobMeta?.sound_id ||
+    (jobMeta?.sound_url ? extractSoundId(jobMeta.sound_url) : null) ||
+    (analysis?.sound_url ? extractSoundId(analysis.sound_url) : null);
+  const currentSoundUrl =
+    jobMeta?.sound_url ||
+    analysis?.sound_url ||
+    (currentSoundId ? `https://www.tiktok.com/music/${currentSoundId}` : "");
+  const currentAliasLabel =
+    jobMeta?.track_name || analysis?.track_name || currentSoundId || null;
+  const mergeableGroups = soundGroups.filter(
+    (group) =>
+      !group.members.some(
+        (member) =>
+          member.job_id === jobId || member.sound_id === currentSoundId,
+      ),
+  );
+
+  const buildCurrentEntry = (): ListAnalysisEntry | null => {
+    if (!jobId || !currentSoundId) return null;
+    const currentSource = jobMeta?.source ?? source ?? "manual";
+
+    return {
+      job_id: jobId,
+      sound_id: currentSoundId,
+      cover_url: jobMeta?.cover_url ?? analysis?.cover_url ?? null,
+      track_name: jobMeta?.track_name ?? analysis?.track_name ?? "",
+      artist_name: jobMeta?.artist_name ?? analysis?.artist_name ?? "",
+      album_name: jobMeta?.album_name ?? analysis?.album_name ?? "",
+      status: coerceListStatus(jobMeta?.status),
+      videos_scraped:
+        jobMeta?.videos_scraped ?? jobMeta?.videos_analyzed ?? analysis?.videos_analyzed ?? 0,
+      videos_analyzed: jobMeta?.videos_analyzed ?? analysis?.videos_analyzed ?? 0,
+      created_at: jobMeta?.created_at ?? analysis?.created_at ?? new Date().toISOString(),
+      completed_at:
+        jobMeta?.completed_at ?? (analysis ? analysis.created_at : null),
+      last_refresh_at: jobMeta?.last_refresh_at ?? analysis?.last_refresh_at ?? null,
+      refresh_count: jobMeta?.refresh_count ?? analysis?.refresh_count ?? 0,
+      monitoring,
+      summary: analysis
+        ? {
+            engagement_rate: analysis.avg_share_rate,
+            share_rate: analysis.actual_share_rate,
+            winner_format: analysis.winner?.format ?? "",
+            winner_multiplier: analysis.winner?.multiplier ?? 0,
+            total_views: analysis.total_views,
+            velocity_status: analysis.status,
+            peak_day: analysis.peak_day,
+            format_count: analysis.formats?.length ?? 0,
+            videos_analyzed: analysis.videos_analyzed,
+          }
+        : null,
+      artist_handle: jobMeta?.artist_handle ?? artistHandle,
+      source: currentSource,
+      tracking_expires_at: jobMeta?.tracking_expires_at ?? null,
+    };
+  };
+
+  const entriesWithCurrentSound = () => {
+    const currentEntry = buildCurrentEntry();
+    if (!currentEntry) return mergeEntries;
+    return [
+      currentEntry,
+      ...mergeEntries.filter((entry) => entry.job_id !== currentEntry.job_id),
+    ];
+  };
+
+  const handleAddToGroup = async (group: SoundCanonicalGroup) => {
+    if (!labelId || !jobId || !currentSoundId || !currentSoundUrl) return;
+    setMerging(true);
+
+    try {
+      await addExistingJobToSoundGroup({
+        groupId: group.id,
+        labelId,
+        jobId,
+        soundId: currentSoundId,
+        soundUrl: currentSoundUrl,
+        aliasLabel: currentAliasLabel,
+      });
+      toast({ title: "Sound ID added to merged sound" });
+      setMergeOpen(false);
+      navigate(`/label/sound-intelligence/groups/${group.id}`);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Request failed";
+      toast({
+        title: "Could not add sound ID",
+        description: message,
+        variant: "destructive",
+      });
+    } finally {
+      setMerging(false);
+    }
+  };
+
+  const handleCreateMergedSound = async () => {
+    if (!labelId || !currentSoundId || !currentSoundUrl) return;
+    const urls = [currentSoundUrl, ...extractSoundUrls(mergeInput)].filter(
+      (url): url is string => Boolean(url),
+    );
+    const seenSoundIds = new Set<string>();
+    const uniqueUrls = urls.filter((url) => {
+      const soundId = extractSoundId(url);
+      if (!soundId || seenSoundIds.has(soundId)) return false;
+      seenSoundIds.add(soundId);
+      return true;
+    });
+
+    if (uniqueUrls.length < 2) {
+      toast({
+        title: "Add another sound ID",
+        description:
+          "Paste at least one other TikTok /music/ link to create a merged sound.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setMerging(true);
+    try {
+      const artistName = jobMeta?.artist_name || analysis?.artist_name;
+      const group = await createSoundGroupFromUrls({
+        labelId,
+        urls: uniqueUrls,
+        name:
+          currentAliasLabel && artistName
+            ? `${currentAliasLabel} - ${artistName}`
+            : currentAliasLabel ?? undefined,
+        existingEntries: entriesWithCurrentSound(),
+      });
+      toast({ title: "Merged sound created" });
+      setMergeInput("");
+      setMergeOpen(false);
+      navigate(`/label/sound-intelligence/groups/${group.id}`);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Request failed";
+      toast({
+        title: "Could not create merged sound",
+        description: message,
+        variant: "destructive",
+      });
+    } finally {
+      setMerging(false);
+    }
   };
 
   return (
@@ -432,6 +689,12 @@ export default function SoundIntelligenceDetail() {
                   </button>
                 </div>
 
+                <ExportButton
+                  icon={GitMerge}
+                  label="Merge"
+                  onClick={() => setMergeOpen(true)}
+                  disabled={!labelId || !currentSoundId || !currentSoundUrl}
+                />
                 <ExportButton
                   icon={FileText}
                   label={exporting ? "Exporting..." : "PDF Report"}
@@ -749,6 +1012,257 @@ export default function SoundIntelligenceDetail() {
           </div>
         )}
       </div>
+
+      <Dialog open={mergeOpen} onOpenChange={setMergeOpen}>
+        <DialogContent
+          className="max-w-2xl border-0 p-0"
+          style={{
+            background: "var(--surface)",
+            color: "var(--ink)",
+            borderTop: "0.5px solid var(--card-edge)",
+          }}
+        >
+          <div style={{ padding: 24 }}>
+            <DialogHeader>
+              <DialogTitle
+                style={{
+                  fontFamily: '"DM Sans", sans-serif',
+                  color: "var(--ink)",
+                }}
+              >
+                Merge sound ID
+              </DialogTitle>
+              <DialogDescription
+                style={{
+                  fontFamily: '"DM Sans", sans-serif',
+                  color: "var(--ink-tertiary)",
+                }}
+              >
+                Attach this TikTok sound ID to a canonical sound, or create a
+                new merged sound with another /music/ link.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div
+              style={{
+                marginTop: 18,
+                padding: 12,
+                borderRadius: 12,
+                background: "var(--bg-subtle)",
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+              }}
+            >
+              {jobMeta?.cover_url || analysis?.cover_url ? (
+                <img
+                  src={jobMeta?.cover_url || analysis?.cover_url || ""}
+                  alt={`${currentAliasLabel || "Track"} cover art`}
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 8,
+                    objectFit: "cover",
+                    background: "var(--surface-hover)",
+                  }}
+                />
+              ) : (
+                <div
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 8,
+                    background: "var(--surface-hover)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    flexShrink: 0,
+                  }}
+                >
+                  <Music size={16} color="var(--ink-tertiary)" />
+                </div>
+              )}
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div
+                  style={{
+                    fontFamily: '"DM Sans", sans-serif',
+                    fontSize: 14,
+                    fontWeight: 700,
+                    color: "var(--ink)",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {currentAliasLabel || "Current sound"}
+                </div>
+                <div
+                  style={{
+                    fontFamily: '"JetBrains Mono", monospace',
+                    fontSize: 11,
+                    color: "var(--ink-faint)",
+                  }}
+                >
+                  {currentSoundId || "No sound ID found"}
+                </div>
+              </div>
+            </div>
+
+            {mergeableGroups.length > 0 && (
+              <div style={{ marginTop: 20 }}>
+                <div
+                  style={{
+                    fontFamily: '"DM Sans", sans-serif',
+                    fontSize: 11,
+                    fontWeight: 700,
+                    color: "var(--ink-tertiary)",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.05em",
+                    marginBottom: 10,
+                  }}
+                >
+                  Existing merged sounds
+                </div>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
+                    gap: 10,
+                  }}
+                >
+                  {mergeableGroups.slice(0, 6).map((group) => (
+                    <button
+                      key={group.id}
+                      onClick={() => handleAddToGroup(group)}
+                      disabled={merging}
+                      style={{
+                        padding: 12,
+                        borderRadius: 12,
+                        border: "1px solid var(--border)",
+                        background: "var(--bg-subtle)",
+                        color: "var(--ink)",
+                        textAlign: "left",
+                        cursor: merging ? "wait" : "pointer",
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 8,
+                          marginBottom: 6,
+                        }}
+                      >
+                        <GitMerge
+                          size={13}
+                          color="var(--accent)"
+                          style={{ flexShrink: 0 }}
+                        />
+                        <span
+                          style={{
+                            fontFamily: '"DM Sans", sans-serif',
+                            fontSize: 13,
+                            fontWeight: 700,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {group.name}
+                        </span>
+                      </div>
+                      <div
+                        style={{
+                          fontFamily: '"DM Sans", sans-serif',
+                          fontSize: 11,
+                          color: "var(--ink-tertiary)",
+                        }}
+                      >
+                        {group.members.length} sound IDs
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div style={{ marginTop: 22 }}>
+              <div
+                style={{
+                  fontFamily: '"DM Sans", sans-serif',
+                  fontSize: 11,
+                  fontWeight: 700,
+                  color: "var(--ink-tertiary)",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.05em",
+                  marginBottom: 10,
+                }}
+              >
+                Create new merged sound
+              </div>
+              <Textarea
+                value={mergeInput}
+                onChange={(event) => setMergeInput(event.target.value)}
+                placeholder="https://www.tiktok.com/music/Track-123..."
+                style={{
+                  minHeight: 110,
+                  background: "var(--bg-subtle)",
+                  borderColor: "var(--border)",
+                  color: "var(--ink)",
+                  fontFamily: '"DM Sans", sans-serif',
+                }}
+              />
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "flex-end",
+                  gap: 8,
+                  marginTop: 16,
+                }}
+              >
+                <button
+                  onClick={() => setMergeOpen(false)}
+                  disabled={merging}
+                  style={{
+                    padding: "9px 16px",
+                    borderRadius: 10,
+                    border: "1px solid var(--border)",
+                    background: "transparent",
+                    color: "var(--ink-secondary)",
+                    fontFamily: '"DM Sans", sans-serif',
+                    fontSize: 13,
+                    fontWeight: 600,
+                    cursor: merging ? "wait" : "pointer",
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleCreateMergedSound}
+                  disabled={merging || extractSoundUrls(mergeInput).length === 0}
+                  style={{
+                    padding: "9px 16px",
+                    borderRadius: 10,
+                    border: "none",
+                    background: "var(--accent)",
+                    color: "rgba(255,255,255,0.92)",
+                    fontFamily: '"DM Sans", sans-serif',
+                    fontSize: 13,
+                    fontWeight: 700,
+                    cursor: merging ? "wait" : "pointer",
+                    opacity:
+                      merging || extractSoundUrls(mergeInput).length === 0
+                        ? 0.6
+                        : 1,
+                  }}
+                >
+                  {merging ? "Merging..." : "Create merge"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Export overlay */}
       {exporting && (

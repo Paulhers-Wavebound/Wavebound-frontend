@@ -16,6 +16,11 @@ Label Content & Social managers use this when the same song is scattered across 
 - The group detail defaults to **All IDs**, aggregating videos, views, velocity, formats, top creators, geography, and classification breakdowns across completed member analyses.
 - Selecting an individual sound ID filters the same detail modules down to that exact TikTok ID.
 - Users can add more sound IDs to an existing merged sound from the group detail page.
+- Users can attach the current raw Sound Intelligence analysis to an existing merged sound from the raw detail page.
+- Users can create a new merged sound from the raw detail page by combining the current sound ID with pasted TikTok `/music/` links.
+- Sound Intelligence suggests likely merges when unmerged jobs share ISRC, Spotify IDs, or normalized title/artist metadata.
+- The group detail loads member entries, analyses, and monitoring state through a group-aware RPC instead of fetching each member analysis one by one.
+- The **All IDs** monitoring chart uses real grouped monitoring snapshots aggregated across member jobs.
 - Raw underlying analysis pages still exist and are reachable from the member table.
 
 ## Edge cases
@@ -25,13 +30,18 @@ Label Content & Social managers use this when the same song is scattered across 
 - Duplicate IDs in pasted input: duplicate `sound_id`s are collapsed client-side before creation.
 - ID already in a group: the database unique index blocks attaching the same job to another merged sound for the same label.
 - Mixed roster/competitor groups: source filters include the group when any member matches that source.
-- Monitoring charts: the aggregate view does not fake a multi-ID monitoring chart; selecting one ID shows that ID's real monitoring history.
+- Monitoring charts: the aggregate view uses grouped snapshot history when at least two group-level buckets exist; selecting one ID still shows that ID's own monitoring history.
+- Suggested duplicates: suggestions ignore jobs already attached to a merged sound; low-confidence title/artist matches are marked separately from stronger ISRC/Spotify matches.
+- Existing raw detail merge: adding a sound ID that already belongs to another merged sound is blocked by the database unique index and returns a clear error.
 
 ## Key files
 
 - `supabase/migrations/20260429183722_sound_canonical_groups.sql` — canonical group/member tables, indexes, and RLS.
+- `supabase/migrations/20260429185209_sound_group_rpc.sql` — group list/detail RPCs, grouped monitoring history, and duplicate suggestion RPC.
 - `src/utils/soundGroupApi.ts` — creates groups, adds IDs, lists groups, and resolves links into existing or newly triggered jobs.
 - `src/utils/soundGroupAggregation.ts` — builds overview summaries and aggregate `SoundAnalysis` objects from member analyses.
-- `src/pages/label/SoundIntelligenceOverview.tsx` — multi-link submit flow and merged sound cards.
-- `src/pages/label/SoundGroupDetail.tsx` — aggregate detail page with per-ID filters and add-ID dialog.
+- `src/pages/label/SoundIntelligenceOverview.tsx` — multi-link submit flow, suggested merge cards, and merged sound cards.
+- `src/pages/label/SoundGroupDetail.tsx` — aggregate detail page with per-ID filters, group monitoring, and add-ID dialog.
+- `src/pages/label/SoundIntelligenceDetail.tsx` — raw analysis merge dialog for attaching an existing sound ID to canonical groups.
+- `src/components/sound-intelligence/MonitoringTrendChart.tsx` — supports both single-job and canonical-group monitoring histories.
 - `src/App.tsx` and `src/pages/label/LabelLayout.tsx` — route and breadcrumb support.

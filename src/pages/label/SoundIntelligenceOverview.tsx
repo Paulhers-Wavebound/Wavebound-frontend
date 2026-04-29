@@ -48,9 +48,15 @@ import {
   createSoundGroupFromUrls,
   extractSoundUrls,
   getGroupedJobIds,
+  listSoundDuplicateCandidates,
   listSoundGroups,
+  soundCandidateName,
+  soundCandidateToUrls,
 } from "@/utils/soundGroupApi";
-import type { SoundCanonicalGroup } from "@/types/soundIntelligence";
+import type {
+  SoundCanonicalGroup,
+  SoundDuplicateCandidate,
+} from "@/types/soundIntelligence";
 
 /** Stall threshold: 3 min for refreshing (fast), 15 min for others */
 function stallThresholdMs(status: string): number {
@@ -74,6 +80,21 @@ const velocityStatusConfig: Record<
 
 type SourceFilter = "all" | "roster" | "manual";
 
+function duplicateMatchLabel(matchType: SoundDuplicateCandidate["match_type"]) {
+  switch (matchType) {
+    case "isrc":
+      return "ISRC";
+    case "spotify_track_id":
+      return "Spotify track";
+    case "spotify_id":
+      return "Spotify";
+    case "title_artist":
+      return "Title + artist";
+    default:
+      return "Metadata";
+  }
+}
+
 export default function SoundIntelligenceOverview() {
   const navigate = useNavigate();
   const { labelId } = useUserProfile();
@@ -88,6 +109,9 @@ export default function SoundIntelligenceOverview() {
   >(new Map());
   const [entries, setEntries] = useState<ListAnalysisEntry[]>([]);
   const [soundGroups, setSoundGroups] = useState<SoundCanonicalGroup[]>([]);
+  const [duplicateCandidates, setDuplicateCandidates] = useState<
+    SoundDuplicateCandidate[]
+  >([]);
   const [isLoading, setIsLoading] = useState(true);
   const [fetchError, setFetchError] = useState(false);
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
@@ -96,12 +120,14 @@ export default function SoundIntelligenceOverview() {
   const fetchList = useCallback(async () => {
     if (!labelId) return;
     try {
-      const [data, groups] = await Promise.all([
+      const [data, groups, candidates] = await Promise.all([
         listSoundAnalyses(labelId),
         listSoundGroups(labelId),
+        listSoundDuplicateCandidates(labelId).catch(() => []),
       ]);
       setEntries(data);
       setSoundGroups(groups);
+      setDuplicateCandidates(candidates);
 
       const now = Date.now();
       const snaps = progressSnapshots.current;
@@ -264,6 +290,10 @@ export default function SoundIntelligenceOverview() {
     () => extractSoundUrls(searchInput),
     [searchInput],
   );
+  const visibleDuplicateCandidates = useMemo(
+    () => duplicateCandidates.slice(0, 4),
+    [duplicateCandidates],
+  );
 
   const handleSubmit = async () => {
     if (!searchInput.trim() || isSubmitting) return;
@@ -356,6 +386,40 @@ export default function SoundIntelligenceOverview() {
       toast({
         title: "Error",
         description: err.message,
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleMergeCandidate = async (candidate: SoundDuplicateCandidate) => {
+    if (!labelId || isSubmitting) return;
+    const urls = soundCandidateToUrls(candidate);
+    if (urls.length < 2) {
+      toast({
+        title: "Not enough URLs",
+        description: "This suggestion does not have enough sound URLs to merge.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const group = await createSoundGroupFromUrls({
+        labelId,
+        urls,
+        name: soundCandidateName(candidate),
+        existingEntries: entries,
+      });
+      await fetchList();
+      navigate(`/label/sound-intelligence/groups/${group.id}`);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Request failed";
+      toast({
+        title: "Could not merge suggestion",
+        description: message,
         variant: "destructive",
       });
     } finally {
@@ -967,6 +1031,58 @@ export default function SoundIntelligenceOverview() {
                   </div>
                 );
               })}
+            </div>
+          </div>
+        )}
+
+        {/* Suggested merges */}
+        {visibleDuplicateCandidates.length > 0 && (
+          <div style={{ marginBottom: 40 }}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                marginBottom: 16,
+              }}
+            >
+              <h2
+                style={{
+                  fontFamily: '"DM Sans", sans-serif',
+                  fontSize: 14,
+                  fontWeight: 600,
+                  color: "var(--ink-tertiary)",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.05em",
+                }}
+              >
+                Suggested Merges
+              </h2>
+              <span
+                style={{
+                  fontFamily: '"DM Sans", sans-serif',
+                  fontSize: 12,
+                  color: "var(--ink-faint)",
+                }}
+              >
+                Same song signal from Spotify, ISRC, or metadata
+              </span>
+            </div>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fill, minmax(360px, 1fr))",
+                gap: 16,
+              }}
+            >
+              {visibleDuplicateCandidates.map((candidate) => (
+                <DuplicateCandidateCard
+                  key={`${candidate.match_type}:${candidate.match_key}`}
+                  candidate={candidate}
+                  disabled={isSubmitting}
+                  onMerge={() => handleMergeCandidate(candidate)}
+                />
+              ))}
             </div>
           </div>
         )}
@@ -1993,6 +2109,195 @@ function MergedSoundCard({
           {summary.lastUpdated ? timeAgo(summary.lastUpdated) : "Queued"}
         </span>
       </div>
+    </div>
+  );
+}
+
+function DuplicateCandidateCard({
+  candidate,
+  disabled,
+  onMerge,
+}: {
+  candidate: SoundDuplicateCandidate;
+  disabled: boolean;
+  onMerge: () => void;
+}) {
+  return (
+    <div
+      style={{
+        background: "var(--surface)",
+        borderRadius: 16,
+        padding: 24,
+        borderTop: "0.5px solid var(--card-edge)",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          gap: 12,
+          marginBottom: 14,
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            gap: 12,
+            alignItems: "center",
+            minWidth: 0,
+          }}
+        >
+          {candidate.cover_url ? (
+            <img
+              src={candidate.cover_url}
+              alt={`${candidate.track_name || "Track"} cover art`}
+              style={{
+                width: 42,
+                height: 42,
+                borderRadius: 8,
+                objectFit: "cover",
+                flexShrink: 0,
+                background: "var(--surface-hover)",
+              }}
+            />
+          ) : (
+            <div
+              style={{
+                width: 42,
+                height: 42,
+                borderRadius: 8,
+                flexShrink: 0,
+                background: "var(--surface-hover)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Music size={18} color="var(--ink-tertiary)" />
+            </div>
+          )}
+          <div style={{ minWidth: 0 }}>
+            <div
+              style={{
+                fontFamily: '"DM Sans", sans-serif',
+                fontSize: 17,
+                fontWeight: 700,
+                color: "var(--ink)",
+                marginBottom: 4,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {soundCandidateName(candidate)}
+            </div>
+            <div
+              style={{
+                fontFamily: '"DM Sans", sans-serif',
+                fontSize: 13,
+                color: "var(--ink-tertiary)",
+              }}
+            >
+              {candidate.job_count} IDs · {formatNumber(candidate.total_views)} views
+            </div>
+          </div>
+        </div>
+        <div
+          style={{
+            alignSelf: "flex-start",
+            padding: "4px 10px",
+            borderRadius: 8,
+            background: "rgba(48,209,88,0.12)",
+            color: "#30D158",
+            fontFamily: '"DM Sans", sans-serif',
+            fontSize: 11,
+            fontWeight: 700,
+            textTransform: "uppercase",
+            flexShrink: 0,
+          }}
+        >
+          {Math.round(candidate.confidence * 100)}%
+        </div>
+      </div>
+
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+          marginBottom: 12,
+          fontFamily: '"DM Sans", sans-serif',
+          fontSize: 12,
+          color: "var(--ink-tertiary)",
+        }}
+      >
+        <GitMerge size={13} color="var(--accent)" />
+        Matched by {duplicateMatchLabel(candidate.match_type)}
+      </div>
+
+      <div
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          gap: 6,
+          marginBottom: 18,
+        }}
+      >
+        {candidate.sound_ids.slice(0, 5).map((soundId) => (
+          <span
+            key={soundId}
+            style={{
+              padding: "4px 8px",
+              borderRadius: 8,
+              background: "var(--bg-subtle)",
+              color: "var(--ink-tertiary)",
+              fontFamily: '"JetBrains Mono", monospace',
+              fontSize: 11,
+              fontWeight: 700,
+            }}
+          >
+            {soundId}
+          </span>
+        ))}
+        {candidate.sound_ids.length > 5 && (
+          <span
+            style={{
+              padding: "4px 8px",
+              borderRadius: 8,
+              background: "var(--bg-subtle)",
+              color: "var(--ink-faint)",
+              fontFamily: '"DM Sans", sans-serif',
+              fontSize: 11,
+              fontWeight: 700,
+            }}
+          >
+            +{candidate.sound_ids.length - 5}
+          </span>
+        )}
+      </div>
+
+      <button
+        onClick={onMerge}
+        disabled={disabled}
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 6,
+          padding: "8px 14px",
+          borderRadius: 9,
+          border: "none",
+          background: "var(--accent)",
+          color: "rgba(255,255,255,0.92)",
+          fontFamily: '"DM Sans", sans-serif',
+          fontSize: 12,
+          fontWeight: 700,
+          cursor: disabled ? "wait" : "pointer",
+          opacity: disabled ? 0.6 : 1,
+        }}
+      >
+        <GitMerge size={14} />
+        Merge suggestion
+      </button>
     </div>
   );
 }

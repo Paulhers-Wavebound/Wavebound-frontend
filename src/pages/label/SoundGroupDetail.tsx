@@ -12,12 +12,11 @@ import {
   Plus,
   Table2,
 } from "lucide-react";
-import {
-  SoundAnalysis,
+import type {
+  SoundCanonicalGroup,
   SoundMonitoring,
 } from "@/types/soundIntelligence";
 import {
-  getSoundAnalysis,
   formatNumber,
   listSoundAnalyses,
   timeAgo,
@@ -26,7 +25,7 @@ import {
 import {
   addSoundGroupMembers,
   extractSoundUrls,
-  getSoundGroup,
+  getSoundGroupBundle,
 } from "@/utils/soundGroupApi";
 import {
   aggregateSoundGroupAnalysis,
@@ -57,14 +56,6 @@ import FormatBreakdownTable from "@/components/sound-intelligence/FormatBreakdow
 import CreatorActionList from "@/components/sound-intelligence/CreatorActionList";
 import DeepDiveSection from "@/components/sound-intelligence/DeepDiveSection";
 
-function responseToAnalysis(
-  res: Awaited<ReturnType<typeof getSoundAnalysis>> | null,
-): SoundAnalysis | null {
-  if (!res) return null;
-  if (res.formats || res.velocity) return res as unknown as SoundAnalysis;
-  return res.status === "completed" && res.analysis ? res.analysis : null;
-}
-
 function getMemberLabel(
   member: SoundGroupAnalysisMember,
   index: number,
@@ -81,8 +72,7 @@ export default function SoundGroupDetail() {
   const { groupId } = useParams<{ groupId: string }>();
   const navigate = useNavigate();
   const { labelId } = useUserProfile();
-  const [group, setGroup] =
-    useState<Awaited<ReturnType<typeof getSoundGroup>>>(null);
+  const [group, setGroup] = useState<SoundCanonicalGroup | null>(null);
   const [members, setMembers] = useState<SoundGroupAnalysisMember[]>([]);
   const [entries, setEntries] = useState<ListAnalysisEntry[]>([]);
   const [monitoringByJobId, setMonitoringByJobId] = useState<
@@ -107,7 +97,7 @@ export default function SoundGroupDetail() {
 
     try {
       const [loadedGroup, loadedEntries] = await Promise.all([
-        getSoundGroup(groupId, labelId),
+        getSoundGroupBundle(groupId, labelId),
         listSoundAnalyses(labelId),
       ]);
 
@@ -118,24 +108,8 @@ export default function SoundGroupDetail() {
         return;
       }
 
-      const entriesByJob = new Map(
-        loadedEntries.map((entry) => [entry.job_id, entry]),
-      );
-      const loadedMembers = await Promise.all(
-        loadedGroup.members.map(async (member) => {
-          const res = await getSoundAnalysis({ job_id: member.job_id }).catch(
-            () => null,
-          );
-          return {
-            member,
-            analysis: responseToAnalysis(res),
-            entry: entriesByJob.get(member.job_id) ?? null,
-            monitoring: res?.monitoring ?? null,
-          };
-        }),
-      );
-
-      setGroup(loadedGroup);
+      const loadedMembers = loadedGroup.members;
+      setGroup(loadedGroup.group);
       setEntries(loadedEntries);
       setMembers(
         loadedMembers.map(({ monitoring: _monitoring, ...member }) => member),
@@ -175,9 +149,36 @@ export default function SoundGroupDetail() {
     return aggregateSoundGroupAnalysis(group, members);
   }, [group, members, selectedMember]);
 
+  const groupMonitoring = useMemo<SoundMonitoring | null>(() => {
+    const active = Array.from(monitoringByJobId.values()).filter(
+      (monitoring): monitoring is SoundMonitoring =>
+        Boolean(monitoring && monitoring.monitoring_interval !== "paused"),
+    );
+    if (active.length === 0) return null;
+
+    const isIntensive = active.some(
+      (monitoring) => monitoring.monitoring_interval === "intensive",
+    );
+    const newest = [...active].sort((a, b) =>
+      (b.last_monitored_at ?? "").localeCompare(a.last_monitored_at ?? ""),
+    )[0];
+
+    return {
+      monitoring_interval: isIntensive ? "intensive" : "standard",
+      last_monitored_at: newest?.last_monitored_at ?? null,
+      next_check_at: newest?.next_check_at ?? null,
+      spike_format:
+        active.find((monitoring) => monitoring.spike_format)?.spike_format ??
+        null,
+      intensive_since:
+        active.find((monitoring) => monitoring.intensive_since)
+          ?.intensive_since ?? null,
+    };
+  }, [monitoringByJobId]);
+
   const selectedMonitoring = selectedMember
     ? monitoringByJobId.get(selectedMember.member.job_id) ?? null
-    : null;
+    : groupMonitoring;
   const selectedJobId = selectedMember?.member.job_id ?? null;
   const completedCount = members.filter((member) => member.analysis).length;
   const totalViews = members.reduce(
@@ -645,12 +646,15 @@ export default function SoundGroupDetail() {
               userCount={analysis.total_videos_on_sound ?? null}
             />
 
-            {selectedJobId &&
-              selectedMonitoring &&
-              selectedMonitoring.monitoring_interval !== "paused" && (
+            {selectedMonitoring &&
+              selectedMonitoring.monitoring_interval !== "paused" &&
+              (selectedMember ? selectedJobId : group && labelId) && (
                 <MonitoringTrendChart
-                  jobId={selectedJobId}
+                  jobId={selectedMember ? selectedJobId ?? undefined : undefined}
+                  groupId={!selectedMember ? group.id : undefined}
+                  labelId={!selectedMember ? labelId ?? undefined : undefined}
                   monitoring={selectedMonitoring}
+                  scopeLabel={!selectedMember ? "All sound IDs" : undefined}
                 />
               )}
 

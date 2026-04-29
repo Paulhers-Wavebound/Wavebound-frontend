@@ -1,7 +1,12 @@
 import { supabase } from "@/integrations/supabase/client";
 import type {
+  MonitoringHistorySummary,
+  MonitoringSnapshot,
+  SoundAnalysis,
   SoundCanonicalGroup,
   SoundCanonicalGroupMember,
+  SoundDuplicateCandidate,
+  SoundMonitoring,
 } from "@/types/soundIntelligence";
 import {
   extractSoundId,
@@ -22,12 +27,31 @@ export interface ResolvedSoundJob {
   entry: ListAnalysisEntry | null;
 }
 
+export interface SoundGroupBundleMember {
+  member: SoundCanonicalGroupMember;
+  entry: ListAnalysisEntry | null;
+  analysis: SoundAnalysis | null;
+  monitoring: SoundMonitoring | null;
+}
+
+export interface SoundGroupBundle {
+  group: SoundCanonicalGroup;
+  members: SoundGroupBundleMember[];
+}
+
 function soundGroupsTable() {
   return (supabase as any).from("sound_canonical_groups");
 }
 
 function soundGroupMembersTable() {
   return (supabase as any).from("sound_canonical_group_members");
+}
+
+function rpc<T>(name: string, args: Record<string, unknown>): Promise<{
+  data: T | null;
+  error: { message: string; code?: string } | null;
+}> {
+  return (supabase as any).rpc(name, args);
 }
 
 export function extractSoundUrls(input: string): string[] {
@@ -78,6 +102,26 @@ function attachMembers(
 export async function listSoundGroups(
   labelId: string,
 ): Promise<SoundCanonicalGroup[]> {
+  const { data: rpcGroups, error: rpcError } = await rpc<any[]>(
+    "get_sound_canonical_groups",
+    { p_label_id: labelId },
+  );
+
+  if (!rpcError && Array.isArray(rpcGroups)) {
+    return rpcGroups.map((group) => ({
+      id: group.id,
+      label_id: group.label_id,
+      name: group.name,
+      artist_name: group.artist_name,
+      cover_url: group.cover_url,
+      primary_job_id: group.primary_job_id,
+      created_by: group.created_by,
+      created_at: group.created_at,
+      updated_at: group.updated_at,
+      members: group.members ?? [],
+    }));
+  }
+
   const { data: groups, error: groupsError } = await soundGroupsTable()
     .select(GROUP_COLUMNS)
     .eq("label_id", labelId)
@@ -118,6 +162,77 @@ export async function getSoundGroup(
 
   if (membersError) throw new Error(membersError.message);
   return { ...group, members: members ?? [] };
+}
+
+function coerceBundleMember(raw: any): SoundGroupBundleMember {
+  return {
+    member: raw.member,
+    entry: raw.entry,
+    analysis: raw.analysis,
+    monitoring: raw.monitoring,
+  };
+}
+
+export async function getSoundGroupBundle(
+  groupId: string,
+  labelId: string,
+): Promise<SoundGroupBundle | null> {
+  const { data, error } = await rpc<any>("get_sound_group_detail", {
+    p_group_id: groupId,
+    p_label_id: labelId,
+  });
+
+  if (error) throw new Error(error.message);
+  if (!data?.group) return null;
+
+  const members = (data.members ?? []).map(coerceBundleMember);
+  return {
+    group: {
+      ...data.group,
+      members: members.map((member) => member.member),
+    },
+    members,
+  };
+}
+
+export async function getSoundGroupMonitoringHistory(
+  groupId: string,
+  labelId: string,
+  hours?: number,
+): Promise<{
+  snapshots: MonitoringSnapshot[];
+  summary: MonitoringHistorySummary;
+}> {
+  const { data, error } = await rpc<any>("get_sound_group_monitoring_history", {
+    p_group_id: groupId,
+    p_label_id: labelId,
+    p_hours: hours ?? 24,
+  });
+
+  if (error) throw new Error(error.message);
+  return {
+    snapshots: data?.snapshots ?? [],
+    summary:
+      data?.summary ?? {
+        snapshot_count: 0,
+        hours_span: 0,
+        total_view_growth: 0,
+        total_video_growth: 0,
+        format_growth: {},
+      },
+  };
+}
+
+export async function listSoundDuplicateCandidates(
+  labelId: string,
+): Promise<SoundDuplicateCandidate[]> {
+  const { data, error } = await rpc<SoundDuplicateCandidate[]>(
+    "get_sound_duplicate_candidates",
+    { p_label_id: labelId },
+  );
+
+  if (error) throw new Error(error.message);
+  return Array.isArray(data) ? data : [];
 }
 
 async function resolveSoundJobsForUrls(
@@ -281,6 +396,44 @@ export async function addSoundGroupMembers(params: {
     }
     throw new Error(error.message);
   }
+}
+
+export async function addExistingJobToSoundGroup(params: {
+  groupId: string;
+  labelId: string;
+  jobId: string;
+  soundId: string;
+  soundUrl: string;
+  aliasLabel?: string | null;
+}): Promise<void> {
+  const { error } = await soundGroupMembersTable().insert({
+    group_id: params.groupId,
+    label_id: params.labelId,
+    job_id: params.jobId,
+    sound_id: params.soundId,
+    sound_url: params.soundUrl,
+    alias_label: params.aliasLabel ?? null,
+  });
+
+  if (error) {
+    if (error.code === "23505") {
+      throw new Error("This sound ID already belongs to a merged sound.");
+    }
+    throw new Error(error.message);
+  }
+}
+
+export function soundCandidateToUrls(
+  candidate: SoundDuplicateCandidate,
+): string[] {
+  return candidate.sound_urls.filter(Boolean);
+}
+
+export function soundCandidateName(candidate: SoundDuplicateCandidate): string {
+  if (candidate.track_name && candidate.artist_name) {
+    return `${candidate.track_name} — ${candidate.artist_name}`;
+  }
+  return candidate.track_name || "Merged TikTok sound";
 }
 
 export function getGroupedJobIds(groups: SoundCanonicalGroup[]): Set<string> {

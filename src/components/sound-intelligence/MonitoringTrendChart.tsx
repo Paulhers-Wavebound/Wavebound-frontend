@@ -20,11 +20,15 @@ import {
   formatNumber,
   timeAgo,
 } from "@/utils/soundIntelligenceApi";
+import { getSoundGroupMonitoringHistory } from "@/utils/soundGroupApi";
 import { Loader2, Activity, Zap } from "lucide-react";
 
 interface MonitoringTrendChartProps {
-  jobId: string;
+  jobId?: string;
+  groupId?: string;
+  labelId?: string;
   monitoring?: SoundMonitoring | null;
+  scopeLabel?: string;
 }
 
 type ChartMode = "format" | "niche" | "intent";
@@ -174,7 +178,10 @@ function getKeyColor(key: string, mode: ChartMode): string {
 
 export default function MonitoringTrendChart({
   jobId,
+  groupId,
+  labelId,
   monitoring,
+  scopeLabel,
 }: MonitoringTrendChartProps) {
   const [snapshots, setSnapshots] = useState<MonitoringSnapshot[]>([]);
   const [summary, setSummary] = useState<MonitoringHistorySummary | null>(null);
@@ -183,7 +190,17 @@ export default function MonitoringTrendChart({
 
   const fetchData = useCallback(async () => {
     try {
-      const res = await getSoundMonitoringHistory(jobId, 24);
+      const res =
+        groupId && labelId
+          ? await getSoundGroupMonitoringHistory(groupId, labelId, 24)
+          : jobId
+            ? await getSoundMonitoringHistory(jobId, 24)
+            : null;
+      if (!res) {
+        setSnapshots([]);
+        setSummary(null);
+        return;
+      }
       setSnapshots(res.snapshots);
       setSummary(res.summary);
     } catch {
@@ -191,7 +208,7 @@ export default function MonitoringTrendChart({
     } finally {
       setLoading(false);
     }
-  }, [jobId]);
+  }, [groupId, jobId, labelId]);
 
   useEffect(() => {
     fetchData();
@@ -309,7 +326,7 @@ export default function MonitoringTrendChart({
               letterSpacing: "normal",
             }}
           >
-            Scanning every {intervalLabel}
+            {scopeLabel ? `${scopeLabel} · ` : ""}Scanning every {intervalLabel}
           </span>
           {monitoring?.last_monitored_at && (
             <>

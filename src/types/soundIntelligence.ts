@@ -473,6 +473,20 @@ export interface SoundCanonicalGroup {
   members: SoundCanonicalGroupMember[];
 }
 
+export interface SoundDuplicateCandidate {
+  match_type: "isrc" | "spotify_track_id" | "spotify_id" | "title_artist";
+  confidence: number;
+  match_key: string;
+  job_count: number;
+  job_ids: string[];
+  sound_ids: string[];
+  sound_urls: string[];
+  track_name: string | null;
+  artist_name: string | null;
+  cover_url: string | null;
+  total_views: number;
+}
+
 export interface SoundIntelligenceState {
   jobId: string | null;
   soundId: string | null;
