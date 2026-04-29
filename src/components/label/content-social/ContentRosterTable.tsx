@@ -212,9 +212,9 @@ function ContentHealthPill({ artist }: { artist: ContentArtist }) {
           </TooltipProvider>
         )}
       </span>
-      {meta.cadenceLabel && (
+      {meta.evidenceLabel && (
         <span className="text-[10px] text-white/35 leading-tight">
-          {meta.cadenceLabel}
+          {meta.evidenceLabel}
         </span>
       )}
     </div>

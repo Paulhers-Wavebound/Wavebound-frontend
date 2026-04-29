@@ -217,6 +217,8 @@ export interface ContentHealthMeta {
   status: ContentHealthStatus;
   freqPerWeek: number | null;
   cadenceLabel: string | null;
+  recencyLabel: string | null;
+  evidenceLabel: string | null;
   staleCadence: boolean;
   staleCadenceLabel: string | null;
   numericCadenceLabel: string | null;
@@ -392,6 +394,13 @@ function formatPostingFrequency(freq: number): string {
   return `${freq.toFixed(1)}/wk`;
 }
 
+function formatDaysSincePost(days: number | null): string | null {
+  if (days == null) return null;
+  if (days === 0) return "today";
+  if (days === 1) return "1d ago";
+  return `${days}d ago`;
+}
+
 function capHealthByRecency(
   status: ContentHealthStatus,
   daysSince: number | null,
@@ -490,14 +499,18 @@ export function getContentHealthMeta(
     Math.abs(
       cadenceBucketRank(summaryBucket) - cadenceBucketRank(numericBucket),
     ) > 1;
+  const cadenceLabel =
+    freq != null
+      ? formatPostingFrequency(freq)
+      : cadenceBucketLabel(summaryBucket);
+  const recencyLabel = formatDaysSincePost(artist.days_since_last_post);
 
   return {
     status: getContentHealthStatus(artist),
     freqPerWeek: freq,
-    cadenceLabel:
-      freq != null
-        ? formatPostingFrequency(freq)
-        : cadenceBucketLabel(summaryBucket),
+    cadenceLabel,
+    recencyLabel,
+    evidenceLabel: [cadenceLabel, recencyLabel].filter(Boolean).join(" · "),
     staleCadence,
     staleCadenceLabel: cadenceBucketLabel(summaryBucket),
     numericCadenceLabel: cadenceBucketLabel(numericBucket),
