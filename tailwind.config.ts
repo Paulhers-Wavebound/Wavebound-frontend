@@ -1,4 +1,6 @@
 import type { Config } from "tailwindcss";
+import typography from "@tailwindcss/typography";
+import animate from "tailwindcss-animate";
 
 export default {
   darkMode: ["class"],
@@ -94,6 +96,15 @@ export default {
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
       },
+      transitionDuration: {
+        "250": "250ms",
+        instant: "var(--dur-instant)",
+        state: "var(--dur-state)",
+        layout: "var(--dur-layout)",
+      },
+      transitionTimingFunction: {
+        wb: "cubic-bezier(0.16,1,0.3,1)",
+      },
       keyframes: {
         "accordion-down": {
           from: {
@@ -138,5 +149,5 @@ export default {
       },
     },
   },
-  plugins: [require("tailwindcss-animate"), require("@tailwindcss/typography")],
+  plugins: [animate, typography],
 } satisfies Config;

@@ -186,7 +186,7 @@ export default function SmoothSelect({
                     setOpen(false);
                     setQuery("");
                   }}
-                  className="w-full px-3 py-2.5 text-left flex items-center gap-3 transition-[background-color,transform] duration-[var(--dur-state)] ease-[cubic-bezier(0.16,1,0.3,1)] active:scale-[0.99] active:duration-[var(--dur-instant)]"
+                  className="w-full px-3 py-2.5 text-left flex items-center gap-3 transition-[background-color,transform] duration-state ease-wb active:scale-[0.99] active:duration-instant"
                   style={{
                     background: isSelected
                       ? "var(--accent-soft)"

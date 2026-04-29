@@ -38,6 +38,7 @@ Label Content & Social managers use this when the same song is scattered across 
 - Monitoring charts: the aggregate view uses grouped snapshot history when at least two group-level buckets exist; selecting one ID still shows that ID's own monitoring history.
 - Suggested duplicates: suggestions ignore jobs already attached to a merged sound; low-confidence title/artist matches are marked separately from stronger ISRC/Spotify matches.
 - Suggested duplicates with fewer than two distinct `sound_id`s are filtered in the database because they do not represent a true cross-ID merge.
+- Suggested duplicate cards display the number of distinct IDs, not just raw job count, so users can see why the merge is eligible.
 - Snoozed suggestions: snoozed candidates stay hidden until `snoozed_until`; if the sound IDs are still unmerged after that date, the suggestion can return.
 - Dismissed suggestions: dismissed candidates stay hidden for the label until a future admin reset is added.
 - Auto-merge: auto-merge only handles roster-only candidates matched by ISRC, Spotify track ID, or Spotify ID. Mixed roster/competitor and title/artist-only suggestions require manual review.
@@ -50,6 +51,7 @@ Label Content & Social managers use this when the same song is scattered across 
 - `supabase/migrations/20260429193212_sound_duplicate_decisions_auto_merge.sql` — suggested-merge decision table, filtered suggestion RPC, and roster auto-merge RPC.
 - `supabase/migrations/20260429213000_sound_duplicate_distinct_ids_and_url_backfill.sql` — canonical URL backfill and database-level distinct sound ID filtering for suggestions.
 - `src/utils/soundIdParser.ts` and `scripts/run-sound-id-parser-regression.mjs` — dependency-free parser and regression coverage for TikTok `/music/` URL shapes.
+- `scripts/check-sound-url-health.mjs` — read-only Supabase health check for malformed or non-canonical stored sound URLs.
 - `src/utils/soundGroupApi.ts` — creates groups, adds IDs, lists groups, resolves links into jobs, records suggestion decisions, and runs controlled roster auto-merge.
 - `src/utils/soundGroupAggregation.ts` — builds overview summaries and aggregate `SoundAnalysis` objects from member analyses.
 - `src/pages/label/SoundIntelligenceOverview.tsx` — multi-link submit flow, suggested merge cards, snooze/dismiss actions, auto-merge action, and merged sound cards.

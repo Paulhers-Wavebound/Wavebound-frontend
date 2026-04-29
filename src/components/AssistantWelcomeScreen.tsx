@@ -16,9 +16,11 @@ export function AssistantWelcomeScreen({ onPromptClick, className }: AssistantWe
   const { activeGenreFilters } = useDiscover();
   const prefs = useMemo(() => getUserPreferences(), []);
   // Prioritize live Discover page filters over stored onboarding prefs
-  const genres = activeGenreFilters.length > 0 ? activeGenreFilters : (prefs?.genres ?? []);
   const role = prefs?.role ?? prefs?.accountType ?? 'artist';
-  const config = useMemo(() => matchGenreConfig(genres), [genres]);
+  const config = useMemo(() => {
+    const genres = activeGenreFilters.length > 0 ? activeGenreFilters : (prefs?.genres ?? []);
+    return matchGenreConfig(genres);
+  }, [activeGenreFilters, prefs?.genres]);
 
   const handleButtonClick = useCallback((promptTemplate: string) => {
     const genreLabel = config.genreLabel;
@@ -109,7 +111,7 @@ export function AssistantWelcomeScreen({ onPromptClick, className }: AssistantWe
             onMouseMove={handleMouseMove}
             className={cn(
               'w-full flex items-center gap-3.5 p-4 rounded-[14px] text-left group cursor-pointer',
-              'transition-all duration-[250ms]',
+              'transition-all duration-250',
               '[--mouse-x:50%] [--mouse-y:50%]',
             )}
             style={{

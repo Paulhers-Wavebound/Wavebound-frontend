@@ -2252,6 +2252,12 @@ function DuplicateCandidateCard({
   onSnooze: () => void;
   onDismiss: () => void;
 }) {
+  const distinctSoundIdCount = new Set(
+    candidate.sound_ids.filter((soundId) => soundId.trim().length > 0),
+  ).size;
+  const distinctSoundIdLabel =
+    distinctSoundIdCount === 1 ? "distinct ID" : "distinct IDs";
+
   return (
     <div
       style={{
@@ -2328,7 +2334,8 @@ function DuplicateCandidateCard({
                 color: "var(--ink-tertiary)",
               }}
             >
-              {candidate.job_count} IDs · {formatNumber(candidate.total_views)} views
+              {distinctSoundIdCount} {distinctSoundIdLabel} ·{" "}
+              {formatNumber(candidate.total_views)} views
             </div>
           </div>
         </div>

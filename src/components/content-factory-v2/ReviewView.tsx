@@ -580,7 +580,7 @@ function QueueCard({
 
   return (
     <div
-      className="group relative rounded-[14px] p-5 flex gap-5 transition-[transform,border-color,box-shadow,opacity] duration-[var(--dur-state)] ease-[cubic-bezier(0.16,1,0.3,1)] hover:-translate-y-1"
+      className="group relative rounded-[14px] p-5 flex gap-5 transition-[transform,border-color,box-shadow,opacity] duration-state ease-wb hover:-translate-y-1"
       style={{
         background: "var(--surface)",
         border: "1px solid var(--border)",
@@ -1374,7 +1374,7 @@ function ActionButton({
     <button
       type="button"
       onClick={onClick}
-      className="h-9 px-3 rounded-[10px] text-[12px] font-semibold flex items-center gap-1.5 transition-[color,background-color,border-color,transform,opacity] duration-[var(--dur-state)] ease-[cubic-bezier(0.16,1,0.3,1)] hover:opacity-90 active:scale-[0.97] active:duration-[var(--dur-instant)]"
+      className="h-9 px-3 rounded-[10px] text-[12px] font-semibold flex items-center gap-1.5 transition-[color,background-color,border-color,transform,opacity] duration-state ease-wb hover:opacity-90 active:scale-[0.97] active:duration-instant"
       style={styles}
     >
       {children}

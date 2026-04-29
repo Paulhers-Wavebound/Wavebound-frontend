@@ -9,7 +9,9 @@
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test:content-health": "node scripts/run-content-health-regression.mjs"
+    "test:content-health": "node scripts/run-content-health-regression.mjs",
+    "test:sound-id-parser": "node scripts/run-sound-id-parser-regression.mjs",
+    "check:sound-url-health": "node scripts/check-sound-url-health.mjs"
   },
   "dependencies": {
     "@breezystack/lamejs": "^1.2.7",

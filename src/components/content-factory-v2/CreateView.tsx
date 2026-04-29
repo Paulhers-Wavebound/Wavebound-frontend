@@ -614,7 +614,7 @@ export default function CreateView({
                       },
                     },
                   }}
-                  className="group relative text-left rounded-2xl overflow-hidden transition-[transform,border-color,box-shadow,background-color,opacity] duration-[var(--dur-state)] ease-[cubic-bezier(0.16,1,0.3,1)] hover:-translate-y-0.5 active:scale-[0.985] active:duration-[var(--dur-instant)]"
+                  className="group relative text-left rounded-2xl overflow-hidden transition-[transform,border-color,box-shadow,background-color,opacity] duration-state ease-wb hover:-translate-y-0.5 active:scale-[0.985] active:duration-instant"
                   style={{
                     aspectRatio: "9 / 16",
                     background: hasHero
@@ -638,7 +638,7 @@ export default function CreateView({
                           src={showcase.thumbnailUrl}
                           alt=""
                           loading="lazy"
-                          className="w-full h-full object-cover transition-transform duration-[var(--dur-layout)] ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:scale-[1.04]"
+                          className="w-full h-full object-cover transition-transform duration-layout ease-wb group-hover:scale-[1.04]"
                         />
                       ) : showcase?.videoUrl ? (
                         <video
@@ -646,7 +646,7 @@ export default function CreateView({
                           muted
                           playsInline
                           preload="metadata"
-                          className="w-full h-full object-cover transition-transform duration-[var(--dur-layout)] ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:scale-[1.04]"
+                          className="w-full h-full object-cover transition-transform duration-layout ease-wb group-hover:scale-[1.04]"
                           onMouseEnter={(e) => {
                             const v = e.currentTarget;
                             v.loop = true;
@@ -663,7 +663,7 @@ export default function CreateView({
                           reads as a calm set of options at first glance.
                           Fades on hover for the "wake up" moment. */}
                       <div
-                        className="absolute inset-0 pointer-events-none transition-opacity duration-[var(--dur-state)] ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:opacity-15"
+                        className="absolute inset-0 pointer-events-none transition-opacity duration-state ease-wb group-hover:opacity-15"
                         style={{
                           background: "rgba(0,0,0,0.55)",
                           opacity: active ? 0 : undefined,
@@ -1862,7 +1862,7 @@ function ChipRow({
             key={o.k}
             type="button"
             onClick={() => onChange(o.k)}
-            className="px-3 h-8 rounded-[10px] text-[12px] font-semibold transition-[color,background-color,border-color,transform] duration-[var(--dur-state)] ease-[cubic-bezier(0.16,1,0.3,1)] active:scale-[0.96] active:duration-[var(--dur-instant)]"
+            className="px-3 h-8 rounded-[10px] text-[12px] font-semibold transition-[color,background-color,border-color,transform] duration-state ease-wb active:scale-[0.96] active:duration-instant"
             style={{
               background: active ? "var(--accent-light)" : "var(--bg-subtle)",
               color: active ? "var(--accent)" : "var(--ink-secondary)",
@@ -1992,4 +1992,4 @@ function TuneGroup({
 }
 
 // placeholder to prevent unused-import warnings if a preset icon is dropped later
-export const __FileTextIcon = FileText;
+void FileText;
