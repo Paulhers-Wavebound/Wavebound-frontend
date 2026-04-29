@@ -44,6 +44,13 @@ import {
   Gauge,
   EmptyState,
 } from "./shared";
+import InfoTooltip from "@/components/label/intelligence/InfoTooltip";
+import { STAT_TOOLTIPS } from "@/lib/statTooltips";
+
+const FP = STAT_TOOLTIPS.content.formatPerformance;
+const CA = STAT_TOOLTIPS.content.activity;
+const TT = STAT_TOOLTIPS.content.tiktokProfile;
+const FC = STAT_TOOLTIPS.content.fanComments;
 
 /* ─── Config ──────────────────────────────────────────────── */
 
@@ -177,41 +184,46 @@ export default function ContentTab({ data }: ContentTabProps) {
     <div className="space-y-4">
       {/* ─── Format Performance ─── */}
       {(rows.length > 0 || dna) && (
-        <SectionCard title="Format Performance">
+        <SectionCard title="Format Performance" tooltip={FP.section}>
           {rows.length > 0 ? (
             <>
               {/* Summary chips */}
               {dna && (
                 <div className="flex flex-wrap gap-4 mb-4 pb-3 border-b border-white/[0.04]">
                   {dna.videosAnalyzed != null && (
-                    <span className="text-[11px] text-white/35">
+                    <span className="text-[11px] text-white/35 inline-flex items-center gap-1">
                       {dna.videosAnalyzed} videos analyzed
+                      <InfoTooltip text={FP.videosAnalyzed} />
                     </span>
                   )}
                   {dna.avgHookScore != null && (
-                    <span className="text-[11px] text-white/35">
+                    <span className="text-[11px] text-white/35 inline-flex items-center gap-1">
                       Avg Hook{" "}
                       <span className="font-mono text-white/55">
                         {dna.avgHookScore.toFixed(1)}
                       </span>
+                      <InfoTooltip text={FP.hookScore} />
                     </span>
                   )}
                   {dna.avgViralScore != null && (
-                    <span className="text-[11px] text-white/35">
+                    <span className="text-[11px] text-white/35 inline-flex items-center gap-1">
                       Avg Viral{" "}
                       <span className="font-mono text-white/55">
                         {dna.avgViralScore.toFixed(1)}
                       </span>
+                      <InfoTooltip text={FP.viralScore} />
                     </span>
                   )}
                   {dna.primaryGenre && (
-                    <span className="text-[11px] text-white/35">
+                    <span className="text-[11px] text-white/35 inline-flex items-center gap-1">
                       Genre: {dna.primaryGenre}
+                      <InfoTooltip text={FP.primaryGenre} />
                     </span>
                   )}
                   {dna.dominantMood && (
-                    <span className="text-[11px] text-white/35">
+                    <span className="text-[11px] text-white/35 inline-flex items-center gap-1">
                       Mood: {dna.dominantMood}
+                      <InfoTooltip text={FP.dominantMood} />
                     </span>
                   )}
                 </div>
@@ -223,16 +235,34 @@ export default function ContentTab({ data }: ContentTabProps) {
                   className={`hidden sm:grid ${showFormatDetails ? "grid-cols-[1fr_50px_1fr_60px_60px_65px_65px]" : "grid-cols-[1fr_50px_1fr_65px]"} gap-2 text-[9px] font-semibold text-white/25 uppercase tracking-wider flex-1`}
                 >
                   <span>Format</span>
-                  <span className="text-right">Videos</span>
-                  <span>Avg Views</span>
+                  <span className="text-right inline-flex items-center justify-end gap-1">
+                    Videos
+                    <InfoTooltip text={FP.perFormatVideos} />
+                  </span>
+                  <span className="inline-flex items-center gap-1">
+                    Avg Views
+                    <InfoTooltip text={FP.perFormatAvgViews} />
+                  </span>
                   {showFormatDetails && (
                     <>
-                      <span className="text-right">Hook</span>
-                      <span className="text-right">Viral</span>
-                      <span className="text-right">Engage</span>
+                      <span className="text-right inline-flex items-center justify-end gap-1">
+                        Hook
+                        <InfoTooltip text={FP.perFormatHookScore} />
+                      </span>
+                      <span className="text-right inline-flex items-center justify-end gap-1">
+                        Viral
+                        <InfoTooltip text={FP.perFormatViralScore} />
+                      </span>
+                      <span className="text-right inline-flex items-center justify-end gap-1">
+                        Engage
+                        <InfoTooltip text={FP.perFormatEngagement} />
+                      </span>
                     </>
                   )}
-                  <span className="text-right">vs Median</span>
+                  <span className="text-right inline-flex items-center justify-end gap-1">
+                    vs Median
+                    <InfoTooltip text={FP.vsMedian} />
+                  </span>
                 </div>
                 <button
                   onClick={() => setShowFormatDetails(!showFormatDetails)}
@@ -418,8 +448,9 @@ export default function ContentTab({ data }: ContentTabProps) {
               </div>
 
               {dna?.signatureStyle && (
-                <p className="text-[12px] text-white/40 mt-3 pt-3 border-t border-white/[0.04]">
+                <p className="text-[12px] text-white/40 mt-3 pt-3 border-t border-white/[0.04] inline-flex items-center gap-1.5 flex-wrap">
                   Signature: {dna.signatureStyle}
+                  <InfoTooltip text={FP.signatureStyle} />
                 </p>
               )}
             </>
@@ -429,13 +460,19 @@ export default function ContentTab({ data }: ContentTabProps) {
                 label="Best Format"
                 value={dna.bestFormat || "—"}
                 color="#30D158"
+                tooltip={FP.bestFormat}
               />
               <StatChip
                 label="Worst Format"
                 value={dna.worstFormat || "—"}
                 color="#FF453A"
+                tooltip={FP.worstFormat}
               />
-              <StatChip label="Genre" value={dna.primaryGenre || "—"} />
+              <StatChip
+                label="Genre"
+                value={dna.primaryGenre || "—"}
+                tooltip={FP.primaryGenre}
+              />
               <StatChip
                 label="Hook Score"
                 value={
@@ -443,6 +480,7 @@ export default function ContentTab({ data }: ContentTabProps) {
                     ? `${dna.avgHookScore.toFixed(1)}/10`
                     : "—"
                 }
+                tooltip={FP.hookScore}
               />
               <StatChip
                 label="Viral Score"
@@ -451,8 +489,13 @@ export default function ContentTab({ data }: ContentTabProps) {
                     ? `${dna.avgViralScore.toFixed(1)}/10`
                     : "—"
                 }
+                tooltip={FP.viralScore}
               />
-              <StatChip label="Mood" value={dna.dominantMood || "—"} />
+              <StatChip
+                label="Mood"
+                value={dna.dominantMood || "—"}
+                tooltip={FP.dominantMood}
+              />
             </div>
           ) : null}
         </SectionCard>
@@ -461,12 +504,13 @@ export default function ContentTab({ data }: ContentTabProps) {
       {/* ─── Content Activity + Evolution ─── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Content Activity */}
-        <SectionCard title="Content Activity">
+        <SectionCard title="Content Activity" tooltip={CA.section}>
           <div className="grid grid-cols-2 gap-x-6 gap-y-4">
             <StatChip
               label="Cadence"
               value={vs?.postingCadence ?? data.postingConsistency ?? "—"}
               color={cadenceColor}
+              tooltip={CA.cadence}
             />
             <StatChip
               label="Consistency"
@@ -476,6 +520,7 @@ export default function ContentTab({ data }: ContentTabProps) {
                   : "—"
               }
               color={cadenceColor}
+              tooltip={CA.consistency}
             />
             <StatChip
               label="Engagement"
@@ -486,32 +531,58 @@ export default function ContentTab({ data }: ContentTabProps) {
                     ? `${data.ttAvgEngagementRate.toFixed(2)}%`
                     : "—"
               }
+              tooltip={CA.engagementRate}
             />
             <StatChip
               label="Performance"
               value={data.performanceTrend ?? "—"}
               color={trendColor2}
+              tooltip={CA.performanceTrend}
             />
           </div>
 
           {/* Video counts */}
           <div className="flex flex-wrap gap-x-4 gap-y-1 mt-4 pt-3 border-t border-white/[0.04] text-[11px] text-white/35">
             {vs?.totalVideos != null && (
-              <span>{vs.totalVideos} total videos</span>
+              <span className="inline-flex items-center gap-1">
+                {vs.totalVideos} total videos
+                <InfoTooltip text={CA.totalVideos} />
+              </span>
             )}
-            {vs?.videos7d != null && <span>{vs.videos7d} in 7d</span>}
-            {vs?.videos30d != null && <span>{vs.videos30d} in 30d</span>}
+            {vs?.videos7d != null && (
+              <span className="inline-flex items-center gap-1">
+                {vs.videos7d} in 7d
+                <InfoTooltip text={CA.videos7d} />
+              </span>
+            )}
+            {vs?.videos30d != null && (
+              <span className="inline-flex items-center gap-1">
+                {vs.videos30d} in 30d
+                <InfoTooltip text={CA.videos30d} />
+              </span>
+            )}
             {vs?.avgViralityRatio != null && (
-              <span>Virality: {vs.avgViralityRatio.toFixed(2)}x</span>
+              <span className="inline-flex items-center gap-1">
+                Virality: {vs.avgViralityRatio.toFixed(2)}x
+                <InfoTooltip text={CA.avgVirality} />
+              </span>
             )}
             {vs?.playsTrendPct != null && (
-              <span style={{ color: trendColor(vs.playsTrendPct) }}>
+              <span
+                className="inline-flex items-center gap-1"
+                style={{ color: trendColor(vs.playsTrendPct) }}
+              >
                 Plays: {pctStr(vs.playsTrendPct)}
+                <InfoTooltip text={CA.playsTrend} />
               </span>
             )}
             {vs?.engagementTrendPct != null && (
-              <span style={{ color: trendColor(vs.engagementTrendPct) }}>
+              <span
+                className="inline-flex items-center gap-1"
+                style={{ color: trendColor(vs.engagementTrendPct) }}
+              >
                 Engage: {pctStr(vs.engagementTrendPct)}
+                <InfoTooltip text={CA.engagementTrend} />
               </span>
             )}
           </div>
@@ -519,8 +590,9 @@ export default function ContentTab({ data }: ContentTabProps) {
           {/* Evolution */}
           {hasEvolution && (
             <div className="mt-3 pt-3 border-t border-white/[0.04]">
-              <div className="text-[10px] font-semibold text-white/30 uppercase tracking-wider mb-2">
+              <div className="text-[10px] font-semibold text-white/30 uppercase tracking-wider mb-2 inline-flex items-center gap-1">
                 EVOLUTION
+                <InfoTooltip text={CA.strategy} />
               </div>
               {data.strategyLabel && (
                 <div className="text-[13px] text-white/75 mb-1">
@@ -528,7 +600,7 @@ export default function ContentTab({ data }: ContentTabProps) {
                 </div>
               )}
               {data.viewsChangePct != null && (
-                <div className="text-[12px] text-white/45">
+                <div className="text-[12px] text-white/45 inline-flex items-center gap-1 flex-wrap">
                   <span
                     style={{
                       color: data.viewsChangePct > 0 ? "#30D158" : "#FF453A",
@@ -544,10 +616,11 @@ export default function ContentTab({ data }: ContentTabProps) {
                         {fmtNum(data.recentAvgViews)} avg
                       </span>
                     )}
+                  <InfoTooltip text={CA.viewsChange} />
                 </div>
               )}
               {(data.newFormats?.length ?? 0) > 0 && (
-                <div className="flex flex-wrap gap-1 mt-2">
+                <div className="flex flex-wrap gap-1 mt-2 items-center">
                   {data.newFormats!.map((f, i) => (
                     <span
                       key={i}
@@ -556,6 +629,9 @@ export default function ContentTab({ data }: ContentTabProps) {
                       + {f}
                     </span>
                   ))}
+                  {data.newFormats && data.newFormats.length > 0 && (
+                    <InfoTooltip text={CA.newFormats} />
+                  )}
                   {(data.droppedFormats ?? []).map((f, i) => (
                     <span
                       key={i}
@@ -564,6 +640,9 @@ export default function ContentTab({ data }: ContentTabProps) {
                       – {f}
                     </span>
                   ))}
+                  {data.droppedFormats && data.droppedFormats.length > 0 && (
+                    <InfoTooltip text={CA.droppedFormats} />
+                  )}
                 </div>
               )}
             </div>
@@ -572,38 +651,45 @@ export default function ContentTab({ data }: ContentTabProps) {
 
         {/* TikTok Profile */}
         {(data.tiktokGrade != null || data.ttAvgPlays != null) && (
-          <SectionCard title="TikTok Profile">
+          <SectionCard title="TikTok Profile" tooltip={TT.section}>
             <div className="flex items-center gap-2.5 mb-5">
               {data.tiktokGrade && (
                 <span
-                  className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-[16px] font-bold font-mono"
+                  className="inline-flex items-center justify-center gap-1 w-8 h-8 rounded-lg text-[16px] font-bold font-mono"
                   style={{ background: grade.bg, color: grade.color }}
                 >
                   {data.tiktokGrade}
                 </span>
               )}
+              {data.tiktokGrade && <InfoTooltip text={TT.grade} />}
               {data.postingConsistency && (
                 <span
-                  className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide"
+                  className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide"
                   style={{
                     color: consistencyColor,
                     background: `${consistencyColor}18`,
                   }}
                 >
                   {data.postingConsistency}
+                  <InfoTooltip text={TT.consistency} />
                 </span>
               )}
               {data.ttPlaysTrendPct != null && (
                 <span
-                  className="text-[12px] font-mono font-semibold tabular-nums ml-auto"
+                  className="text-[12px] font-mono font-semibold tabular-nums ml-auto inline-flex items-center gap-1"
                   style={{ color: trendColor(data.ttPlaysTrendPct) }}
                 >
                   {pctStr(data.ttPlaysTrendPct)} plays
+                  <InfoTooltip text={TT.playsTrend} />
                 </span>
               )}
             </div>
             <div className="grid grid-cols-2 gap-x-6 gap-y-4">
-              <StatChip label="Avg Plays" value={fmtNum(data.ttAvgPlays)} />
+              <StatChip
+                label="Avg Plays"
+                value={fmtNum(data.ttAvgPlays)}
+                tooltip={TT.avgPlays}
+              />
               <StatChip
                 label="Engagement"
                 value={
@@ -611,6 +697,7 @@ export default function ContentTab({ data }: ContentTabProps) {
                     ? `${data.ttAvgEngagementRate.toFixed(2)}%`
                     : "—"
                 }
+                tooltip={TT.engagementRate}
               />
               <StatChip
                 label="Original Sound"
@@ -619,6 +706,7 @@ export default function ContentTab({ data }: ContentTabProps) {
                     ? `${Math.round(data.ttOriginalSoundPct)}%`
                     : "—"
                 }
+                tooltip={TT.originalSound}
               />
               <StatChip
                 label="Posts / Week"
@@ -627,18 +715,25 @@ export default function ContentTab({ data }: ContentTabProps) {
                     ? data.ttAvgPostsPerWeek.toFixed(1)
                     : "—"
                 }
+                tooltip={TT.postsPerWeek}
               />
             </div>
             <div className="grid grid-cols-2 gap-x-6 gap-y-3 mt-4 pt-3 border-t border-white/[0.04]">
               <StatChip
                 label="Total Videos"
                 value={fmtNum(data.ttTotalVideos)}
+                tooltip={TT.totalVideos}
               />
-              <StatChip label="Last 30d" value={fmtNum(data.ttVideos30d)} />
+              <StatChip
+                label="Last 30d"
+                value={fmtNum(data.ttVideos30d)}
+                tooltip={TT.videos30d}
+              />
               <StatChip
                 label="Best Video"
                 value={fmtNum(data.ttBestVideoPlays)}
                 sub="plays"
+                tooltip={TT.bestVideoPlays}
               />
               {data.ttDaysSinceLastPost != null && (
                 <StatChip
@@ -651,6 +746,7 @@ export default function ContentTab({ data }: ContentTabProps) {
                         ? "#FF9F0A"
                         : undefined
                   }
+                  tooltip={TT.daysSinceLastPost}
                 />
               )}
             </div>
@@ -660,20 +756,26 @@ export default function ContentTab({ data }: ContentTabProps) {
 
       {/* ─── Fan Comment Pulse ─── */}
       {cp && cp.sentimentScore != null && (
-        <SectionCard title="Fan Comment Pulse">
+        <SectionCard title="Fan Comment Pulse" tooltip={FC.section}>
           <div className="flex items-center gap-5 mb-4">
             <Gauge
               label="Sentiment"
               value={cp.sentimentScore}
               color={sentimentColor}
+              tooltip={FC.sentimentScore}
             />
             {cp.fanEnergy != null && (
-              <Gauge label="Energy" value={cp.fanEnergy} color={energyColor} />
+              <Gauge
+                label="Energy"
+                value={cp.fanEnergy}
+                color={energyColor}
+                tooltip={FC.energyScore}
+              />
             )}
             <div className="flex flex-col items-end gap-1 ml-auto">
               {cp.audienceVibe && (
                 <span
-                  className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold uppercase tracking-wide"
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold uppercase tracking-wide"
                   style={{
                     color:
                       VIBE_CONFIG[cp.audienceVibe]?.color ??
@@ -682,11 +784,13 @@ export default function ContentTab({ data }: ContentTabProps) {
                   }}
                 >
                   {VIBE_CONFIG[cp.audienceVibe]?.label ?? cp.audienceVibe}
+                  <InfoTooltip text={FC.audienceVibe} />
                 </span>
               )}
               {cp.totalCommentsAnalyzed != null && (
-                <span className="text-[10px] font-mono text-white/30">
+                <span className="text-[10px] font-mono text-white/30 inline-flex items-center gap-1">
                   {cp.totalCommentsAnalyzed.toLocaleString()} comments
+                  <InfoTooltip text={FC.commentsAnalyzed} />
                 </span>
               )}
             </div>
@@ -695,8 +799,9 @@ export default function ContentTab({ data }: ContentTabProps) {
           {/* Intent breakdown */}
           {intents.length > 0 && (
             <div className="mb-3 pt-3 border-t border-white/[0.04]">
-              <div className="text-[10px] font-semibold text-white/30 uppercase tracking-wider mb-2">
+              <div className="text-[10px] font-semibold text-white/30 uppercase tracking-wider mb-2 inline-flex items-center gap-1">
                 What Fans Are Saying
+                <InfoTooltip text={FC.intentBreakdown} />
               </div>
               <div className="space-y-1.5">
                 {intents.slice(0, 7).map(([key, val]) => {
@@ -734,8 +839,9 @@ export default function ContentTab({ data }: ContentTabProps) {
           {/* Top comments */}
           {topComments.length > 0 && (
             <div className="pt-3 border-t border-white/[0.04]">
-              <div className="text-[10px] font-semibold text-white/30 uppercase tracking-wider mb-2">
+              <div className="text-[10px] font-semibold text-white/30 uppercase tracking-wider mb-2 inline-flex items-center gap-1">
                 Top Comments
+                <InfoTooltip text={FC.topComments} />
               </div>
               <div className="space-y-2">
                 {topComments.map((c, i) => (
@@ -758,8 +864,9 @@ export default function ContentTab({ data }: ContentTabProps) {
           {/* AI content ideas */}
           {Array.isArray(cp.aiContentIdeas) && cp.aiContentIdeas.length > 0 && (
             <div className="pt-3 mt-3 border-t border-white/[0.04]">
-              <div className="text-[10px] font-semibold text-white/30 uppercase tracking-wider mb-2">
+              <div className="text-[10px] font-semibold text-white/30 uppercase tracking-wider mb-2 inline-flex items-center gap-1">
                 Content Ideas from Fans
+                <InfoTooltip text={FC.contentIdeas} />
               </div>
               <div className="space-y-1">
                 {cp.aiContentIdeas.slice(0, 4).map((idea, i) => (
@@ -778,8 +885,9 @@ export default function ContentTab({ data }: ContentTabProps) {
           {/* Fan requests */}
           {Array.isArray(cp.fanRequests) && cp.fanRequests.length > 0 && (
             <div className="pt-3 mt-3 border-t border-white/[0.04]">
-              <div className="text-[10px] font-semibold text-[#FFD60A] uppercase tracking-wider mb-2">
+              <div className="text-[10px] font-semibold text-[#FFD60A] uppercase tracking-wider mb-2 inline-flex items-center gap-1">
                 Fan Requests
+                <InfoTooltip text={FC.fanRequests} />
               </div>
               <div className="flex flex-wrap gap-1.5">
                 {cp.fanRequests.slice(0, 6).map((req, i) => (

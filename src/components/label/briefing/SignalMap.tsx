@@ -2,6 +2,8 @@ import { useMemo, useState } from "react";
 import type { BriefingData, MarketOpportunityV2 } from "@/types/artistBriefing";
 import { VELOCITY_CONFIG } from "@/types/artistBriefing";
 import type { VelocityClass } from "@/types/artistBriefing";
+import InfoTooltip from "@/components/label/intelligence/InfoTooltip";
+import { STAT_TOOLTIPS } from "@/lib/statTooltips";
 
 // ─── Helpers ───────────────────────────────────────────────────────
 
@@ -570,6 +572,9 @@ export default function SignalMap({ data }: { data: BriefingData }) {
       >
         <h2
           style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 8,
             fontFamily: '"DM Sans", sans-serif',
             fontSize: 17,
             fontWeight: 600,
@@ -578,6 +583,7 @@ export default function SignalMap({ data }: { data: BriefingData }) {
           }}
         >
           GLOBAL SIGNALS
+          <InfoTooltip text={STAT_TOOLTIPS.briefing.signalMap.section} />
         </h2>
         <div style={{ display: "flex", gap: 4 }}>
           {(["signals", "list"] as const).map((v) => (

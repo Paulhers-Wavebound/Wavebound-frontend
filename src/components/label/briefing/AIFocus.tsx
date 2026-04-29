@@ -1,4 +1,6 @@
 import { useMemo } from "react";
+import InfoTooltip from "@/components/label/intelligence/InfoTooltip";
+import { STAT_TOOLTIPS } from "@/lib/statTooltips";
 
 // ─── Types ───────────────────────────────────────────────────────
 
@@ -118,22 +120,25 @@ export default function AIFocus({ pulse, generatedAt }: AIFocusProps) {
 
   const hasFocusedSound = !!pulse.focused_sound;
   const hasCatalogueAlert = !!pulse.catalogue_alert;
-  const hasOldFormat = !hasFocusedSound && pulse.items && pulse.items.length > 0;
+  const hasOldFormat =
+    !hasFocusedSound && pulse.items && pulse.items.length > 0;
 
   const derivedFocus = useMemo(() => {
     if (hasFocusedSound) return null;
     if (!pulse.items || pulse.items.length === 0) return null;
-    const topItem = pulse.items.find(
-      (i) => i.type === "new_release" || i.type === "viral_moment",
-    ) ?? pulse.items[0];
+    const topItem =
+      pulse.items.find(
+        (i) => i.type === "new_release" || i.type === "viral_moment",
+      ) ?? pulse.items[0];
     return {
       title: topItem.headline,
       reason: topItem.summary,
-      action: topItem.plan_action === "reference"
-        ? "Reference in upcoming content"
-        : topItem.plan_action === "react"
-          ? "Create reactive content"
-          : "Monitor this development",
+      action:
+        topItem.plan_action === "reference"
+          ? "Reference in upcoming content"
+          : topItem.plan_action === "react"
+            ? "Create reactive content"
+            : "Monitor this development",
     };
   }, [hasFocusedSound, pulse.items]);
 
@@ -160,7 +165,8 @@ export default function AIFocus({ pulse, generatedAt }: AIFocusProps) {
               left: 0,
               right: 0,
               height: 120,
-              background: "linear-gradient(180deg, rgba(232,67,10,0.04) 0%, transparent 100%)",
+              background:
+                "linear-gradient(180deg, rgba(232,67,10,0.04) 0%, transparent 100%)",
               pointerEvents: "none",
             }}
           />
@@ -177,6 +183,9 @@ export default function AIFocus({ pulse, generatedAt }: AIFocusProps) {
             >
               <span
                 style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
                   fontFamily: '"JetBrains Mono", monospace',
                   fontSize: 10,
                   fontWeight: 600,
@@ -186,16 +195,23 @@ export default function AIFocus({ pulse, generatedAt }: AIFocusProps) {
                 }}
               >
                 AI FOCUS THIS WEEK
+                <InfoTooltip text={STAT_TOOLTIPS.briefing.aiFocus.section} />
               </span>
               {generatedAt && (
                 <span
                   style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 4,
                     fontFamily: '"JetBrains Mono", monospace',
                     fontSize: 10,
                     color: "rgba(255,255,255,0.20)",
                   }}
                 >
                   {timeAgo(generatedAt)}
+                  <InfoTooltip
+                    text={STAT_TOOLTIPS.briefing.aiFocus.generatedAt}
+                  />
                 </span>
               )}
             </div>
@@ -285,7 +301,8 @@ export default function AIFocus({ pulse, generatedAt }: AIFocusProps) {
               left: 0,
               right: 0,
               height: 80,
-              background: "linear-gradient(180deg, rgba(191,90,242,0.03) 0%, transparent 100%)",
+              background:
+                "linear-gradient(180deg, rgba(191,90,242,0.03) 0%, transparent 100%)",
               pointerEvents: "none",
             }}
           />
@@ -430,7 +447,8 @@ export default function AIFocus({ pulse, generatedAt }: AIFocusProps) {
                     </div>
                     <div
                       style={{
-                        fontFamily: '"Tiempos Text", "Newsreader", Georgia, serif',
+                        fontFamily:
+                          '"Tiempos Text", "Newsreader", Georgia, serif',
                         fontSize: 13,
                         lineHeight: 1.6,
                         color: "rgba(255,255,255,0.45)",

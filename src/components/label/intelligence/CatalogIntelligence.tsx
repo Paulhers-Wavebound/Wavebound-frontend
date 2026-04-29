@@ -5,6 +5,7 @@ import type {
 import { CATALOG_STATUS_CONFIG } from "@/types/artistIntelligence";
 import InfoTooltip from "./InfoTooltip";
 import { formatNumber } from "@/utils/soundIntelligenceApi";
+import { STAT_TOOLTIPS } from "@/lib/statTooltips";
 
 const VELOCITY_COLORS: Record<string, string> = {
   accelerating: "#30D158",
@@ -102,7 +103,7 @@ export default function CatalogIntelligence({
           }}
         >
           Catalog Intelligence{" "}
-          <InfoTooltip text="Streaming health across the full catalog. Daily streams and 7-day growth from Spotify/Apple Music chart data. 'Viral' = songs with explosive short-term growth. 'Conversion opportunities' = songs trending on TikTok but underperforming on Spotify." />
+          <InfoTooltip text={STAT_TOOLTIPS.intel.catalogStatus} />
         </h3>
         <span
           style={{
@@ -135,6 +136,9 @@ export default function CatalogIntelligence({
         <div>
           <div
             style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
               fontFamily: '"JetBrains Mono", monospace',
               fontSize: 10,
               fontWeight: 500,
@@ -145,6 +149,7 @@ export default function CatalogIntelligence({
             }}
           >
             Daily Streams
+            <InfoTooltip text={STAT_TOOLTIPS.intel.catalogDailyStreams} />
           </div>
           <div
             style={{
@@ -171,6 +176,9 @@ export default function CatalogIntelligence({
         <div>
           <div
             style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
               fontFamily: '"JetBrains Mono", monospace',
               fontSize: 10,
               fontWeight: 500,
@@ -181,6 +189,7 @@ export default function CatalogIntelligence({
             }}
           >
             Songs
+            <InfoTooltip text={STAT_TOOLTIPS.intel.catalogTotalSongs} />
           </div>
           <div
             style={{
@@ -206,6 +215,9 @@ export default function CatalogIntelligence({
         <div>
           <div
             style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
               fontFamily: '"JetBrains Mono", monospace',
               fontSize: 10,
               fontWeight: 500,
@@ -216,6 +228,7 @@ export default function CatalogIntelligence({
             }}
           >
             Viral / Accel
+            <InfoTooltip text={STAT_TOOLTIPS.intel.catalogViralAccel} />
           </div>
           <div
             style={{
@@ -232,6 +245,9 @@ export default function CatalogIntelligence({
           <div>
             <div
               style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
                 fontFamily: '"JetBrains Mono", monospace',
                 fontSize: 10,
                 fontWeight: 500,
@@ -242,6 +258,7 @@ export default function CatalogIntelligence({
               }}
             >
               Playlists
+              <InfoTooltip text={STAT_TOOLTIPS.intel.catalogPlaylists} />
             </div>
             <div
               style={{
@@ -382,6 +399,9 @@ export default function CatalogIntelligence({
         >
           <div
             style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
               fontFamily: '"DM Sans", sans-serif',
               fontSize: 12,
               fontWeight: 600,
@@ -392,6 +412,9 @@ export default function CatalogIntelligence({
             }}
           >
             Conversion Opportunities
+            <InfoTooltip
+              text={STAT_TOOLTIPS.intel.catalogConversionOpportunities}
+            />
           </div>
           {opportunities.slice(0, 3).map((song) => (
             <div

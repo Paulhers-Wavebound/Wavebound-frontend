@@ -1,5 +1,7 @@
 /* Shared helpers for artist tab components — Premium editorial design */
 
+import InfoTooltip from "../intelligence/InfoTooltip";
+
 export function fmtNum(n: number | null | undefined): string {
   if (n == null) return "—";
   if (n >= 1_000_000_000)
@@ -27,11 +29,13 @@ export function StatChip({
   value,
   color,
   sub,
+  tooltip,
 }: {
   label: string;
   value: string;
   color?: string;
   sub?: string;
+  tooltip?: string;
 }) {
   return (
     <div className="flex flex-col gap-0.5">
@@ -44,9 +48,13 @@ export function StatChip({
           letterSpacing: "1.2px",
           color: "rgba(255,255,255,0.30)",
           lineHeight: 1,
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 4,
         }}
       >
         {label}
+        {tooltip && <InfoTooltip text={tooltip} />}
       </span>
       <span
         style={{
@@ -81,11 +89,15 @@ export function SectionCard({
   children,
   className,
   noPadding,
+  tooltip,
+  headerRight,
 }: {
   title: string;
   children: React.ReactNode;
   className?: string;
   noPadding?: boolean;
+  tooltip?: string;
+  headerRight?: React.ReactNode;
 }) {
   return (
     <div
@@ -96,19 +108,34 @@ export function SectionCard({
       }}
     >
       <div style={{ padding: noPadding ? "20px 24px 0" : "24px 24px 24px" }}>
-        <h3
+        <div
           style={{
-            fontFamily: '"JetBrains Mono", monospace',
-            fontSize: 10,
-            fontWeight: 600,
-            color: "rgba(255,255,255,0.30)",
-            textTransform: "uppercase",
-            letterSpacing: "1.5px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
             marginBottom: 20,
+            gap: 12,
           }}
         >
-          {title}
-        </h3>
+          <h3
+            style={{
+              fontFamily: '"JetBrains Mono", monospace',
+              fontSize: 10,
+              fontWeight: 600,
+              color: "rgba(255,255,255,0.30)",
+              textTransform: "uppercase",
+              letterSpacing: "1.5px",
+              margin: 0,
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+            }}
+          >
+            {title}
+            {tooltip && <InfoTooltip text={tooltip} />}
+          </h3>
+          {headerRight}
+        </div>
         {!noPadding && children}
       </div>
       {noPadding && <div style={{ padding: "0 24px 24px" }}>{children}</div>}
@@ -136,10 +163,12 @@ export function SubScoreBar({
   label,
   value,
   color,
+  tooltip,
 }: {
   label: string;
   value: number;
   color: string;
+  tooltip?: string;
 }) {
   return (
     <div className="flex-1 min-w-[100px]">
@@ -152,9 +181,13 @@ export function SubScoreBar({
             color: "rgba(255,255,255,0.35)",
             textTransform: "uppercase",
             letterSpacing: "0.8px",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 4,
           }}
         >
           {label}
+          {tooltip && <InfoTooltip text={tooltip} />}
         </span>
         <span
           style={{
@@ -192,9 +225,11 @@ export function SubScoreBar({
 export function PlatformTrendPill({
   label,
   value,
+  tooltip,
 }: {
   label: string;
   value: number | null;
+  tooltip?: string;
 }) {
   if (value == null) return null;
   const color = value > 0 ? "#30D158" : value < -5 ? "#FF453A" : "#8E8E93";
@@ -219,6 +254,7 @@ export function PlatformTrendPill({
         {arrow}
         {Math.abs(value).toFixed(1)}%
       </span>
+      {tooltip && <InfoTooltip text={tooltip} />}
     </span>
   );
 }
@@ -228,11 +264,13 @@ export function Gauge({
   value,
   color,
   size = 72,
+  tooltip,
 }: {
   label: string;
   value: number;
   color: string;
   size?: number;
+  tooltip?: string;
 }) {
   const r = (size - 10) / 2;
   const circumference = 2 * Math.PI * r;
@@ -261,7 +299,9 @@ export function Gauge({
           strokeDasharray={circumference}
           strokeDashoffset={offset}
           transform={`rotate(-90 ${center} ${center})`}
-          style={{ transition: "stroke-dashoffset 700ms cubic-bezier(0.16,1,0.3,1)" }}
+          style={{
+            transition: "stroke-dashoffset 700ms cubic-bezier(0.16,1,0.3,1)",
+          }}
         />
         <text
           x={center}
@@ -287,9 +327,13 @@ export function Gauge({
           textTransform: "uppercase",
           letterSpacing: "0.8px",
           marginTop: 4,
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 4,
         }}
       >
         {label}
+        {tooltip && <InfoTooltip text={tooltip} />}
       </div>
     </div>
   );

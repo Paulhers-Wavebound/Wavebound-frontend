@@ -11,6 +11,8 @@ import {
   computeProjectedReach,
 } from "@/utils/artistBriefingApi";
 import { estimateOpportunityWindow } from "@/utils/briefingGenerator";
+import InfoTooltip from "@/components/label/intelligence/InfoTooltip";
+import { STAT_TOOLTIPS } from "@/lib/statTooltips";
 
 // ─── Helpers ───────────────────────────────────────────────────────
 
@@ -665,6 +667,9 @@ export default function OpportunityEngine({ data }: { data: BriefingData }) {
       >
         <h2
           style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 8,
             fontFamily: '"DM Sans", sans-serif',
             fontSize: 17,
             fontWeight: 600,
@@ -673,6 +678,9 @@ export default function OpportunityEngine({ data }: { data: BriefingData }) {
           }}
         >
           OPPORTUNITIES
+          <InfoTooltip
+            text={STAT_TOOLTIPS.briefing.opportunityEngine.section}
+          />
         </h2>
         <span
           style={{

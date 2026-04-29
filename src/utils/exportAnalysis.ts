@@ -567,7 +567,7 @@ export function exportFullAnalysisCSV(analysis: SoundAnalysis): void {
 
   // Top Videos
   sections.push("TOP PERFORMERS");
-  sections.push("Rank,Creator,Format,Views,Share Rate,URL");
+  sections.push("Rank,Creator,Format,Views,Engagement Rate,URL");
   analysis.top_videos.forEach((v) => {
     sections.push(
       [v.rank, v.creator, v.format, v.views, v.share_rate, v.url]

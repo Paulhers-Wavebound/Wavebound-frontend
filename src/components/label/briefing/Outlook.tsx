@@ -1,6 +1,8 @@
 import { useMemo } from "react";
 import type { BriefingData, MarketOpportunityV2 } from "@/types/artistBriefing";
 import { generateBottomLine } from "@/utils/briefingGenerator";
+import InfoTooltip from "@/components/label/intelligence/InfoTooltip";
+import { STAT_TOOLTIPS } from "@/lib/statTooltips";
 
 // ─── Helpers ───────────────────────────────────────────────────────
 
@@ -216,6 +218,9 @@ export default function Outlook({ data }: { data: BriefingData }) {
       {/* Header */}
       <h2
         style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 8,
           fontFamily: '"DM Sans", sans-serif',
           fontSize: 17,
           fontWeight: 600,
@@ -224,6 +229,7 @@ export default function Outlook({ data }: { data: BriefingData }) {
         }}
       >
         OUTLOOK — Next 30 Days
+        <InfoTooltip text={STAT_TOOLTIPS.briefing.outlook.section} />
       </h2>
 
       {/* ─── Predicted Market Entries ─── */}

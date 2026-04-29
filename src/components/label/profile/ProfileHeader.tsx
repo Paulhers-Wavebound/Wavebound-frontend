@@ -1,14 +1,25 @@
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { BadgeCheck, Copy } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import InfoTooltip from "@/components/label/intelligence/InfoTooltip";
+import { STAT_TOOLTIPS } from "@/lib/statTooltips";
 
-const tierConfig: Record<string, { label: string; color: string; bg: string }> = {
-  viral: { label: "Viral", color: "#FF453A", bg: "rgba(255,69,58,0.12)" },
-  breakout: { label: "Breakout", color: "#30D158", bg: "rgba(48,209,88,0.12)" },
-  momentum: { label: "Momentum", color: "#FF9F0A", bg: "rgba(255,159,10,0.12)" },
-  stable: { label: "Stable", color: "#8E8E93", bg: "rgba(142,142,147,0.12)" },
-  stalled: { label: "Stalled", color: "#FF453A", bg: "rgba(255,69,58,0.12)" },
-};
+const tierConfig: Record<string, { label: string; color: string; bg: string }> =
+  {
+    viral: { label: "Viral", color: "#FF453A", bg: "rgba(255,69,58,0.12)" },
+    breakout: {
+      label: "Breakout",
+      color: "#30D158",
+      bg: "rgba(48,209,88,0.12)",
+    },
+    momentum: {
+      label: "Momentum",
+      color: "#FF9F0A",
+      bg: "rgba(255,159,10,0.12)",
+    },
+    stable: { label: "Stable", color: "#8E8E93", bg: "rgba(142,142,147,0.12)" },
+    stalled: { label: "Stalled", color: "#FF453A", bg: "rgba(255,69,58,0.12)" },
+  };
 
 function fmtNum(n: number | null | undefined): string {
   if (n == null) return "—";
@@ -18,7 +29,8 @@ function fmtNum(n: number | null | undefined): string {
 }
 
 function postAgeLabel(days: number | null): { text: string; color: string } {
-  if (days == null) return { text: "No recent posts", color: "rgba(255,255,255,0.30)" };
+  if (days == null)
+    return { text: "No recent posts", color: "rgba(255,255,255,0.30)" };
   if (days === 0) return { text: "Posted today", color: "#30D158" };
   if (days <= 3) return { text: `Posted ${days}d ago`, color: "#30D158" };
   if (days <= 7) return { text: `Posted ${days}d ago`, color: "#FFD60A" };
@@ -86,7 +98,14 @@ export default function ProfileHeader({
 
           <div style={{ flex: 1, minWidth: 0 }}>
             {/* Name + badges */}
-            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                flexWrap: "wrap",
+              }}
+            >
               <h1
                 style={{
                   fontFamily: '"Playfair Display", serif',
@@ -108,6 +127,7 @@ export default function ProfileHeader({
                 style={{
                   display: "inline-flex",
                   alignItems: "center",
+                  gap: 4,
                   padding: "2px 10px",
                   borderRadius: 12,
                   background: tier.bg,
@@ -118,6 +138,7 @@ export default function ProfileHeader({
                 }}
               >
                 {tier.label}
+                <InfoTooltip text={STAT_TOOLTIPS.header.momentumTier} />
               </span>
             </div>
 
@@ -146,43 +167,61 @@ export default function ProfileHeader({
               {tiktokFollowers != null && (
                 <span
                   style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 4,
                     fontFamily: '"DM Sans", sans-serif',
                     fontSize: 13,
                     color: "rgba(255,255,255,0.40)",
                   }}
                 >
                   TikTok:{" "}
-                  <span style={{ fontWeight: 600, color: "rgba(255,255,255,0.87)" }}>
+                  <span
+                    style={{ fontWeight: 600, color: "rgba(255,255,255,0.87)" }}
+                  >
                     {fmtNum(tiktokFollowers)}
                   </span>
+                  <InfoTooltip text={STAT_TOOLTIPS.header.tiktokFollowers} />
                 </span>
               )}
               {instagramFollowers != null && (
                 <span
                   style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 4,
                     fontFamily: '"DM Sans", sans-serif',
                     fontSize: 13,
                     color: "rgba(255,255,255,0.40)",
                   }}
                 >
                   IG:{" "}
-                  <span style={{ fontWeight: 600, color: "rgba(255,255,255,0.87)" }}>
+                  <span
+                    style={{ fontWeight: 600, color: "rgba(255,255,255,0.87)" }}
+                  >
                     {fmtNum(instagramFollowers)}
                   </span>
+                  <InfoTooltip text={STAT_TOOLTIPS.header.instagramFollowers} />
                 </span>
               )}
               {monthlyListeners != null && (
                 <span
                   style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 4,
                     fontFamily: '"DM Sans", sans-serif',
                     fontSize: 13,
                     color: "rgba(255,255,255,0.40)",
                   }}
                 >
                   Spotify:{" "}
-                  <span style={{ fontWeight: 600, color: "rgba(255,255,255,0.87)" }}>
+                  <span
+                    style={{ fontWeight: 600, color: "rgba(255,255,255,0.87)" }}
+                  >
                     {fmtNum(monthlyListeners)} listeners
                   </span>
+                  <InfoTooltip text={STAT_TOOLTIPS.header.monthlyListeners} />
                 </span>
               )}
             </div>
@@ -190,6 +229,9 @@ export default function ProfileHeader({
             {/* Last posted */}
             <div
               style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
                 fontFamily: '"DM Sans", sans-serif',
                 fontSize: 12,
                 color: postAge.color,
@@ -197,6 +239,7 @@ export default function ProfileHeader({
               }}
             >
               {postAge.text}
+              <InfoTooltip text={STAT_TOOLTIPS.header.daysSinceLastPost} />
             </div>
           </div>
         </div>
@@ -217,10 +260,20 @@ export default function ProfileHeader({
             justifyContent: "center",
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 12,
+            }}
+          >
             <div>
               <div
                 style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 4,
                   fontFamily: '"JetBrains Mono", monospace',
                   fontSize: 10,
                   fontWeight: 600,
@@ -231,6 +284,7 @@ export default function ProfileHeader({
                 }}
               >
                 INVITE CODE
+                <InfoTooltip text={STAT_TOOLTIPS.header.inviteCode} />
               </div>
               <div
                 style={{
@@ -263,8 +317,12 @@ export default function ProfileHeader({
                 transition: "background 150ms",
                 flexShrink: 0,
               }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.08)")}
-              onMouseLeave={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.04)")}
+              onMouseEnter={(e) =>
+                (e.currentTarget.style.background = "rgba(255,255,255,0.08)")
+              }
+              onMouseLeave={(e) =>
+                (e.currentTarget.style.background = "rgba(255,255,255,0.04)")
+              }
             >
               <Copy size={15} />
             </button>

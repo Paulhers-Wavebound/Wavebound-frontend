@@ -2,6 +2,7 @@ import type { TikTokProfile } from "@/types/artistIntelligence";
 import { TIKTOK_GRADE_CONFIG } from "@/types/artistIntelligence";
 import { formatNumber } from "@/utils/soundIntelligenceApi";
 import InfoTooltip from "./InfoTooltip";
+import { STAT_TOOLTIPS } from "@/lib/statTooltips";
 
 const CONSISTENCY_CONFIG: Record<string, { label: string; color: string }> = {
   daily: { label: "Daily", color: "#30D158" },
@@ -15,15 +16,20 @@ function StatCell({
   label,
   value,
   sub,
+  tooltip,
 }: {
   label: string;
   value: string;
   sub?: string;
+  tooltip?: string;
 }) {
   return (
     <div style={{ flex: 1, minWidth: 100 }}>
       <div
         style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 4,
           fontFamily: '"JetBrains Mono", monospace',
           fontSize: 10,
           fontWeight: 500,
@@ -34,6 +40,7 @@ function StatCell({
         }}
       >
         {label}
+        {tooltip && <InfoTooltip text={tooltip} />}
       </div>
       <div
         style={{
@@ -124,7 +131,7 @@ export default function TikTokProfileCard({
           }}
         >
           TikTok Profile{" "}
-          <InfoTooltip text="Grade (A-F) based on posting frequency, engagement rate, and content quality. Scraped from artist's TikTok account. Engagement = (likes + comments + shares) / plays. Original Sound % = videos using their own audio vs trending sounds." />
+          <InfoTooltip text={STAT_TOOLTIPS.intel.tiktokProfile} />
         </h3>
         <div style={{ display: "flex", gap: 8 }}>
           {/* Grade badge */}
@@ -180,19 +187,23 @@ export default function TikTokProfileCard({
               ? `${profile.plays_trend_pct > 0 ? "+" : ""}${profile.plays_trend_pct.toFixed(0)}% trend`
               : undefined
           }
+          tooltip={STAT_TOOLTIPS.intel.tiktokAvgPlays}
         />
         <StatCell
           label="Engagement"
           value={`${profile.avg_engagement_rate.toFixed(1)}%`}
+          tooltip={STAT_TOOLTIPS.intel.tiktokEngagement}
         />
         <StatCell
           label="Original Sound"
           value={`${profile.original_sound_pct.toFixed(0)}%`}
+          tooltip={STAT_TOOLTIPS.intel.tiktokOriginalSound}
         />
         <StatCell
           label="Posts / Week"
           value={profile.avg_posts_per_week.toFixed(1)}
           sub={`${profile.days_since_last_post}d since last`}
+          tooltip={STAT_TOOLTIPS.intel.tiktokPostsPerWeek}
         />
       </div>
 
@@ -209,9 +220,18 @@ export default function TikTokProfileCard({
           color: "var(--ink-tertiary)",
         }}
       >
-        <span>{profile.total_videos} total videos</span>
-        <span>{profile.videos_30d} in last 30d</span>
-        <span>Best: {formatNumber(profile.best_video_plays)} plays</span>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+          {profile.total_videos} total videos
+          <InfoTooltip text={STAT_TOOLTIPS.intel.tiktokTotalVideos} />
+        </span>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+          {profile.videos_30d} in last 30d
+          <InfoTooltip text={STAT_TOOLTIPS.intel.tiktokVideos30d} />
+        </span>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+          Best: {formatNumber(profile.best_video_plays)} plays
+          <InfoTooltip text={STAT_TOOLTIPS.intel.tiktokBestVideoPlays} />
+        </span>
       </div>
     </div>
   );

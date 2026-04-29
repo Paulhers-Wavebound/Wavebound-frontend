@@ -6,6 +6,11 @@ import {
   generateBriefingParagraph,
   computeMomentumLabel,
 } from "@/utils/briefingGenerator";
+import InfoTooltip from "@/components/label/intelligence/InfoTooltip";
+import { STAT_TOOLTIPS } from "@/lib/statTooltips";
+
+const BH = STAT_TOOLTIPS.briefing.hero;
+const BSM = STAT_TOOLTIPS.briefing.signalMap;
 
 // ─── Animated Momentum Bar ─────────────────────────────────────────
 
@@ -121,15 +126,20 @@ function StatPill({
   label,
   value,
   delta,
+  tooltip,
 }: {
   label: string;
   value: string;
   delta?: string;
+  tooltip?: string;
 }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
       <span
         style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 4,
           fontFamily: '"JetBrains Mono", monospace',
           fontSize: 10,
           fontWeight: 500,
@@ -139,6 +149,7 @@ function StatPill({
         }}
       >
         {label}
+        {tooltip && <InfoTooltip text={tooltip} />}
       </span>
       <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
         <span
@@ -292,6 +303,7 @@ export default function BriefingHero({
                 style={{
                   display: "inline-flex",
                   alignItems: "center",
+                  gap: 4,
                   padding: "2px 10px",
                   borderRadius: 12,
                   background: tier.bg,
@@ -304,6 +316,7 @@ export default function BriefingHero({
                 }}
               >
                 {tier.label}
+                <InfoTooltip text={BH.tier} />
               </span>
             </div>
           </div>
@@ -320,12 +333,16 @@ export default function BriefingHero({
             <Sparkline data={card.sparkline} />
             <span
               style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
                 fontFamily: '"JetBrains Mono", monospace',
                 fontSize: 11,
                 color: "rgba(255,255,255,0.35)",
               }}
             >
               30-day momentum · #{card.global_rank} global
+              <InfoTooltip text={BH.globalRank} />
             </span>
           </div>
         </div>
@@ -351,12 +368,16 @@ export default function BriefingHero({
             >
               <span
                 style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 4,
                   fontFamily: '"JetBrains Mono", monospace',
                   fontSize: 11,
                   color: "rgba(255,255,255,0.55)",
                 }}
               >
                 Global Momentum:
+                <InfoTooltip text={BH.artistScore} />
               </span>
               <span
                 style={{
@@ -421,11 +442,13 @@ export default function BriefingHero({
             delta={
               marketsGrowing > 0 ? `+${marketsGrowing} surging` : undefined
             }
+            tooltip={STAT_TOOLTIPS.intel.geoTotalMarkets}
           />
           <StatPill
             label="Platforms"
             value={String(card.signals.platforms_tracked)}
             delta={platformsDelta ? `${platformsDelta} growing` : undefined}
+            tooltip={BSM.platformsTracked}
           />
           <StatPill
             label="Songs Tracked"
@@ -437,6 +460,7 @@ export default function BriefingHero({
                   ? `${card.catalog.accelerating_songs} accelerating`
                   : undefined
             }
+            tooltip={STAT_TOOLTIPS.intel.catalogTotalSongs}
           />
           <StatPill
             label="Momentum 7d"
@@ -454,6 +478,7 @@ export default function BriefingHero({
                   ? "negative zone"
                   : undefined
             }
+            tooltip={BH.momentum}
           />
         </div>
       </div>

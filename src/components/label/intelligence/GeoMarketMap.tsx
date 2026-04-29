@@ -4,6 +4,7 @@ import type {
   MarketEntry,
 } from "@/types/artistIntelligence";
 import InfoTooltip from "./InfoTooltip";
+import { STAT_TOOLTIPS } from "@/lib/statTooltips";
 
 const STRENGTH_COLORS: Record<string, string> = {
   dominant: "#30D158",
@@ -270,10 +271,13 @@ export default function GeoMarketMap({
           }}
         >
           Geographic Markets{" "}
-          <InfoTooltip text="Market presence from cross-platform chart positions (Spotify, Apple Music, Shazam, YouTube). Strength = charting performance in each country. Opportunity score combines market size, current presence, and growth potential. 'Expand' = not present in a high-value market." />
+          <InfoTooltip text={STAT_TOOLTIPS.intel.geoMarket} />
         </h3>
         <div
           style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 4,
             fontFamily: '"JetBrains Mono", monospace',
             fontSize: 11,
             color: "var(--ink-tertiary)",
@@ -281,6 +285,7 @@ export default function GeoMarketMap({
         >
           {marketMap.presence.total_markets} markets ·{" "}
           {marketMap.presence.dominant_markets} dominant
+          <InfoTooltip text={STAT_TOOLTIPS.intel.geoTotalMarkets} />
         </div>
       </div>
 

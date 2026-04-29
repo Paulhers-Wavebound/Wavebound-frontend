@@ -1,12 +1,23 @@
 import { useMemo } from "react";
-import type { ContentIntelData, MomentumPoint } from "@/hooks/useContentIntelligence";
+import type {
+  ContentIntelData,
+  MomentumPoint,
+} from "@/hooks/useContentIntelligence";
 import { TIER_CONFIG, TREND_CONFIG } from "@/types/artistIntelligence";
 import { Skeleton } from "@/components/ui/skeleton";
-import { fmtNum, StatChip, SubScoreBar, PlatformTrendPill, SectionCard } from "./shared";
+import {
+  fmtNum,
+  StatChip,
+  SubScoreBar,
+  PlatformTrendPill,
+  SectionCard,
+} from "./shared";
 import ProfileHeader from "@/components/label/profile/ProfileHeader";
 import PerformanceChart from "@/components/label/profile/PerformanceChart";
 import AIFocus from "@/components/label/briefing/AIFocus";
 import type { WeeklyPulse } from "@/components/label/briefing/AIFocus";
+import InfoTooltip from "@/components/label/intelligence/InfoTooltip";
+import { STAT_TOOLTIPS } from "@/lib/statTooltips";
 
 /* ─── Momentum Sparkline ──────────────────────────────────── */
 
@@ -82,22 +93,41 @@ function ReadinessDonut({ score }: { score: number }) {
   return (
     <div className="text-center">
       <svg width={68} height={68} viewBox="0 0 68 68">
-        <circle cx={34} cy={34} r={r} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="4" />
         <circle
-          cx={34} cy={34} r={r} fill="none" stroke={color} strokeWidth="4"
+          cx={34}
+          cy={34}
+          r={r}
+          fill="none"
+          stroke="rgba(255,255,255,0.06)"
+          strokeWidth="4"
+        />
+        <circle
+          cx={34}
+          cy={34}
+          r={r}
+          fill="none"
+          stroke={color}
+          strokeWidth="4"
           strokeLinecap="round"
           strokeDasharray={circumference}
           strokeDashoffset={offset}
           transform="rotate(-90 34 34)"
           className="transition-all duration-700 ease-out"
         />
-        <text x={34} y={34} textAnchor="middle" dominantBaseline="central"
-          className="font-mono" style={{ fontSize: 18, fontWeight: 700, fill: "white" }}>
+        <text
+          x={34}
+          y={34}
+          textAnchor="middle"
+          dominantBaseline="central"
+          className="font-mono"
+          style={{ fontSize: 18, fontWeight: 700, fill: "white" }}
+        >
           {score}
         </text>
       </svg>
-      <div className="text-[9px] font-medium text-white/35 uppercase tracking-wider mt-0.5">
+      <div className="text-[9px] font-medium text-white/35 uppercase tracking-wider mt-0.5 inline-flex items-center gap-1">
         Release Ready
+        <InfoTooltip text={STAT_TOOLTIPS.overview.releaseReadiness} />
       </div>
     </div>
   );
@@ -208,39 +238,62 @@ export default function OverviewTab({
             flexWrap: "wrap",
           }}
         >
-            {/* Score */}
-            <div className="text-center">
-              <div className="text-[36px] font-bold leading-none text-white/90 font-mono tabular-nums">
-                {data.artistScore}
-              </div>
-              <div className="flex items-center gap-1.5 mt-1.5 justify-center">
-                <span
-                  className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide"
-                  style={{ background: tier.bg, color: tier.color }}
-                >
-                  {tier.label}
-                </span>
-                <span
-                  className="inline-flex items-center gap-0.5 text-[10px] font-semibold"
-                  style={{ color: trend.color }}
-                >
-                  {trend.arrow}
-                </span>
-              </div>
+          {/* Score */}
+          <div className="text-center">
+            <div className="inline-flex items-center gap-1 text-[36px] font-bold leading-none text-white/90 font-mono tabular-nums">
+              {data.artistScore}
+              <InfoTooltip text={STAT_TOOLTIPS.overview.artistScore} />
             </div>
-
-            {/* Sub-scores */}
-            <div className="grid grid-cols-2 gap-x-4 gap-y-2 min-w-[160px]">
-              <SubScoreBar label="Health" value={data?.healthScore ?? 0} color="#30D158" />
-              <SubScoreBar label="Momentum" value={data?.momentumScore ?? 0} color="#0A84FF" />
-              <SubScoreBar label="Discovery" value={data?.discoveryScore ?? 0} color="#BF5AF2" />
-              <SubScoreBar label="Catalog" value={data?.catalogScore ?? 0} color="#FF9F0A" />
+            <div className="flex items-center gap-1.5 mt-1.5 justify-center">
+              <span
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide"
+                style={{ background: tier.bg, color: tier.color }}
+              >
+                {tier.label}
+                <InfoTooltip text={STAT_TOOLTIPS.overview.tier} />
+              </span>
+              <span
+                className="inline-flex items-center gap-0.5 text-[10px] font-semibold"
+                style={{ color: trend.color }}
+              >
+                {trend.arrow}
+                <InfoTooltip text={STAT_TOOLTIPS.overview.trend} />
+              </span>
             </div>
+          </div>
 
-            {/* Release readiness */}
-            {releaseReadinessScore != null && (
-              <ReadinessDonut score={releaseReadinessScore} />
-            )}
+          {/* Sub-scores */}
+          <div className="grid grid-cols-2 gap-x-4 gap-y-2 min-w-[160px]">
+            <SubScoreBar
+              label="Health"
+              value={data?.healthScore ?? 0}
+              color="#30D158"
+              tooltip={STAT_TOOLTIPS.overview.healthSubScore}
+            />
+            <SubScoreBar
+              label="Momentum"
+              value={data?.momentumScore ?? 0}
+              color="#0A84FF"
+              tooltip={STAT_TOOLTIPS.overview.momentumSubScore}
+            />
+            <SubScoreBar
+              label="Discovery"
+              value={data?.discoveryScore ?? 0}
+              color="#BF5AF2"
+              tooltip={STAT_TOOLTIPS.overview.discoverySubScore}
+            />
+            <SubScoreBar
+              label="Catalog"
+              value={data?.catalogScore ?? 0}
+              color="#FF9F0A"
+              tooltip={STAT_TOOLTIPS.overview.catalogSubScore}
+            />
+          </div>
+
+          {/* Release readiness */}
+          {releaseReadinessScore != null && (
+            <ReadinessDonut score={releaseReadinessScore} />
+          )}
         </div>
       )}
 
@@ -248,37 +301,66 @@ export default function OverviewTab({
       <AIFocus pulse={weeklyPulse} generatedAt={weeklyPulseGeneratedAt} />
 
       {/* ─── Platform Trends + Sparkline ─── */}
-      {data && (data.spotifyTrend != null || data.tiktokTrend != null ||
-        data.youtubeTrend != null || data.shazamTrend != null ||
-        data.viralSongs != null && data.viralSongs > 0 ||
-        data.songsAccelerating != null && data.songsAccelerating > 0) && (
-        <div
-          className="rounded-xl border border-white/[0.06] p-5"
-          style={{ background: "#1C1C1E" }}
-        >
-          <div className="flex items-center justify-between flex-wrap gap-4">
-            <div className="flex flex-wrap items-center gap-2">
-              <PlatformTrendPill label="Spotify" value={data.spotifyTrend} />
-              <PlatformTrendPill label="TikTok" value={data.tiktokTrend} />
-              <PlatformTrendPill label="YouTube" value={data.youtubeTrend} />
-              <PlatformTrendPill label="Shazam" value={data.shazamTrend} />
-              {data.viralSongs != null && data.viralSongs > 0 && (
-                <span className="inline-flex items-center gap-1 text-[11px] font-mono font-medium px-2 py-0.5 rounded-md text-[#FF453A] bg-[rgba(255,69,58,0.12)]">
-                  {data.viralSongs} viral
-                </span>
-              )}
-              {data.songsAccelerating != null && data.songsAccelerating > 0 && (
-                <span className="inline-flex items-center gap-1 text-[11px] font-mono font-medium px-2 py-0.5 rounded-md text-[#30D158] bg-[rgba(48,209,88,0.12)]">
-                  {data.songsAccelerating} accelerating
-                </span>
+      {data &&
+        (data.spotifyTrend != null ||
+          data.tiktokTrend != null ||
+          data.youtubeTrend != null ||
+          data.shazamTrend != null ||
+          (data.viralSongs != null && data.viralSongs > 0) ||
+          (data.songsAccelerating != null && data.songsAccelerating > 0)) && (
+          <div
+            className="rounded-xl border border-white/[0.06] p-5"
+            style={{ background: "#1C1C1E" }}
+          >
+            <div className="flex items-center justify-between flex-wrap gap-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <PlatformTrendPill
+                  label="Spotify"
+                  value={data.spotifyTrend}
+                  tooltip={STAT_TOOLTIPS.overview.spotifyTrend}
+                />
+                <PlatformTrendPill
+                  label="TikTok"
+                  value={data.tiktokTrend}
+                  tooltip={STAT_TOOLTIPS.overview.tiktokTrend}
+                />
+                <PlatformTrendPill
+                  label="YouTube"
+                  value={data.youtubeTrend}
+                  tooltip={STAT_TOOLTIPS.overview.youtubeTrend}
+                />
+                <PlatformTrendPill
+                  label="Shazam"
+                  value={data.shazamTrend}
+                  tooltip={STAT_TOOLTIPS.overview.shazamTrend}
+                />
+                {data.viralSongs != null && data.viralSongs > 0 && (
+                  <span className="inline-flex items-center gap-1 text-[11px] font-mono font-medium px-2 py-0.5 rounded-md text-[#FF453A] bg-[rgba(255,69,58,0.12)]">
+                    {data.viralSongs} viral
+                    <InfoTooltip text={STAT_TOOLTIPS.overview.viralSongs} />
+                  </span>
+                )}
+                {data.songsAccelerating != null &&
+                  data.songsAccelerating > 0 && (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-mono font-medium px-2 py-0.5 rounded-md text-[#30D158] bg-[rgba(48,209,88,0.12)]">
+                      {data.songsAccelerating} accelerating
+                      <InfoTooltip
+                        text={STAT_TOOLTIPS.overview.acceleratingSongs}
+                      />
+                    </span>
+                  )}
+              </div>
+              {data.momentumSparkline?.length > 1 && (
+                <div className="flex items-center gap-1">
+                  <MomentumSparkline points={data.momentumSparkline} />
+                  <InfoTooltip
+                    text={STAT_TOOLTIPS.overview.momentumSparkline}
+                  />
+                </div>
               )}
             </div>
-            {data.momentumSparkline?.length > 1 && (
-              <MomentumSparkline points={data.momentumSparkline} />
-            )}
           </div>
-        </div>
-      )}
+        )}
 
       {/* Loading skeleton for intelligence data */}
       {isLoading && !data && (
@@ -306,7 +388,10 @@ export default function OverviewTab({
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {/* Anomalies */}
           {(data?.anomalies?.length ?? 0) > 0 && data && (
-            <SectionCard title="Recent Anomalies">
+            <SectionCard
+              title="Recent Anomalies"
+              tooltip={STAT_TOOLTIPS.overview.anomaliesSection}
+            >
               <div className="space-y-2">
                 {data.anomalies.slice(0, 3).map((a, i) => (
                   <div key={i} className="flex gap-2 items-start">
@@ -337,11 +422,16 @@ export default function OverviewTab({
 
           {/* Risks */}
           {risks.length > 0 && (
-            <SectionCard title="Risk Alerts">
+            <SectionCard
+              title="Risk Alerts"
+              tooltip={STAT_TOOLTIPS.overview.riskAlertsSection}
+            >
               <div className="space-y-2">
                 {risks.map((r, i) => (
                   <div key={i} className="flex items-center gap-2 text-[13px]">
-                    <span className={`text-sm shrink-0 ${r.severity === "high" ? "text-red-400" : "text-amber-400"}`}>
+                    <span
+                      className={`text-sm shrink-0 ${r.severity === "high" ? "text-red-400" : "text-amber-400"}`}
+                    >
                       {r.severity === "high" ? "●" : "▲"}
                     </span>
                     <span className="text-white/75">{r.flag}</span>

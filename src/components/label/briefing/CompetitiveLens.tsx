@@ -1,6 +1,8 @@
 import { useMemo } from "react";
 import type { ArtistCard } from "@/types/artistIntelligence";
 import type { RosterScoreEntry } from "@/utils/artistBriefingApi";
+import InfoTooltip from "@/components/label/intelligence/InfoTooltip";
+import { STAT_TOOLTIPS } from "@/lib/statTooltips";
 
 // ─── Helpers ───────────────────────────────────────────────────────
 
@@ -338,6 +340,9 @@ export default function CompetitiveLens({
       >
         <h2
           style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 8,
             fontFamily: '"DM Sans", sans-serif',
             fontSize: 17,
             fontWeight: 600,
@@ -346,6 +351,7 @@ export default function CompetitiveLens({
           }}
         >
           COMPETITIVE INTELLIGENCE
+          <InfoTooltip text={STAT_TOOLTIPS.briefing.competitiveLens.section} />
         </h2>
         <span
           style={{

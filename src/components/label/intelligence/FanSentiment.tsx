@@ -1,14 +1,17 @@
 import type { ArtistCard } from "@/types/artistIntelligence";
 import InfoTooltip from "./InfoTooltip";
+import { STAT_TOOLTIPS } from "@/lib/statTooltips";
 
 function Gauge({
   label,
   value,
   color,
+  tooltip,
 }: {
   label: string;
   value: number;
   color: string;
+  tooltip?: string;
 }) {
   const circumference = 2 * Math.PI * 36;
   const offset = circumference - (value / 100) * circumference;
@@ -57,6 +60,9 @@ function Gauge({
       </svg>
       <div
         style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 4,
           fontFamily: '"DM Sans", sans-serif',
           fontSize: 12,
           fontWeight: 500,
@@ -65,6 +71,7 @@ function Gauge({
         }}
       >
         {label}
+        {tooltip && <InfoTooltip text={tooltip} />}
       </div>
     </div>
   );
@@ -147,8 +154,7 @@ export default function FanSentiment({ card }: { card: ArtistCard }) {
             margin: 0,
           }}
         >
-          Fan Sentiment{" "}
-          <InfoTooltip text="Sentiment (0-100) and energy (0-100) from AI analysis of TikTok comments on the artist's videos. Themes are the most common topics fans discuss. Updated daily at 06:30 UTC via Gemini classification." />
+          Fan Sentiment <InfoTooltip text={STAT_TOOLTIPS.intel.fanSentiment} />
         </h3>
         {sentiment.audience_vibe &&
           (() => {
@@ -159,6 +165,7 @@ export default function FanSentiment({ card }: { card: ArtistCard }) {
                 style={{
                   display: "inline-flex",
                   alignItems: "center",
+                  gap: 4,
                   padding: "4px 12px",
                   borderRadius: 20,
                   background: vibe.bg,
@@ -171,6 +178,7 @@ export default function FanSentiment({ card }: { card: ArtistCard }) {
                 }}
               >
                 {vibe.label}
+                <InfoTooltip text={STAT_TOOLTIPS.intel.fanAudienceVibe} />
               </span>
             );
           })()}
@@ -189,11 +197,13 @@ export default function FanSentiment({ card }: { card: ArtistCard }) {
           label="Sentiment"
           value={sentiment.score}
           color={sentimentColor(sentiment.score)}
+          tooltip={STAT_TOOLTIPS.intel.fanSentimentScore}
         />
         <Gauge
           label="Energy"
           value={sentiment.energy}
           color={energyColor(sentiment.energy)}
+          tooltip={STAT_TOOLTIPS.intel.fanEnergyScore}
         />
       </div>
 

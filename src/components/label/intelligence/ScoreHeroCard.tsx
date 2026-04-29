@@ -2,15 +2,18 @@ import { useMemo, useRef, useEffect, useState } from "react";
 import type { ArtistCard } from "@/types/artistIntelligence";
 import { TIER_CONFIG, TREND_CONFIG } from "@/types/artistIntelligence";
 import InfoTooltip from "./InfoTooltip";
+import { STAT_TOOLTIPS } from "@/lib/statTooltips";
 
 function SubScoreBar({
   label,
   value,
   color,
+  tooltip,
 }: {
   label: string;
   value: number;
   color: string;
+  tooltip?: string;
 }) {
   return (
     <div style={{ flex: 1, minWidth: 120 }}>
@@ -24,6 +27,9 @@ function SubScoreBar({
       >
         <span
           style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 4,
             fontFamily: '"DM Sans", sans-serif',
             fontSize: 12,
             fontWeight: 500,
@@ -33,6 +39,7 @@ function SubScoreBar({
           }}
         >
           {label}
+          {tooltip && <InfoTooltip text={tooltip} />}
         </span>
         <span
           style={{
@@ -197,7 +204,7 @@ export default function ScoreHeroCard({ card }: { card: ArtistCard }) {
               }}
             >
               Artist Score{" "}
-              <InfoTooltip text="Composite 0-100 score combining health (streaming + social), momentum (growth trends), discovery (platform coverage), and catalog (streaming depth). Rebuilt nightly from cross-platform chart data." />
+              <InfoTooltip text={STAT_TOOLTIPS.intel.artistScore} />
             </div>
           </div>
 
@@ -265,7 +272,8 @@ export default function ScoreHeroCard({ card }: { card: ArtistCard }) {
               }}
             >
               #{card.global_rank}
-            </span>
+            </span>{" "}
+            <InfoTooltip text={STAT_TOOLTIPS.intel.globalRank} />
           </div>
           <MiniSparkline data={card.sparkline} />
         </div>
@@ -286,21 +294,25 @@ export default function ScoreHeroCard({ card }: { card: ArtistCard }) {
           label="Health"
           value={card.sub_scores.health}
           color="#30D158"
+          tooltip={STAT_TOOLTIPS.intel.healthSubScore}
         />
         <SubScoreBar
           label="Momentum"
           value={card.sub_scores.momentum}
           color="#0A84FF"
+          tooltip={STAT_TOOLTIPS.intel.momentumSubScore}
         />
         <SubScoreBar
           label="Discovery"
           value={card.sub_scores.discovery}
           color="#BF5AF2"
+          tooltip={STAT_TOOLTIPS.intel.discoverySubScore}
         />
         <SubScoreBar
           label="Catalog"
           value={card.sub_scores.catalog}
           color="#FF9F0A"
+          tooltip={STAT_TOOLTIPS.intel.catalogSubScore}
         />
       </div>
 
@@ -318,7 +330,9 @@ export default function ScoreHeroCard({ card }: { card: ArtistCard }) {
           }}
         >
           {card.momentum ? (
-            <span>
+            <span
+              style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
+            >
               Momentum{" "}
               <span
                 style={{
@@ -341,15 +355,19 @@ export default function ScoreHeroCard({ card }: { card: ArtistCard }) {
                   negative zone
                 </span>
               )}
+              <InfoTooltip text={STAT_TOOLTIPS.intel.momentumDelta} />
             </span>
           ) : (
             <span />
           )}
           {card.listeners_peak_ratio != null && (
-            <span>
+            <span
+              style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
+            >
               {card.listeners_peak_ratio >= 0.9
                 ? "Near all-time high"
                 : `${Math.round(card.listeners_peak_ratio * 100)}% of peak listeners`}
+              <InfoTooltip text={STAT_TOOLTIPS.intel.listenersPeakRatio} />
             </span>
           )}
         </div>

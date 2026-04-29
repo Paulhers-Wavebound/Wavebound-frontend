@@ -1,6 +1,7 @@
 import type { ArtistCard } from "@/types/artistIntelligence";
 import { SIGNAL_CONFIG } from "@/types/artistIntelligence";
 import InfoTooltip from "./InfoTooltip";
+import { STAT_TOOLTIPS } from "@/lib/statTooltips";
 
 const PLATFORMS: Array<{
   key: "spotify_trend" | "tiktok_trend" | "youtube_trend" | "shazam_trend";
@@ -176,12 +177,13 @@ export default function PlatformSignals({ card }: { card: ArtistCard }) {
           }}
         >
           Platform Signals{" "}
-          <InfoTooltip text="7-day % change in key metrics per platform. Source: Spotify listeners, TikTok sound usage, YouTube views, Shazam counts. Bars show direction and magnitude. Requires 7+ days of data to compute trends." />
+          <InfoTooltip text={STAT_TOOLTIPS.intel.platformSignals} />
         </h3>
         <span
           style={{
             display: "inline-flex",
             alignItems: "center",
+            gap: 4,
             padding: "4px 12px",
             borderRadius: 20,
             background: sig.bg,
@@ -194,6 +196,7 @@ export default function PlatformSignals({ card }: { card: ArtistCard }) {
           }}
         >
           {sig.label}
+          <InfoTooltip text={STAT_TOOLTIPS.intel.crossPlatformBadge} />
         </span>
       </div>
 
@@ -208,19 +211,24 @@ export default function PlatformSignals({ card }: { card: ArtistCard }) {
           color: "var(--ink-tertiary)",
         }}
       >
-        <span>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
           <span style={{ color: "#30D158", fontWeight: 600 }}>
             {card.signals.platforms_growing}
           </span>{" "}
           growing
+          <InfoTooltip text={STAT_TOOLTIPS.intel.platformsGrowing} />
         </span>
-        <span>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
           <span style={{ color: "#FF453A", fontWeight: 600 }}>
             {card.signals.platforms_declining}
           </span>{" "}
           declining
+          <InfoTooltip text={STAT_TOOLTIPS.intel.platformsDeclining} />
         </span>
-        <span>{card.signals.platforms_tracked} tracked</span>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+          {card.signals.platforms_tracked} tracked
+          <InfoTooltip text={STAT_TOOLTIPS.intel.platformsTracked} />
+        </span>
       </div>
 
       {/* Trend bars */}

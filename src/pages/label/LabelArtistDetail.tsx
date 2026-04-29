@@ -26,6 +26,8 @@ import {
   formatNumber as formatSINumber,
   timeAgo as siTimeAgo,
 } from "@/utils/soundIntelligenceApi";
+import InfoTooltip from "@/components/label/intelligence/InfoTooltip";
+import { STAT_TOOLTIPS } from "@/lib/statTooltips";
 
 interface Artist {
   id: string;
@@ -240,6 +242,7 @@ export default function LabelArtistDetailPage() {
     {
       label: "TIKTOK FOLLOWERS",
       value: formatFollowers(artist.tiktok_followers),
+      tooltip: STAT_TOOLTIPS.legacyHeader.tiktokFollowers,
     },
     {
       label: "SPOTIFY SCORE",
@@ -247,14 +250,17 @@ export default function LabelArtistDetailPage() {
         artist.spotify_popularity !== null
           ? `${artist.spotify_popularity}/100`
           : "—",
+      tooltip: STAT_TOOLTIPS.legacyHeader.spotifyScore,
     },
     {
       label: "POST FREQUENCY",
       value: freq30 !== null ? `Every ${Math.round(freq30)}d` : "—",
+      tooltip: STAT_TOOLTIPS.legacyHeader.postFrequency,
     },
     {
       label: "LAST POST",
       value: timeAgo(artist.last_post_date || getLastPostDate(postDates)),
+      tooltip: STAT_TOOLTIPS.legacyHeader.lastPost,
     },
   ];
 
@@ -381,6 +387,9 @@ export default function LabelArtistDetailPage() {
               >
                 <div
                   style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 4,
                     fontFamily: '"JetBrains Mono", monospace',
                     fontSize: 10,
                     fontWeight: 500,
@@ -390,6 +399,7 @@ export default function LabelArtistDetailPage() {
                   }}
                 >
                   {s.label}
+                  {s.tooltip && <InfoTooltip text={s.tooltip} />}
                 </div>
                 <div
                   style={{
@@ -409,17 +419,21 @@ export default function LabelArtistDetailPage() {
           {/* Updated time */}
           <div
             style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
+              float: "right",
               fontFamily: '"JetBrains Mono", monospace',
               fontSize: 12,
               color: "var(--ink-tertiary)",
               marginTop: 12,
-              textAlign: "right",
             }}
           >
             Report generated {timeAgo(artist.updated_at)}
             {artist.updated_at
               ? ` — ${format(new Date(artist.updated_at), "MMMM d, yyyy")}`
               : ""}
+            <InfoTooltip text={STAT_TOOLTIPS.legacyHeader.reportGenerated} />
           </div>
         </div>
 

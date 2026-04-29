@@ -5,6 +5,8 @@ import {
 } from "@/components/ui/popover";
 import { HelpCircle } from "lucide-react";
 import { format } from "date-fns";
+import InfoTooltip from "@/components/label/intelligence/InfoTooltip";
+import { STAT_TOOLTIPS } from "@/lib/statTooltips";
 import {
   AreaChart,
   Area,
@@ -91,10 +93,7 @@ function RmmDot(props: any) {
   };
 
   return (
-    <g
-      onClick={handleClick}
-      style={{ cursor: url ? "pointer" : "default" }}
-    >
+    <g onClick={handleClick} style={{ cursor: url ? "pointer" : "default" }}>
       {/* Invisible hit area for easier clicking */}
       <circle cx={cx} cy={cy} r={12} fill="transparent" />
       {/* Glow for breakout/viral */}
@@ -124,9 +123,25 @@ function ChartTooltip({ active, payload }: any) {
 
   const pr = d.performance_ratio ?? 0;
   const tierLabel =
-    pr >= 10 ? "Viral" : pr >= 4 ? "Breakout" : pr >= 1.5 ? "Momentum" : pr >= 0.5 ? "Stable" : "Stalled";
+    pr >= 10
+      ? "Viral"
+      : pr >= 4
+        ? "Breakout"
+        : pr >= 1.5
+          ? "Momentum"
+          : pr >= 0.5
+            ? "Stable"
+            : "Stalled";
   const tierColor =
-    pr >= 10 ? "#e8430a" : pr >= 4 ? "#30D158" : pr >= 1.5 ? "#0A84FF" : pr >= 0.5 ? "rgba(255,255,255,0.55)" : "#FF453A";
+    pr >= 10
+      ? "#e8430a"
+      : pr >= 4
+        ? "#30D158"
+        : pr >= 1.5
+          ? "#0A84FF"
+          : pr >= 0.5
+            ? "rgba(255,255,255,0.55)"
+            : "#FF453A";
 
   return (
     <div
@@ -149,7 +164,14 @@ function ChartTooltip({ active, payload }: any) {
       >
         {dateStr}
       </div>
-      <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 4 }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "baseline",
+          gap: 8,
+          marginBottom: 4,
+        }}
+      >
         <span
           style={{
             fontFamily: '"JetBrains Mono", monospace',
@@ -221,16 +243,21 @@ function StatPill({
   value,
   color,
   accent,
+  tooltip,
 }: {
   label: string;
   value: string;
   color?: string;
   accent?: boolean;
+  tooltip?: string;
 }) {
   return (
     <div className="flex-1 min-w-[80px] text-center">
       <div
         style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 4,
           fontFamily: '"JetBrains Mono", monospace',
           fontSize: 9,
           fontWeight: 500,
@@ -241,6 +268,7 @@ function StatPill({
         }}
       >
         {label}
+        {tooltip && <InfoTooltip text={tooltip} />}
       </div>
       <div
         style={{
@@ -333,7 +361,13 @@ export default function PerformanceChart({
                 Each dot = one video. Score = Video Views ÷ Your Median Views.
                 1.0x = your normal.
               </p>
-              <div className="space-y-0.5 text-white/40" style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: 10 }}>
+              <div
+                className="space-y-0.5 text-white/40"
+                style={{
+                  fontFamily: '"JetBrains Mono", monospace',
+                  fontSize: 10,
+                }}
+              >
                 <div>Stalled &lt;0.5x · Stable 0.5-1.5x</div>
                 <div>Momentum 1.5-4x · Breakout 4-10x · Viral 10x+</div>
               </div>
@@ -345,37 +379,48 @@ export default function PerformanceChart({
         <div
           style={{
             display: "flex",
-            gap: 2,
-            background: "rgba(255,255,255,0.04)",
-            borderRadius: 8,
-            padding: 2,
+            alignItems: "center",
+            gap: 6,
           }}
         >
-          {([true, false] as const).map((isOrganic) => (
-            <button
-              key={String(isOrganic)}
-              type="button"
-              onClick={() => onOrganicToggle(isOrganic)}
-              style={{
-                fontFamily: '"DM Sans", sans-serif',
-                fontSize: 11,
-                fontWeight: (organicOnly === isOrganic) ? 600 : 400,
-                color: (organicOnly === isOrganic)
-                  ? "rgba(255,255,255,0.87)"
-                  : "rgba(255,255,255,0.30)",
-                background: (organicOnly === isOrganic)
-                  ? "rgba(255,255,255,0.08)"
-                  : "transparent",
-                border: "none",
-                borderRadius: 6,
-                padding: "4px 12px",
-                cursor: "pointer",
-                transition: "all 150ms",
-              }}
-            >
-              {isOrganic ? "Organic" : "All"}
-            </button>
-          ))}
+          <InfoTooltip text={STAT_TOOLTIPS.rmm.organicToggle} />
+          <div
+            style={{
+              display: "flex",
+              gap: 2,
+              background: "rgba(255,255,255,0.04)",
+              borderRadius: 8,
+              padding: 2,
+            }}
+          >
+            {([true, false] as const).map((isOrganic) => (
+              <button
+                key={String(isOrganic)}
+                type="button"
+                onClick={() => onOrganicToggle(isOrganic)}
+                style={{
+                  fontFamily: '"DM Sans", sans-serif',
+                  fontSize: 11,
+                  fontWeight: organicOnly === isOrganic ? 600 : 400,
+                  color:
+                    organicOnly === isOrganic
+                      ? "rgba(255,255,255,0.87)"
+                      : "rgba(255,255,255,0.30)",
+                  background:
+                    organicOnly === isOrganic
+                      ? "rgba(255,255,255,0.08)"
+                      : "transparent",
+                  border: "none",
+                  borderRadius: 6,
+                  padding: "4px 12px",
+                  cursor: "pointer",
+                  transition: "all 150ms",
+                }}
+              >
+                {isOrganic ? "Organic" : "All"}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -389,7 +434,8 @@ export default function PerformanceChart({
               color: "rgba(255,255,255,0.25)",
             }}
           >
-            Limited data ({chartData.length} video{chartData.length !== 1 ? "s" : ""})
+            Limited data ({chartData.length} video
+            {chartData.length !== 1 ? "s" : ""})
           </span>
         </div>
       )}
@@ -453,7 +499,10 @@ export default function PerformanceChart({
 
               <RechartsTooltip
                 content={<ChartTooltip />}
-                cursor={{ stroke: "rgba(255,255,255,0.08)", strokeDasharray: "4 4" }}
+                cursor={{
+                  stroke: "rgba(255,255,255,0.08)",
+                  strokeDasharray: "4 4",
+                }}
               />
 
               <ReferenceLine
@@ -517,20 +566,24 @@ export default function PerformanceChart({
           value={currentPR != null ? `${currentPR.toFixed(1)}x` : "—"}
           color={prColor(currentPR)}
           accent={currentPR != null && currentPR >= 1.5}
+          tooltip={STAT_TOOLTIPS.rmm.currentPR}
         />
         <StatPill
           label="7d Avg"
           value={avg7PR != null ? `${avg7PR.toFixed(1)}x` : "—"}
           color={prColor(avg7PR)}
+          tooltip={STAT_TOOLTIPS.rmm.avg7PR}
         />
         <StatPill
           label="30d Avg"
           value={avg30PR != null ? `${avg30PR.toFixed(1)}x` : "—"}
           color={prColor(avg30PR)}
+          tooltip={STAT_TOOLTIPS.rmm.avg30PR}
         />
         <StatPill
           label="Median Baseline"
           value={fmtNum(medianBaseline)}
+          tooltip={STAT_TOOLTIPS.rmm.medianBaseline}
         />
       </div>
     </div>

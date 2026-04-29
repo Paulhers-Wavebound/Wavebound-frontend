@@ -1,5 +1,6 @@
 import type { ArtistCard } from "@/types/artistIntelligence";
 import InfoTooltip from "./InfoTooltip";
+import { STAT_TOOLTIPS } from "@/lib/statTooltips";
 
 const PLATFORM_LABELS: Record<string, string> = {
   spotify: "Spotify",
@@ -52,8 +53,7 @@ export default function CoverageGaps({ card }: { card: ArtistCard }) {
             margin: 0,
           }}
         >
-          Platform Coverage{" "}
-          <InfoTooltip text="How many major platforms have this artist's identity linked. Missing platforms = missed discovery and attribution. Score reflects breadth of presence across streaming, social, live, and discovery platforms." />
+          Platform Coverage <InfoTooltip text={STAT_TOOLTIPS.intel.coverage} />
         </h3>
         <div
           style={{
@@ -98,6 +98,9 @@ export default function CoverageGaps({ card }: { card: ArtistCard }) {
         <>
           <div
             style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
               fontFamily: '"DM Sans", sans-serif',
               fontSize: 12,
               fontWeight: 600,
@@ -108,6 +111,7 @@ export default function CoverageGaps({ card }: { card: ArtistCard }) {
             }}
           >
             Not linked
+            <InfoTooltip text={STAT_TOOLTIPS.intel.coverageMissing} />
           </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
             {missing.map((platform) => (
