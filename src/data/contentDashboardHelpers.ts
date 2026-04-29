@@ -2,6 +2,23 @@
 
 // ─── Types ────────────────────────────────────────────────
 
+export type ReleaseConfidence = "high" | "medium" | "low";
+export type ReleaseSourceType =
+  | "web"
+  | "tiktok_caption"
+  | "latest_release"
+  | "manual";
+
+export interface NextReleaseIntel {
+  date: string | null;
+  title?: string | null;
+  source_url?: string | null;
+  source_type?: ReleaseSourceType | null;
+  evidence?: string | null;
+  confidence?: ReleaseConfidence | null;
+  checked_at?: string | null;
+}
+
 export interface ContentArtist {
   // From roster_dashboard_metrics
   artist_handle: string;
@@ -26,9 +43,18 @@ export interface ContentArtist {
   tiktok_followers: number | null;
   instagram_followers: number | null;
   median_views_baseline: number | null;
+  latest_release_date: string | null;
+  days_since_release: number | null;
   has_content_plan: boolean;
   has_intelligence_report: boolean;
   has_30day_plan: boolean;
+  // Derived from artist_intelligence.weekly_pulse.next_release_date
+  next_release_date: string | null;
+  next_release_title: string | null;
+  next_release_source_url: string | null;
+  next_release_source_type: ReleaseSourceType | null;
+  next_release_evidence: string | null;
+  next_release_confidence: ReleaseConfidence | null;
   // From artist_content_dna (joined)
   primary_genre: string | null;
   best_format: string | null;
@@ -72,6 +98,13 @@ export interface ContentArtist {
       reason: string;
       action: string;
     };
+    next_release_date?: string | null;
+    next_release?: NextReleaseIntel | null;
+    next_release_title?: string | null;
+    next_release_source_url?: string | null;
+    next_release_source_type?: ReleaseSourceType | null;
+    next_release_evidence?: string | null;
+    next_release_confidence?: ReleaseConfidence | null;
   } | null;
   weekly_pulse_generated_at: string | null;
 }
@@ -147,7 +180,355 @@ export type ContentSortKey =
   | "format_alpha"
   | "top_sound"
   | "activity"
-  | "artist";
+  | "artist"
+  | "posting_window";
+
+// ─── Posting Window ───────────────────────────────────────
+
+export interface PostingWindowStatus {
+  inWindow: boolean;
+  reason: "upcoming" | "recent" | null;
+  days: number | null;
+  releaseTitle: string | null;
+  sourceUrl: string | null;
+  sourceType: ReleaseSourceType | null;
+  evidence: string | null;
+  confidence: ReleaseConfidence | null;
+}
+
+export type ContentHealthStatus =
+  | "Hot"
+  | "Healthy"
+  | "Stable"
+  | "Inconsistent"
+  | "At Risk"
+  | "Silent"
+  | "—";
+
+type ContentCadenceBucket =
+  | "daily"
+  | "regular"
+  | "sporadic"
+  | "inactive"
+  | "dormant"
+  | "unknown";
+
+export interface ContentHealthMeta {
+  status: ContentHealthStatus;
+  freqPerWeek: number | null;
+  cadenceLabel: string | null;
+  staleCadence: boolean;
+  staleCadenceLabel: string | null;
+  numericCadenceLabel: string | null;
+}
+
+function daysFromTodayUTC(iso: string): number | null {
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return null;
+  const today = new Date();
+  const todayUTC = Date.UTC(
+    today.getUTCFullYear(),
+    today.getUTCMonth(),
+    today.getUTCDate(),
+  );
+  return Math.round((t - todayUTC) / 86_400_000);
+}
+
+export function getPostingWindowStatus(a: ContentArtist): PostingWindowStatus {
+  const releaseCanDriveWindow = a.next_release_confidence !== "low";
+
+  if (a.next_release_date) {
+    const days = daysFromTodayUTC(a.next_release_date);
+    if (releaseCanDriveWindow && days != null && days >= 0 && days <= 14) {
+      return {
+        inWindow: true,
+        reason: "upcoming",
+        days,
+        releaseTitle: a.next_release_title,
+        sourceUrl: a.next_release_source_url,
+        sourceType: a.next_release_source_type,
+        evidence: a.next_release_evidence,
+        confidence: a.next_release_confidence,
+      };
+    }
+  }
+
+  if (a.latest_release_date) {
+    const days = daysFromTodayUTC(a.latest_release_date);
+    if (days != null && days > 0 && days <= 14) {
+      return {
+        inWindow: true,
+        reason: "upcoming",
+        days,
+        releaseTitle: null,
+        sourceUrl: null,
+        sourceType: "latest_release",
+        evidence: "Future-dated release in roster_dashboard_metrics.",
+        confidence: "high",
+      };
+    }
+  }
+
+  const daysSince =
+    a.days_since_release != null && a.days_since_release >= 0
+      ? a.days_since_release
+      : null;
+
+  if (daysSince != null && daysSince <= 30) {
+    return {
+      inWindow: true,
+      reason: "recent",
+      days: daysSince,
+      releaseTitle: null,
+      sourceUrl: null,
+      sourceType: null,
+      evidence: null,
+      confidence: null,
+    };
+  }
+  return {
+    inWindow: false,
+    reason: null,
+    days: daysSince,
+    releaseTitle: a.next_release_title,
+    sourceUrl: a.next_release_source_url,
+    sourceType: a.next_release_source_type,
+    evidence: a.next_release_evidence,
+    confidence: a.next_release_confidence,
+  };
+}
+
+function scorePostingWindow(a: ContentArtist): number {
+  // Higher = sorts to top when descending. In-window first, tighter window = higher.
+  const s = getPostingWindowStatus(a);
+  if (s.inWindow && s.reason === "upcoming" && s.days != null) {
+    return 10_000 - s.days;
+  }
+  if (s.inWindow && s.reason === "recent" && s.days != null) {
+    return 1_000 - s.days;
+  }
+  return 0;
+}
+
+// ─── Content Health ────────────────────────────────────────
+
+function maxPostingFrequencyPerWeek(
+  freq7d: number | null,
+  freq30d: number | null,
+): number | null {
+  const values = [freq7d, freq30d].filter(
+    (value): value is number => value != null && Number.isFinite(value),
+  );
+  return values.length > 0 ? Math.max(...values) : null;
+}
+
+function cadenceBucketFromFrequency(
+  freq: number | null,
+  daysSince: number | null,
+): ContentCadenceBucket {
+  if (freq != null) {
+    if (freq >= 5) return "daily";
+    if (freq >= 1) return "regular";
+    if (freq >= 0.5) return "sporadic";
+  }
+  if (daysSince != null && daysSince > 21) return "dormant";
+  if (daysSince != null) return "inactive";
+  return "unknown";
+}
+
+function cadenceBucketFromSummary(
+  cadence: string | null,
+): ContentCadenceBucket {
+  const normalized = cadence?.toLowerCase();
+  if (
+    normalized === "daily" ||
+    normalized === "regular" ||
+    normalized === "sporadic" ||
+    normalized === "inactive" ||
+    normalized === "dormant"
+  ) {
+    return normalized;
+  }
+  return "unknown";
+}
+
+function cadenceBucketRank(bucket: ContentCadenceBucket): number {
+  switch (bucket) {
+    case "daily":
+      return 4;
+    case "regular":
+      return 3;
+    case "sporadic":
+      return 2;
+    case "inactive":
+      return 1;
+    case "dormant":
+      return 0;
+    default:
+      return -1;
+  }
+}
+
+function cadenceBucketLabel(bucket: ContentCadenceBucket): string | null {
+  switch (bucket) {
+    case "daily":
+      return "daily";
+    case "regular":
+      return "weekly+";
+    case "sporadic":
+      return "biweekly";
+    case "inactive":
+      return "rare";
+    case "dormant":
+      return "dormant";
+    default:
+      return null;
+  }
+}
+
+function formatPostingFrequency(freq: number): string {
+  if (freq >= 10) return `${Math.round(freq)}/wk`;
+  if (freq >= 1) return `${freq.toFixed(1).replace(/\.0$/, "")}/wk`;
+  return `${freq.toFixed(1)}/wk`;
+}
+
+function capHealthByRecency(
+  status: ContentHealthStatus,
+  daysSince: number | null,
+): ContentHealthStatus {
+  if (daysSince == null) return status;
+  if (daysSince > 21) return "Silent";
+  if (daysSince > 10 && (status === "Hot" || status === "Healthy")) {
+    return "At Risk";
+  }
+  if (daysSince > 5 && status === "Hot") return "Inconsistent";
+  return status;
+}
+
+export function getContentHealthStatus(
+  artist: Pick<
+    ContentArtist,
+    | "posting_freq_7d"
+    | "posting_freq_30d"
+    | "posting_cadence"
+    | "days_since_last_post"
+    | "performance_trend"
+  >,
+): ContentHealthStatus {
+  const freq = maxPostingFrequencyPerWeek(
+    artist.posting_freq_7d,
+    artist.posting_freq_30d,
+  );
+
+  if (freq != null) {
+    if (freq >= 5) {
+      return artist.performance_trend === "improving" ? "Hot" : "Healthy";
+    }
+    if (freq >= 3) return "Healthy";
+    if (freq >= 1) return "Stable";
+    if (freq >= 0.5) return "Inconsistent";
+    return artist.days_since_last_post != null &&
+      artist.days_since_last_post > 21
+      ? "Silent"
+      : "At Risk";
+  }
+
+  if (artist.posting_cadence) {
+    const cadence = artist.posting_cadence.toLowerCase();
+    const cadenceStatus: ContentHealthStatus =
+      cadence === "daily"
+        ? artist.performance_trend === "improving"
+          ? "Hot"
+          : "Healthy"
+        : cadence === "regular"
+          ? artist.performance_trend === "improving"
+            ? "Healthy"
+            : "Stable"
+          : cadence === "sporadic"
+            ? "Inconsistent"
+            : cadence === "inactive"
+              ? "At Risk"
+              : cadence === "dormant"
+                ? "Silent"
+                : "—";
+    return capHealthByRecency(cadenceStatus, artist.days_since_last_post);
+  }
+
+  if (artist.days_since_last_post != null) {
+    if (artist.days_since_last_post <= 2) return "Stable";
+    if (artist.days_since_last_post <= 5) return "Stable";
+    if (artist.days_since_last_post <= 10) return "Inconsistent";
+    if (artist.days_since_last_post <= 21) return "At Risk";
+    return "Silent";
+  }
+
+  return "—";
+}
+
+export function getContentHealthMeta(
+  artist: Pick<
+    ContentArtist,
+    | "posting_freq_7d"
+    | "posting_freq_30d"
+    | "posting_cadence"
+    | "days_since_last_post"
+    | "performance_trend"
+  >,
+): ContentHealthMeta {
+  const freq = maxPostingFrequencyPerWeek(
+    artist.posting_freq_7d,
+    artist.posting_freq_30d,
+  );
+  const numericBucket = cadenceBucketFromFrequency(
+    freq,
+    artist.days_since_last_post,
+  );
+  const summaryBucket = cadenceBucketFromSummary(artist.posting_cadence);
+  const staleCadence =
+    freq != null &&
+    summaryBucket !== "unknown" &&
+    Math.abs(
+      cadenceBucketRank(summaryBucket) - cadenceBucketRank(numericBucket),
+    ) > 1;
+
+  return {
+    status: getContentHealthStatus(artist),
+    freqPerWeek: freq,
+    cadenceLabel:
+      freq != null
+        ? formatPostingFrequency(freq)
+        : cadenceBucketLabel(summaryBucket),
+    staleCadence,
+    staleCadenceLabel: cadenceBucketLabel(summaryBucket),
+    numericCadenceLabel: cadenceBucketLabel(numericBucket),
+  };
+}
+
+function scoreContentHealth(a: ContentArtist): number {
+  const status = getContentHealthMeta(a).status;
+  const statusBase: Record<ContentHealthStatus, number> = {
+    Hot: 500,
+    Healthy: 400,
+    Stable: 300,
+    Inconsistent: 200,
+    "At Risk": 100,
+    Silent: 0,
+    "—": -1,
+  };
+  const freq = maxPostingFrequencyPerWeek(
+    a.posting_freq_7d,
+    a.posting_freq_30d,
+  );
+  const freqScore = freq != null ? Math.min(freq, 14) * 5 : 0;
+  const recencyScore =
+    a.days_since_last_post != null
+      ? Math.max(0, 30 - a.days_since_last_post) / 3
+      : 0;
+  const consistencyScore =
+    a.consistency_score != null ? Math.min(a.consistency_score, 100) / 10 : 0;
+
+  return statusBase[status] + freqScore + recencyScore + consistencyScore;
+}
 
 // ─── Formatting helpers ───────────────────────────────────
 
@@ -1235,9 +1616,8 @@ export function sortContentArtists(
     let vb: number;
     switch (key) {
       case "content_health":
-        // Higher consistency = healthier, lower days_since_last_post = healthier
-        va = (a.consistency_score || 0) - (a.days_since_last_post || 0) * 2;
-        vb = (b.consistency_score || 0) - (b.days_since_last_post || 0) * 2;
+        va = scoreContentHealth(a);
+        vb = scoreContentHealth(b);
         break;
       case "performance":
         va = a.avg_views_30d || 0;
@@ -1255,6 +1635,10 @@ export function sortContentArtists(
         // Lower days = more active = sorts first (descending)
         va = -(a.days_since_last_post ?? 999);
         vb = -(b.days_since_last_post ?? 999);
+        break;
+      case "posting_window":
+        va = scorePostingWindow(a);
+        vb = scorePostingWindow(b);
         break;
       case "artist":
         return asc

@@ -1,10 +1,28 @@
-import { useMemo } from "react";
+import { useMemo, useState, type FormEvent } from "react";
 import type {
   ContentIntelData,
   MomentumPoint,
 } from "@/hooks/useContentIntelligence";
+import {
+  CalendarClock,
+  CheckCircle2,
+  ExternalLink,
+  PencilLine,
+  SearchCheck,
+} from "lucide-react";
 import { TIER_CONFIG, TREND_CONFIG } from "@/types/artistIntelligence";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   fmtNum,
   StatChip,
@@ -18,6 +36,8 @@ import AIFocus from "@/components/label/briefing/AIFocus";
 import type { WeeklyPulse } from "@/components/label/briefing/AIFocus";
 import InfoTooltip from "@/components/label/intelligence/InfoTooltip";
 import { STAT_TOOLTIPS } from "@/lib/statTooltips";
+import type { NextReleaseIntel } from "@/data/contentDashboardHelpers";
+import { cn } from "@/lib/utils";
 
 /* ─── Momentum Sparkline ──────────────────────────────────── */
 
@@ -133,6 +153,277 @@ function ReadinessDonut({ score }: { score: number }) {
   );
 }
 
+/* ─── Release Intel Panel ─────────────────────────────────── */
+
+export interface ManualReleasePayload {
+  releaseDate: string;
+  sourceUrl: string;
+  title: string;
+}
+
+function timeAgo(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const parsed = new Date(iso).getTime();
+  if (Number.isNaN(parsed)) return null;
+
+  const mins = Math.max(0, Math.floor((Date.now() - parsed) / 60000));
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  if (mins < 1440) return `${Math.floor(mins / 60)}h ago`;
+  return `${Math.floor(mins / 1440)}d ago`;
+}
+
+function formatDate(iso: string): string {
+  const [year, month, day] = iso.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (Number.isNaN(date.getTime())) return iso;
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(date);
+}
+
+function releaseFromPulse(pulse: WeeklyPulse | null): NextReleaseIntel | null {
+  if (!pulse) return null;
+  if (pulse.next_release) return pulse.next_release;
+  if (
+    pulse.next_release_date ||
+    pulse.next_release_title ||
+    pulse.next_release_source_url
+  ) {
+    return {
+      date: pulse.next_release_date ?? null,
+      title: pulse.next_release_title ?? null,
+      source_url: pulse.next_release_source_url ?? null,
+      source_type: pulse.next_release_source_type ?? null,
+      evidence: pulse.next_release_evidence ?? null,
+      confidence: pulse.next_release_confidence ?? null,
+      checked_at: null,
+    };
+  }
+  return null;
+}
+
+function sourceLabel(sourceType: NextReleaseIntel["source_type"]): string {
+  switch (sourceType) {
+    case "tiktok_caption":
+      return "TikTok caption";
+    case "latest_release":
+      return "Release feed";
+    case "manual":
+      return "Label confirmed";
+    case "web":
+      return "Web source";
+    default:
+      return "Public source";
+  }
+}
+
+function confidenceLabel(confidence: NextReleaseIntel["confidence"]): string {
+  if (!confidence) return "UNVERIFIED";
+  return `${confidence.toUpperCase()} CONFIDENCE`;
+}
+
+function ReleaseIntelPanel({
+  weeklyPulse,
+  onManualReleaseConfirm,
+  manualReleasePending,
+}: {
+  weeklyPulse: WeeklyPulse | null;
+  onManualReleaseConfirm?: (payload: ManualReleasePayload) => Promise<void>;
+  manualReleasePending?: boolean;
+}) {
+  const release = releaseFromPulse(weeklyPulse);
+  const hasReleaseDate = !!release?.date;
+  const checkedAgo = timeAgo(release?.checked_at);
+  const [open, setOpen] = useState(false);
+  const [releaseDate, setReleaseDate] = useState("");
+  const [sourceUrl, setSourceUrl] = useState("");
+  const [title, setTitle] = useState("");
+  const todayInputDate = new Date().toISOString().slice(0, 10);
+
+  const submitManualRelease = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!onManualReleaseConfirm || manualReleasePending) return;
+
+    try {
+      await onManualReleaseConfirm({
+        releaseDate,
+        sourceUrl,
+        title,
+      });
+
+      setOpen(false);
+      setReleaseDate("");
+      setSourceUrl("");
+      setTitle("");
+    } catch {
+      // Parent shows the toast; keep the dialog open so the source/date can be corrected.
+    }
+  };
+
+  return (
+    <>
+      <div
+        className="rounded-xl border border-white/[0.06] p-5"
+        style={{ background: "#1C1C1E" }}
+      >
+        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-white/35">
+              <SearchCheck className="h-3.5 w-3.5 text-[#e8430a]" />
+              Release Intel
+              {checkedAgo && (
+                <span className="rounded-full bg-white/[0.05] px-2 py-0.5 font-mono text-[10px] text-white/35">
+                  checked {checkedAgo}
+                </span>
+              )}
+            </div>
+
+            {hasReleaseDate ? (
+              <div className="mt-3 space-y-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="inline-flex items-center gap-1 rounded-md bg-[rgba(48,209,88,0.12)] px-2 py-1 text-[11px] font-semibold text-[#30D158]">
+                    <CheckCircle2 className="h-3.5 w-3.5" />
+                    {confidenceLabel(release?.confidence)}
+                  </span>
+                  <span className="inline-flex items-center gap-1 rounded-md bg-white/[0.05] px-2 py-1 text-[12px] font-mono text-white/75">
+                    <CalendarClock className="h-3.5 w-3.5 text-white/40" />
+                    {formatDate(release.date)}
+                  </span>
+                </div>
+                <div className="text-[16px] font-semibold text-white/87">
+                  {release?.title || "Upcoming release"}
+                </div>
+                <div className="max-w-3xl text-[13px] leading-relaxed text-white/45">
+                  {release?.evidence || "Specific public release date found."}
+                </div>
+                {release?.source_url && (
+                  <a
+                    href={release.source_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1 text-[12px] font-medium text-[#e8430a] hover:text-[#ff6a3d]"
+                  >
+                    {sourceLabel(release.source_type)}
+                    <ExternalLink className="h-3.5 w-3.5" />
+                  </a>
+                )}
+              </div>
+            ) : (
+              <div className="mt-3 space-y-1">
+                <div className="text-[16px] font-semibold text-white/75">
+                  {release?.checked_at
+                    ? "No dated release found"
+                    : "Not scanned yet"}
+                </div>
+                <div className="max-w-3xl text-[13px] leading-relaxed text-white/40">
+                  {release?.checked_at
+                    ? "The AI checked public sources and did not find a specific announced date."
+                    : "This artist will get release intel when the next brief or daily scan runs."}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={!onManualReleaseConfirm}
+            onClick={() => setOpen(true)}
+            className={cn(
+              "shrink-0 border-white/[0.08] bg-white/[0.03] text-white/65 hover:bg-white/[0.06] hover:text-white/87",
+              hasReleaseDate && "text-white/55",
+            )}
+          >
+            <PencilLine className="mr-2 h-4 w-4" />
+            Confirm release
+          </Button>
+        </div>
+      </div>
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="border-white/[0.08] bg-[#1C1C1E] text-white/87 sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-white/87">
+              Confirm upcoming release
+            </DialogTitle>
+            <DialogDescription className="text-white/45">
+              Add a public source with a specific date.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={submitManualRelease} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="release-date" className="text-white/65">
+                Release date
+              </Label>
+              <Input
+                id="release-date"
+                type="date"
+                min={todayInputDate}
+                value={releaseDate}
+                onChange={(event) => setReleaseDate(event.target.value)}
+                required
+                className="border-white/[0.08] bg-black/30 text-white/87"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="release-source" className="text-white/65">
+                Source URL
+              </Label>
+              <Input
+                id="release-source"
+                type="url"
+                value={sourceUrl}
+                onChange={(event) => setSourceUrl(event.target.value)}
+                placeholder="https://..."
+                required
+                className="border-white/[0.08] bg-black/30 text-white/87 placeholder:text-white/25"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="release-title" className="text-white/65">
+                Title
+              </Label>
+              <Input
+                id="release-title"
+                value={title}
+                onChange={(event) => setTitle(event.target.value)}
+                placeholder="Optional"
+                className="border-white/[0.08] bg-black/30 text-white/87 placeholder:text-white/25"
+              />
+            </div>
+
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => setOpen(false)}
+                className="text-white/55 hover:bg-white/[0.06] hover:text-white/87"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={manualReleasePending}
+                className="bg-[#e8430a] text-white/90 hover:bg-[#ff5a25]"
+              >
+                {manualReleasePending ? "Saving..." : "Confirm"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
 /* ─── Main Component ──────────────────────────────────────── */
 
 interface OverviewTabProps {
@@ -150,6 +441,8 @@ interface OverviewTabProps {
   // Weekly pulse
   weeklyPulse: WeeklyPulse | null;
   weeklyPulseGeneratedAt: string | null;
+  onManualReleaseConfirm?: (payload: ManualReleasePayload) => Promise<void>;
+  manualReleasePending?: boolean;
   // RMM chart data
   chartData: Array<{
     views: number;
@@ -194,6 +487,8 @@ export default function OverviewTab({
   inviteCode,
   weeklyPulse,
   weeklyPulseGeneratedAt,
+  onManualReleaseConfirm,
+  manualReleasePending,
   chartData,
   organicOnly,
   onOrganicToggle,
@@ -299,6 +594,12 @@ export default function OverviewTab({
 
       {/* ─── AI Focus Pick ─── */}
       <AIFocus pulse={weeklyPulse} generatedAt={weeklyPulseGeneratedAt} />
+
+      <ReleaseIntelPanel
+        weeklyPulse={weeklyPulse}
+        onManualReleaseConfirm={onManualReleaseConfirm}
+        manualReleasePending={manualReleasePending}
+      />
 
       {/* ─── Platform Trends + Sparkline ─── */}
       {data &&

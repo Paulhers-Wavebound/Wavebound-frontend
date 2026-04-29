@@ -1,6 +1,10 @@
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { useEffect, useState, useMemo } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import {
+  supabase,
+  SUPABASE_ANON_KEY,
+  SUPABASE_URL_RAW,
+} from "@/integrations/supabase/client";
 import { useSetPageTitle } from "@/contexts/PageTitleContext";
 import { useArtistBriefing } from "@/hooks/useArtistBriefing";
 import { useContentIntelligence } from "@/hooks/useContentIntelligence";
@@ -21,7 +25,9 @@ import { useDashboardRole } from "@/contexts/DashboardRoleContext";
 import { format } from "date-fns";
 
 // New tab components
-import OverviewTab from "@/components/label/artist-tabs/OverviewTab";
+import OverviewTab, {
+  type ManualReleasePayload,
+} from "@/components/label/artist-tabs/OverviewTab";
 import ContentTab from "@/components/label/artist-tabs/ContentTab";
 import SoundsTab from "@/components/label/artist-tabs/SoundsTab";
 import GrowthTab from "@/components/label/artist-tabs/GrowthTab";
@@ -36,6 +42,11 @@ import CompetitiveLens from "@/components/label/briefing/CompetitiveLens";
 import Outlook from "@/components/label/briefing/Outlook";
 
 import type { WeeklyPulse } from "@/components/label/briefing/AIFocus";
+import type {
+  NextReleaseIntel,
+  ReleaseConfidence,
+  ReleaseSourceType,
+} from "@/data/contentDashboardHelpers";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -83,9 +94,37 @@ interface TimelinePointRaw {
   video_shares: number;
   video_saves: number;
   video_url: string | null;
+  video_id: string | null;
+  video_embedded_url: string | null;
   caption: string | null;
   is_ad?: boolean;
   is_likely_promoted?: boolean;
+}
+
+interface ArtistIntelligenceProfileRow {
+  content_plan_html: string | null;
+  intelligence_report_html: string | null;
+  content_plan_30d_html: string | null;
+  thirty_day_plan_html: string | null;
+  artist_brief_html: string | null;
+  invite_code: string | null;
+  weekly_pulse: WeeklyPulse | null;
+  weekly_pulse_generated_at: string | null;
+  artist_name?: string | null;
+  avatar_url?: string | null;
+  tiktok_followers?: number | null;
+}
+
+interface ReleaseCalendarRow {
+  artist_handle: string;
+  release_date: string;
+  title: string | null;
+  source_url: string | null;
+  source_type: ReleaseSourceType | null;
+  evidence: string | null;
+  confidence: ReleaseConfidence;
+  status: "ai_detected" | "confirmed" | "dismissed" | "manual";
+  last_seen_at: string;
 }
 
 // ── Tab types ─────────────────────────────────────────────────────────────────
@@ -98,6 +137,87 @@ const TABS: Array<{ key: TabKey; label: string }> = [
   { key: "sounds", label: "Sounds" },
   { key: "growth", label: "Growth" },
 ];
+
+function normalizeArtistHandle(handle: string): string {
+  return handle.replace(/^@/, "").toLowerCase().trim();
+}
+
+function releaseCalendarRowToNextRelease(
+  row: ReleaseCalendarRow,
+): NextReleaseIntel {
+  return {
+    date: row.release_date,
+    title: row.title,
+    source_url: row.source_url,
+    source_type: row.source_type,
+    evidence: row.evidence,
+    confidence: row.confidence,
+    checked_at: row.last_seen_at,
+  };
+}
+
+function mergeReleaseCalendarIntoPulse(
+  pulse: WeeklyPulse | null,
+  row: ReleaseCalendarRow | null,
+): WeeklyPulse | null {
+  if (!row) return pulse;
+
+  const nextRelease = releaseCalendarRowToNextRelease(row);
+  return {
+    ...(pulse ?? {}),
+    next_release: nextRelease,
+    next_release_date: nextRelease.date,
+    next_release_title: nextRelease.title,
+    next_release_source_url: nextRelease.source_url,
+    next_release_source_type: nextRelease.source_type,
+    next_release_evidence: nextRelease.evidence,
+    next_release_confidence: nextRelease.confidence,
+  };
+}
+
+async function fetchReleaseCalendarRow(
+  labelId: string,
+  artistHandle: string,
+  accessToken: string | null,
+): Promise<ReleaseCalendarRow | null> {
+  const today = new Date().toISOString().slice(0, 10);
+  const url = new URL(`${SUPABASE_URL_RAW}/rest/v1/artist_release_calendar`);
+  url.searchParams.set(
+    "select",
+    [
+      "artist_handle",
+      "release_date",
+      "title",
+      "source_url",
+      "source_type",
+      "evidence",
+      "confidence",
+      "status",
+      "last_seen_at",
+    ].join(","),
+  );
+  url.searchParams.set("label_id", `eq.${labelId}`);
+  url.searchParams.set("artist_handle", `eq.${artistHandle}`);
+  url.searchParams.set("release_date", `gte.${today}`);
+  url.searchParams.set("status", "in.(ai_detected,confirmed,manual)");
+  url.searchParams.set("order", "release_date.asc");
+  url.searchParams.set("limit", "1");
+
+  const res = await fetch(url.toString(), {
+    headers: {
+      apikey: SUPABASE_ANON_KEY,
+      Authorization: `Bearer ${accessToken ?? SUPABASE_ANON_KEY}`,
+    },
+  });
+
+  if (!res.ok) {
+    console.warn("Release calendar fetch failed", await res.text());
+    return null;
+  }
+
+  const rows = (await res.json()) as ReleaseCalendarRow[];
+  return rows[0] ?? null;
+}
 
 // ── Page ───────────────────────────────────────────────────────────────────────
 
@@ -126,6 +246,7 @@ export default function LabelArtistProfile() {
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
   const [removeDialogOpen, setRemoveDialogOpen] = useState(false);
+  const [confirmingRelease, setConfirmingRelease] = useState(false);
   const { labelId } = useUserProfile();
   const { canManage: canManageLabel } = useLabelPermissions();
   const { role } = useDashboardRole();
@@ -150,45 +271,49 @@ export default function LabelArtistProfile() {
     if (!artistHandle) return;
     setLoading(true);
 
-    const normalizedHandle = artistHandle
-      .replace(/^@/, "")
-      .toLowerCase()
-      .trim();
+    const normalizedHandle = normalizeArtistHandle(artistHandle);
 
     const fetchAll = async () => {
       if (!labelId) return;
-      const [metricsRes, timelineRes, intelRes] = await Promise.all([
-        supabase
-          .from("roster_dashboard_metrics")
-          .select("*")
-          .eq("artist_handle", artistHandle)
-          .eq("label_id", labelId)
-          .maybeSingle(),
-        supabase
-          .from("artist_videos_tiktok")
-          .select(
-            "date_posted, video_views, video_likes, video_comments, video_shares, video_saves, video_url, caption, is_ad, is_likely_promoted",
+      const session = (await supabase.auth.getSession()).data.session;
+      const [metricsRes, timelineRes, intelRes, releaseCalendarRow] =
+        await Promise.all([
+          supabase
+            .from("roster_dashboard_metrics")
+            .select("*")
+            .eq("artist_handle", artistHandle)
+            .eq("label_id", labelId)
+            .maybeSingle(),
+          supabase
+            .from("artist_videos_tiktok")
+            .select(
+              "date_posted, video_views, video_likes, video_comments, video_shares, video_saves, video_url, video_id, video_embedded_url, caption, is_ad, is_likely_promoted",
+            )
+            .eq("artist_handle", artistHandle)
+            .order("date_posted", { ascending: false })
+            .limit(30),
+          supabase
+            .from("artist_intelligence")
+            .select(
+              "content_plan_html, intelligence_report_html, content_plan_30d_html, thirty_day_plan_html, artist_brief_html, invite_code, weekly_pulse, weekly_pulse_generated_at",
+            )
+            .eq("label_id", labelId)
+            .or(
+              `artist_handle.eq.${normalizedHandle},artist_handle.eq.@${normalizedHandle}`,
+            )
+            .order("updated_at", { ascending: false })
+            .limit(1)
+            .maybeSingle(),
+          fetchReleaseCalendarRow(
+            labelId,
+            normalizedHandle,
+            session?.access_token ?? null,
           )
-          .eq("artist_handle", artistHandle)
-          .order("date_posted", { ascending: false })
-          .limit(30),
-        supabase
-          .from("artist_intelligence")
-          .select(
-            "content_plan_html, intelligence_report_html, content_plan_30d_html, thirty_day_plan_html, artist_brief_html, invite_code, weekly_pulse, weekly_pulse_generated_at",
-          )
-          .eq("label_id", labelId)
-          .or(
-            `artist_handle.eq.${normalizedHandle},artist_handle.eq.@${normalizedHandle}`,
-          )
-          .order("updated_at", { ascending: false })
-          .limit(1)
-          .maybeSingle(),
-      ]);
+        ]);
 
       if (metricsRes.data) {
-        const m = metricsRes.data as any;
-        const ai = intelRes.data as any;
+        const m = metricsRes.data as unknown as ArtistMetrics;
+        const ai = intelRes.data as ArtistIntelligenceProfileRow | null;
         const plan30 = ai?.content_plan_30d_html || ai?.thirty_day_plan_html;
         setArtist({
           ...m,
@@ -198,11 +323,14 @@ export default function LabelArtistProfile() {
           has_30day_plan: m.has_30day_plan || !!plan30,
           has_artist_brief: !!ai?.artist_brief_html,
           invite_code: ai?.invite_code ?? null,
-          weekly_pulse: (ai?.weekly_pulse as WeeklyPulse) ?? null,
+          weekly_pulse: mergeReleaseCalendarIntoPulse(
+            ai?.weekly_pulse ?? null,
+            releaseCalendarRow,
+          ),
           weekly_pulse_generated_at: ai?.weekly_pulse_generated_at ?? null,
         });
       } else if (isAdmin && intelRes.data) {
-        const ai = intelRes.data as any;
+        const ai = intelRes.data as ArtistIntelligenceProfileRow;
         setArtist({
           artist_name: ai.artist_name || artistHandle,
           artist_handle: artistHandle,
@@ -236,17 +364,22 @@ export default function LabelArtistProfile() {
           invite_code: ai.invite_code ?? null,
           baseline_date: null,
           artist_id: null,
-          weekly_pulse: (ai?.weekly_pulse as WeeklyPulse) ?? null,
+          weekly_pulse: mergeReleaseCalendarIntoPulse(
+            ai?.weekly_pulse ?? null,
+            releaseCalendarRow,
+          ),
           weekly_pulse_generated_at: ai?.weekly_pulse_generated_at ?? null,
         });
       }
 
-      if (timelineRes.data) setTimeline((timelineRes.data as any[]) ?? []);
+      if (timelineRes.data) {
+        setTimeline((timelineRes.data as TimelinePointRaw[]) ?? []);
+      }
       setLoading(false);
     };
 
     fetchAll();
-  }, [artistHandle, labelId]);
+  }, [artistHandle, labelId, isAdmin]);
 
   // ── Chart data (RMM Performance) ──
   const chartData = useMemo(() => {
@@ -257,7 +390,7 @@ export default function LabelArtistProfile() {
       : timeline;
 
     const medianBaseline =
-      (artist as any)?.median_views_baseline ??
+      artist?.median_views_baseline ??
       (() => {
         const views = filtered
           .map((p) => p.video_views)
@@ -270,6 +403,7 @@ export default function LabelArtistProfile() {
       (a, b) =>
         new Date(a.date_posted).getTime() - new Date(b.date_posted).getTime(),
     );
+    const cleanHandle = (artistHandle ?? "").replace(/^@/, "");
     return sorted.map((pt) => {
       const pr = medianBaseline > 0 ? pt.video_views / medianBaseline : 0;
       const tier =
@@ -282,8 +416,15 @@ export default function LabelArtistProfile() {
               : pr >= 0.5
                 ? "stable"
                 : "stalled";
+      const derivedUrl =
+        pt.video_url ||
+        (pt.video_id && cleanHandle
+          ? `https://www.tiktok.com/@${cleanHandle}/video/${pt.video_id}`
+          : null) ||
+        (pt.video_embedded_url ? pt.video_embedded_url.split("?")[0] : null);
       return {
         ...pt,
+        video_url: derivedUrl,
         views: pt.video_views,
         performance_ratio: Math.round(pr * 100) / 100,
         momentum_tier: tier,
@@ -292,7 +433,7 @@ export default function LabelArtistProfile() {
         monthLabel: format(new Date(pt.date_posted), "MMM"),
       };
     });
-  }, [timeline, organicOnly, artist]);
+  }, [timeline, organicOnly, artist, artistHandle]);
 
   const filteredStats = useMemo(() => {
     if (chartData.length === 0)
@@ -308,6 +449,102 @@ export default function LabelArtistProfile() {
     };
     return { current, avg7: avg(last7), avg30: avg(last30) };
   }, [chartData]);
+
+  const handleManualReleaseConfirm = async (payload: ManualReleasePayload) => {
+    if (!labelId || !artistHandle) return;
+
+    const sourceUrl = payload.sourceUrl.trim();
+    const releaseDate = payload.releaseDate.trim();
+    const title = payload.title.trim() || null;
+
+    if (!releaseDate || !sourceUrl) {
+      toast({
+        title: "Missing release details",
+        description: "Add a release date and public source URL.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setConfirmingRelease(true);
+    try {
+      const session = (await supabase.auth.getSession()).data.session;
+      if (!session?.access_token) {
+        throw new Error("No active session");
+      }
+
+      const now = new Date().toISOString();
+      const normalizedHandle = normalizeArtistHandle(artistHandle);
+      const url = new URL(`${SUPABASE_URL_RAW}/rest/v1/artist_release_calendar`);
+      url.searchParams.set("on_conflict", "label_id,artist_handle,release_date");
+
+      const res = await fetch(url.toString(), {
+        method: "POST",
+        headers: {
+          apikey: SUPABASE_ANON_KEY,
+          Authorization: `Bearer ${session.access_token}`,
+          "Content-Type": "application/json",
+          Prefer: "resolution=merge-duplicates,return=representation",
+        },
+        body: JSON.stringify({
+          label_id: labelId,
+          artist_handle: normalizedHandle,
+          release_date: releaseDate,
+          title,
+          source_url: sourceUrl,
+          source_type: "manual",
+          evidence: title
+            ? `Label user confirmed "${title}" from ${sourceUrl}.`
+            : `Label user confirmed an upcoming release from ${sourceUrl}.`,
+          confidence: "high",
+          status: "confirmed",
+          detected_by: "label_user",
+          last_seen_at: now,
+          evidence_payload: {
+            source_url: sourceUrl,
+            entered_by: "label_user",
+            checked_at: now,
+          },
+        }),
+      });
+
+      if (!res.ok) {
+        throw new Error(await res.text());
+      }
+
+      const rows = (await res.json()) as ReleaseCalendarRow[];
+      const row = rows[0];
+      if (row) {
+        setArtist((prev) =>
+          prev
+            ? {
+                ...prev,
+                weekly_pulse: mergeReleaseCalendarIntoPulse(
+                  prev.weekly_pulse,
+                  row,
+                ),
+              }
+            : prev,
+        );
+      }
+
+      toast({
+        title: "Release confirmed",
+        description: "The posting window will now use this release date.",
+      });
+    } catch (error) {
+      console.error(error);
+      toast({
+        title: "Could not save release",
+        description:
+          error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+      throw error;
+    } finally {
+      setConfirmingRelease(false);
+    }
+  };
 
   // ── Tab navigation ──
   const setTab = (tab: TabKey) => {
@@ -465,6 +702,8 @@ export default function LabelArtistProfile() {
             inviteCode={artist.invite_code}
             weeklyPulse={artist.weekly_pulse}
             weeklyPulseGeneratedAt={artist.weekly_pulse_generated_at}
+            onManualReleaseConfirm={handleManualReleaseConfirm}
+            manualReleasePending={confirmingRelease}
             chartData={chartData}
             organicOnly={organicOnly}
             onOrganicToggle={setOrganicOnly}

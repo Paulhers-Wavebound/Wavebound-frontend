@@ -20,6 +20,7 @@ import {
   List,
   Activity,
   HelpCircle,
+  AlertTriangle,
 } from "lucide-react";
 import {
   Tooltip,
@@ -45,6 +46,9 @@ import {
   saveToReachColor,
   saveToReachLabel,
   getTierGroup,
+  getPostingWindowStatus,
+  getContentHealthMeta,
+  type PostingWindowStatus,
 } from "@/data/contentDashboardHelpers";
 import { renderBriefText } from "@/utils/briefText";
 
@@ -164,29 +168,6 @@ const STATUS_COLORS: Record<string, { color: string; bg: string }> = {
   Silent: { color: "#6B6B70", bg: "rgba(107,107,112,0.12)" },
 };
 
-function deriveStatus(
-  daysSince: number | null,
-  dbtCadence: string | null,
-  trend: string | null,
-): string {
-  if (dbtCadence) {
-    const c = dbtCadence.toLowerCase();
-    if (c === "daily") return trend === "improving" ? "Hot" : "Healthy";
-    if (c === "regular") return trend === "improving" ? "Healthy" : "Stable";
-    if (c === "sporadic") return "Inconsistent";
-    if (c === "inactive") return "At Risk";
-    if (c === "dormant") return "Silent";
-  }
-  if (daysSince != null) {
-    if (daysSince <= 2) return trend === "improving" ? "Hot" : "Healthy";
-    if (daysSince <= 5) return "Stable";
-    if (daysSince <= 10) return "Inconsistent";
-    if (daysSince <= 21) return "At Risk";
-    if (daysSince > 21) return "Silent";
-  }
-  return "\u2014";
-}
-
 const STATUS_ARROWS: Record<string, string> = {
   Hot: "\u25B2",
   Inconsistent: "\u25BC",
@@ -194,16 +175,9 @@ const STATUS_ARROWS: Record<string, string> = {
   Silent: "\u25BC",
 };
 
-function ContentHealthPill({
-  cadence,
-  daysSince,
-  trend,
-}: {
-  cadence: string | null;
-  daysSince: number | null;
-  trend: string | null;
-}) {
-  const status = deriveStatus(daysSince, cadence, trend);
+function ContentHealthPill({ artist }: { artist: ContentArtist }) {
+  const meta = getContentHealthMeta(artist);
+  const { status } = meta;
   if (status === "\u2014") return null;
   const { color, bg } = STATUS_COLORS[status] ?? {
     color: "rgba(255,255,255,0.30)",
@@ -212,13 +186,141 @@ function ContentHealthPill({
   const arrow = STATUS_ARROWS[status] ?? "";
 
   return (
-    <span
-      className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[12px] font-semibold"
-      style={{ color, background: bg }}
-    >
-      {status}
-      <span className="text-[9px]">{arrow}</span>
-    </span>
+    <div className="flex flex-col gap-0.5">
+      <span
+        className="inline-flex items-center gap-1 w-fit px-2 py-0.5 rounded text-[12px] font-semibold"
+        style={{ color, background: bg }}
+      >
+        {status}
+        <span className="text-[9px]">{arrow}</span>
+        {meta.staleCadence && (
+          <TooltipProvider delayDuration={150}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <AlertTriangle
+                  size={11}
+                  className="text-[#FF9F0A]"
+                  aria-label="Cadence data conflict"
+                />
+              </TooltipTrigger>
+              <TooltipContent side="top" className="max-w-[240px] text-xs">
+                Cadence summary says {meta.staleCadenceLabel}, but recent
+                posting frequency says {meta.numericCadenceLabel}. Numeric
+                frequency is used for the pill.
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
+      </span>
+      {meta.cadenceLabel && (
+        <span className="text-[10px] text-white/35 leading-tight">
+          {meta.cadenceLabel}
+        </span>
+      )}
+    </div>
+  );
+}
+
+/* ─── Posting Window cell ─────────────────────────────────── */
+
+function PostingWindowCell({ status }: { status: PostingWindowStatus }) {
+  const { inWindow, reason, days, confidence, sourceType } = status;
+  const sourceLabel =
+    sourceType === "tiktok_caption"
+      ? "TikTok caption"
+      : sourceType === "latest_release"
+        ? "Release data"
+        : sourceType === "manual"
+          ? "Manual"
+          : sourceType === "web"
+            ? "Web"
+            : null;
+  const confidenceLabel = confidence
+    ? `${confidence[0].toUpperCase()}${confidence.slice(1)} confidence`
+    : null;
+  const upcomingSubtitle =
+    [confidenceLabel, sourceLabel].filter(Boolean).join(" · ") ||
+    "Release scheduled";
+  const tooltipEvidence =
+    status.evidence ||
+    (status.releaseTitle
+      ? `Upcoming release: ${status.releaseTitle}`
+      : "Specific public release date found.");
+
+  const upcomingContent = (
+    <div className="flex flex-col gap-0.5">
+      <span
+        className="inline-flex items-center w-fit px-2 py-0.5 rounded text-[12px] font-semibold"
+        style={{ color: "#30D158", background: "rgba(48,209,88,0.12)" }}
+      >
+        {days === 0 ? "DROPS TODAY" : `DROP IN ${days}D`}
+      </span>
+      <span className="text-[10px] text-white/40 leading-tight">
+        {upcomingSubtitle}
+      </span>
+    </div>
+  );
+
+  if (inWindow && reason === "upcoming") {
+    if (!status.evidence && !status.sourceUrl && !status.releaseTitle) {
+      return upcomingContent;
+    }
+
+    return (
+      <TooltipProvider delayDuration={150}>
+        <Tooltip>
+          <TooltipTrigger asChild>{upcomingContent}</TooltipTrigger>
+          <TooltipContent side="top" className="max-w-[280px] text-xs">
+            <div className="space-y-1">
+              {status.releaseTitle && (
+                <p className="font-medium text-white/90">
+                  {status.releaseTitle}
+                </p>
+              )}
+              <p className="text-white/70 leading-relaxed">
+                {tooltipEvidence}
+              </p>
+              {status.sourceUrl && (
+                <p className="truncate text-white/40">{status.sourceUrl}</p>
+              )}
+            </div>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    );
+  }
+
+  if (inWindow && reason === "recent") {
+    return (
+      <div className="flex flex-col gap-0.5">
+        <span
+          className="inline-flex items-center w-fit px-2 py-0.5 rounded text-[12px] font-semibold"
+          style={{ color: "#30D158", background: "rgba(48,209,88,0.12)" }}
+        >
+          FRESH RELEASE
+        </span>
+        <span className="text-[10px] text-white/40 leading-tight">
+          {days === 0 ? "Released today" : `Released ${days}d ago`}
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-0.5">
+      <span
+        className="inline-flex items-center w-fit px-2 py-0.5 rounded text-[12px] font-semibold"
+        style={{
+          color: "rgba(255,255,255,0.45)",
+          background: "rgba(255,255,255,0.05)",
+        }}
+      >
+        QUIET
+      </span>
+      <span className="text-[10px] text-white/30 leading-tight">
+        {days != null ? `Last drop ${days}d ago` : "No release on file"}
+      </span>
+    </div>
   );
 }
 
@@ -981,11 +1083,7 @@ function ArtistCard({
             </p>
             <MomentumBadge tier={artist.momentum_tier} />
           </div>
-          <ContentHealthPill
-            cadence={artist.posting_cadence}
-            daysSince={artist.days_since_last_post}
-            trend={artist.performance_trend}
-          />
+          <ContentHealthPill artist={artist} />
         </div>
       </div>
 
@@ -1203,7 +1301,17 @@ export default function ContentRosterTable({
                 </th>
                 <th className="px-2 py-2.5 text-left">
                   <SortHeader
-                    label="Content Health"
+                    label="Posting Window"
+                    sortKey="posting_window"
+                    active={sortKey === "posting_window"}
+                    asc={sortAsc}
+                    onSort={handleSort}
+                    tooltip="In window if the artist has an upcoming release within 14 days OR released in the last 30 days. The window where content campaigns matter most."
+                  />
+                </th>
+                <th className="px-2 py-2.5 text-left">
+                  <SortHeader
+                    label="Consistency"
                     sortKey="content_health"
                     active={sortKey === "content_health"}
                     asc={sortAsc}
@@ -1265,13 +1373,16 @@ export default function ContentRosterTable({
                         </div>
                       </td>
 
+                      {/* Posting Window */}
+                      <td className="px-2 py-2">
+                        <PostingWindowCell
+                          status={getPostingWindowStatus(artist)}
+                        />
+                      </td>
+
                       {/* Content Health */}
                       <td className="px-2 py-2">
-                        <ContentHealthPill
-                          cadence={artist.posting_cadence}
-                          daysSince={artist.days_since_last_post}
-                          trend={artist.performance_trend}
-                        />
+                        <ContentHealthPill artist={artist} />
                       </td>
 
                       {/* Performance (hero: trend %) */}
@@ -1299,7 +1410,7 @@ export default function ContentRosterTable({
                     </tr>
                     <AnimatePresence>
                       {isExpanded && (
-                        <ExpandedRow artist={artist} colSpan={5} />
+                        <ExpandedRow artist={artist} colSpan={6} />
                       )}
                     </AnimatePresence>
                   </React.Fragment>

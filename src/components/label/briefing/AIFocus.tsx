@@ -1,7 +1,7 @@
-import { useMemo } from "react";
 import InfoTooltip from "@/components/label/intelligence/InfoTooltip";
 import { STAT_TOOLTIPS } from "@/lib/statTooltips";
 import { renderBriefText } from "@/utils/briefText";
+import type { NextReleaseIntel } from "@/data/contentDashboardHelpers";
 
 // ─── Types ───────────────────────────────────────────────────────
 
@@ -46,6 +46,13 @@ export interface WeeklyPulse {
     move: string;
     implication: string;
   }>;
+  next_release_date?: string | null;
+  next_release?: NextReleaseIntel | null;
+  next_release_title?: string | null;
+  next_release_source_url?: string | null;
+  next_release_source_type?: NextReleaseIntel["source_type"];
+  next_release_evidence?: string | null;
+  next_release_confidence?: NextReleaseIntel["confidence"];
   week_of?: string;
   generated_at?: string;
   source?: string;
@@ -124,24 +131,24 @@ export default function AIFocus({ pulse, generatedAt }: AIFocusProps) {
   const hasOldFormat =
     !hasFocusedSound && pulse.items && pulse.items.length > 0;
 
-  const derivedFocus = useMemo(() => {
-    if (hasFocusedSound) return null;
-    if (!pulse.items || pulse.items.length === 0) return null;
-    const topItem =
-      pulse.items.find(
-        (i) => i.type === "new_release" || i.type === "viral_moment",
-      ) ?? pulse.items[0];
-    return {
-      title: topItem.headline,
-      reason: topItem.summary,
-      action:
-        topItem.plan_action === "reference"
-          ? "Reference in upcoming content"
-          : topItem.plan_action === "react"
-            ? "Create reactive content"
-            : "Monitor this development",
-    };
-  }, [hasFocusedSound, pulse.items]);
+  const topItem =
+    !hasFocusedSound && pulse.items && pulse.items.length > 0
+      ? (pulse.items.find(
+          (i) => i.type === "new_release" || i.type === "viral_moment",
+        ) ?? pulse.items[0])
+      : null;
+  const derivedFocus = topItem
+    ? {
+        title: topItem.headline,
+        reason: topItem.summary,
+        action:
+          topItem.plan_action === "reference"
+            ? "Reference in upcoming content"
+            : topItem.plan_action === "react"
+              ? "Create reactive content"
+              : "Monitor this development",
+      }
+    : null;
 
   const focus = pulse.focused_sound ?? derivedFocus;
 

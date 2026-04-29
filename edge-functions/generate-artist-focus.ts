@@ -42,9 +42,28 @@ interface CatalogueAlert {
   action: string;
 }
 
+type ReleaseConfidence = "high" | "medium" | "low";
+
+interface NextReleaseIntel {
+  date: string | null;
+  title?: string | null;
+  source_url?: string | null;
+  source_type?: "tiktok_caption" | "web" | "latest_release" | "manual" | null;
+  evidence?: string | null;
+  confidence?: ReleaseConfidence | null;
+  checked_at?: string;
+}
+
 interface ArtistFocusResult {
   focused_sound?: FocusedSound;
   catalogue_alert?: CatalogueAlert;
+  next_release_date?: string | null;
+  next_release?: NextReleaseIntel | null;
+  next_release_title?: string | null;
+  next_release_source_url?: string | null;
+  next_release_source_type?: NextReleaseIntel["source_type"];
+  next_release_evidence?: string | null;
+  next_release_confidence?: ReleaseConfidence | null;
 }
 
 // ── Tool Definitions ───────────────────────────────────
@@ -107,8 +126,7 @@ ALWAYS set a limit (max 50). ALWAYS filter by artist.`,
         },
         select: {
           type: "string",
-          description:
-            "Comma-separated column names to return. Use * for all.",
+          description: "Comma-separated column names to return. Use * for all.",
         },
         artist_filter: {
           type: "string",
@@ -166,16 +184,156 @@ const ALLOWED_TABLES = new Set([
   "artist_intelligence",
 ]);
 
-const TABLE_ARTIST_COLUMNS: Record<
-  string,
-  { handle?: string; name?: string }
-> = {
-  catalog_tiktok_performance: { name: "artist_name" },
-  artist_videos_tiktok: { handle: "artist_handle" },
-  roster_dashboard_metrics: { handle: "artist_handle", name: "artist_name" },
-  artist_content_dna: { handle: "artist_handle" },
-  artist_intelligence: { handle: "artist_handle", name: "artist_name" },
-};
+const TABLE_ARTIST_COLUMNS: Record<string, { handle?: string; name?: string }> =
+  {
+    catalog_tiktok_performance: { name: "artist_name" },
+    artist_videos_tiktok: { handle: "artist_handle" },
+    roster_dashboard_metrics: { handle: "artist_handle", name: "artist_name" },
+    artist_content_dna: { handle: "artist_handle" },
+    artist_intelligence: { handle: "artist_handle", name: "artist_name" },
+  };
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function cleanString(value: unknown, maxLength: number): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  return trimmed.slice(0, maxLength);
+}
+
+function normalizeConfidence(value: unknown): ReleaseConfidence | null {
+  if (value === "high" || value === "medium" || value === "low") {
+    return value;
+  }
+  return null;
+}
+
+function normalizeSourceType(
+  value: unknown,
+): NextReleaseIntel["source_type"] {
+  if (
+    value === "tiktok_caption" ||
+    value === "web" ||
+    value === "latest_release" ||
+    value === "manual"
+  ) {
+    return value;
+  }
+  return null;
+}
+
+function normalizeReleaseDate(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return null;
+
+  const parsed = Date.parse(`${trimmed}T00:00:00Z`);
+  if (Number.isNaN(parsed)) return null;
+
+  const today = new Date();
+  const todayUTC = Date.UTC(
+    today.getUTCFullYear(),
+    today.getUTCMonth(),
+    today.getUTCDate(),
+  );
+  const daysUntil = Math.round((parsed - todayUTC) / 86_400_000);
+
+  if (daysUntil < 0 || daysUntil > 60) return null;
+  return trimmed;
+}
+
+function normalizeReleaseIntel(
+  input: unknown,
+  checkedAt = new Date().toISOString(),
+): NextReleaseIntel {
+  const source = isRecord(input) ? input : {};
+  const date =
+    normalizeReleaseDate(source.date) ??
+    normalizeReleaseDate(source.next_release_date);
+
+  if (!date) {
+    return {
+      date: null,
+      title: null,
+      source_url: null,
+      source_type: null,
+      evidence: null,
+      confidence: null,
+      checked_at: checkedAt,
+    };
+  }
+
+  return {
+    date,
+    title: cleanString(source.title, 140),
+    source_url: cleanString(source.source_url, 500),
+    source_type: normalizeSourceType(source.source_type),
+    evidence: cleanString(source.evidence, 360),
+    confidence: normalizeConfidence(source.confidence) ?? "medium",
+    checked_at: checkedAt,
+  };
+}
+
+function withReleaseFields(
+  result: ArtistFocusResult,
+  release: NextReleaseIntel,
+): ArtistFocusResult {
+  return {
+    ...result,
+    next_release_date: release.date,
+    next_release: release,
+    next_release_title: release.title ?? null,
+    next_release_source_url: release.source_url ?? null,
+    next_release_source_type: release.source_type ?? null,
+    next_release_evidence: release.evidence ?? null,
+    next_release_confidence: release.confidence ?? null,
+  };
+}
+
+function mergeReleaseIntoPulse(
+  pulse: unknown,
+  release: NextReleaseIntel,
+): ArtistFocusResult {
+  const current = isRecord(pulse) ? (pulse as ArtistFocusResult) : {};
+  return withReleaseFields(current, release);
+}
+
+async function persistReleaseIntel(
+  supabase: ReturnType<typeof createClient>,
+  artistHandle: string,
+  labelId: string,
+  release: NextReleaseIntel,
+): Promise<void> {
+  if (!release.date) return;
+
+  const { error } = await supabase.from("artist_release_calendar").upsert(
+    {
+      label_id: labelId,
+      artist_handle: artistHandle.toLowerCase().replace(/^@+/, ""),
+      release_date: release.date,
+      title: release.title,
+      source_url: release.source_url,
+      source_type: release.source_type,
+      evidence: release.evidence,
+      confidence: release.confidence ?? "medium",
+      status: "ai_detected",
+      detected_by: "generate-artist-focus",
+      last_seen_at: release.checked_at ?? new Date().toISOString(),
+      evidence_payload: release,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "label_id,artist_handle,release_date" },
+  );
+
+  if (error) {
+    console.error(
+      `Failed to persist release intel for ${artistHandle}: ${error.message}`,
+    );
+  }
+}
 
 async function executeQueryDatabase(
   supabase: ReturnType<typeof createClient>,
@@ -374,16 +532,68 @@ This brief goes to senior label executives at Sony Music Group. They live in thi
    Executives decide what to do. You surface what the data shows.
 
 ═══════════════════════════════════════════════════════
+NEXT RELEASE DETECTION
+═══════════════════════════════════════════════════════
+
+Separately from focused_sound and catalogue_alert, populate "next_release" with structured
+upcoming-release intelligence for an ANNOUNCED upcoming release within the next 60 days.
+
+Set next_release.date to the ISO date (YYYY-MM-DD) only when:
+  - A TikTok caption you read explicitly states a release date ("Out April 30th", "drops 5/12", etc.), OR
+  - A web_search returns a press release, label announcement, or distributor page with a specific public release date, OR
+  - The latest_release data already includes a future-dated release.
+
+ONLY set this when there is a SPECIFIC, PUBLIC, ANNOUNCED date. Do NOT set it for:
+  - Vague language ("coming soon", "new music dropping this summer")
+  - Speculation based on posting cadence
+  - Teaser videos with no announced date
+
+When next_release.date is set, also set:
+  - next_release.title: release title if known, else null.
+  - next_release.source_url: the exact public URL you used, if web_search provided one; otherwise null.
+  - next_release.source_type: "web", "tiktok_caption", or "latest_release".
+  - next_release.evidence: one short sentence quoting/paraphrasing the public evidence.
+  - next_release.confidence:
+      "high" = official source, label/artist announcement, distributor/press page, or future latest_release data.
+      "medium" = specific public date from a credible non-official source or clear TikTok caption.
+      "low" = specific date exists but source is weak/ambiguous; only use low if you would want a human to verify.
+
+Also duplicate the date at top-level "next_release_date" for backwards compatibility.
+
+If no specific public announced date exists, set next_release_date to null and next_release.date to null.
+Better to be null than wrong — this field controls a roster-wide "Posting Window" indicator,
+and a false positive misleads the entire content team for a week.
+
+═══════════════════════════════════════════════════════
 OUTPUT FORMAT
 ═══════════════════════════════════════════════════════
 
 After using tools and analyzing all data, respond with JSON ONLY (no markdown fences):
-{"focused_sound":{"title":"...","reason":"...","action":"..."},"catalogue_alert":{"title":"...","delta":"...","reason":"...","action":"..."} or null}
+{"focused_sound":{"title":"...","reason":"...","action":"..."},"catalogue_alert":{"title":"...","delta":"...","reason":"...","action":"..."} or null,"next_release_date":"YYYY-MM-DD" or null,"next_release":{"date":"YYYY-MM-DD" or null,"title":"..." or null,"source_url":"https://..." or null,"source_type":"web" or "tiktok_caption" or "latest_release" or null,"evidence":"..." or null,"confidence":"high" or "medium" or "low" or null}}
 
 - "reason": ONE sentence. What signal did you detect? Cite specific numbers.
 - "action": ONE sentence. What decision does the exec need to evaluate?
 - If catalogue_alert has no surprising movement, set it to null.
+- If no announced upcoming release within 60 days, set next_release_date to null and next_release.date to null.
 - Every number you cite must come from the pre-loaded data OR from a tool result.`;
+
+const RELEASE_SCAN_PROMPT = `You are Wavebound's release-date intelligence collector for a major label roster.
+
+Your only job: determine whether this artist has a SPECIFIC, PUBLICLY ANNOUNCED upcoming song/album release date in the next 60 days.
+
+Use the provided context first. Use web_search when captions, latest_release data, or brand context suggest there may be an upcoming release but the date/source is not explicit enough.
+
+STRICT RULES:
+- Return null date unless there is a concrete date in YYYY-MM-DD form or a public source that can be normalized to YYYY-MM-DD.
+- "Coming soon", "new era", "soon", "this summer", and cadence guesses are NOT release dates.
+- Prefer official artist/label/distributor/press sources over secondary sites.
+- If the only source is a TikTok caption with a specific date, source_type is "tiktok_caption" and source_url may be null.
+- Confidence "high" requires official/future latest_release data or a clearly official public source.
+- Confidence "medium" is a credible public source or clear caption.
+- Confidence "low" means a specific date exists but a human should verify it; low confidence will not drive Posting Window sorting.
+
+Respond with JSON ONLY:
+{"date":"YYYY-MM-DD" or null,"title":"..." or null,"source_url":"https://..." or null,"source_type":"web" or "tiktok_caption" or "latest_release" or null,"evidence":"one short sentence with the evidence" or null,"confidence":"high" or "medium" or "low" or null}`;
 
 // ── Agentic Loop ───────────────────────────────────────
 
@@ -456,12 +666,12 @@ ${context}`,
       toolRound >= MAX_TOOL_ROUNDS
     ) {
       // Find ALL text blocks (there may be multiple after tool rounds)
-      const textBlocks = contentBlocks.filter((b) => b.type === "text") as
-        Array<{ text: string }>;
+      const textBlocks = contentBlocks.filter(
+        (b) => b.type === "text",
+      ) as Array<{ text: string }>;
       // Use the last text block — that's the final answer after tool usage
-      const textContent = textBlocks.length > 0
-        ? textBlocks[textBlocks.length - 1].text
-        : "{}";
+      const textContent =
+        textBlocks.length > 0 ? textBlocks[textBlocks.length - 1].text : "{}";
 
       const cleaned = textContent
         .replace(/```json\n?/g, "")
@@ -536,6 +746,133 @@ ${context}`,
 
   throw new Error(
     `Agentic loop for ${artistName} ended without producing a result after ${MAX_TOOL_ROUNDS} rounds`,
+  );
+}
+
+async function runReleaseScanLoop(
+  supabase: ReturnType<typeof createClient>,
+  artistName: string,
+  context: string,
+  anthropicApiKey: string,
+): Promise<NextReleaseIntel> {
+  const messages: unknown[] = [
+    {
+      role: "user",
+      content: `Here is the pre-loaded context for ${artistName}. Find only the next announced release date if one exists.\n\n${context}`,
+    },
+  ];
+
+  let toolRound = 0;
+
+  while (toolRound <= MAX_TOOL_ROUNDS) {
+    console.log(
+      `  [${artistName}] Release scan API call ${toolRound + 1}/${MAX_TOOL_ROUNDS + 1}...`,
+    );
+
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": anthropicApiKey,
+        "anthropic-version": "2023-06-01",
+        "anthropic-beta": "web-search-2025-03-05",
+      },
+      body: JSON.stringify({
+        model: "claude-opus-4-6",
+        max_tokens: 4000,
+        thinking: {
+          type: "enabled",
+          budget_tokens: 2000,
+        },
+        system: RELEASE_SCAN_PROMPT,
+        messages,
+        tools: ALL_TOOLS,
+      }),
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      throw new Error(`Anthropic API error ${response.status}: ${errText}`);
+    }
+
+    const result = (await response.json()) as {
+      content: Array<Record<string, unknown>>;
+      stop_reason: string;
+    };
+    const contentBlocks = result.content || [];
+    const stopReason = result.stop_reason;
+
+    const clientToolBlocks = contentBlocks.filter(
+      (b) => b.type === "tool_use",
+    ) as Array<{ id: string; name: string; input: Record<string, unknown> }>;
+
+    if (
+      stopReason !== "tool_use" ||
+      clientToolBlocks.length === 0 ||
+      toolRound >= MAX_TOOL_ROUNDS
+    ) {
+      const textBlocks = contentBlocks.filter(
+        (b) => b.type === "text",
+      ) as Array<{ text: string }>;
+      const textContent =
+        textBlocks.length > 0 ? textBlocks[textBlocks.length - 1].text : "{}";
+
+      const cleaned = textContent
+        .replace(/```json\n?/g, "")
+        .replace(/```\n?/g, "")
+        .trim();
+
+      try {
+        return normalizeReleaseIntel(JSON.parse(cleaned));
+      } catch {
+        const anyJson = cleaned.match(/\{[\s\S]*\}/);
+        if (anyJson) {
+          try {
+            return normalizeReleaseIntel(JSON.parse(anyJson[0]));
+          } catch {
+            // fall through
+          }
+        }
+        console.error(
+          `  [${artistName}] Failed to parse release JSON: ${cleaned.slice(0, 500)}`,
+        );
+        throw new Error(
+          `Failed to parse release scan response as JSON. Raw text: ${cleaned.slice(0, 200)}`,
+        );
+      }
+    }
+
+    const toolResults: unknown[] = [];
+
+    for (const toolBlock of clientToolBlocks) {
+      console.log(
+        `  [${artistName}] Release tool: ${toolBlock.name}(${JSON.stringify(toolBlock.input).slice(0, 150)})`,
+      );
+
+      let toolResult: string;
+      if (toolBlock.name === "query_database") {
+        toolResult = await executeQueryDatabase(supabase, toolBlock.input);
+      } else {
+        toolResult = JSON.stringify({
+          error: `Unknown tool: ${toolBlock.name}. Available: query_database`,
+        });
+      }
+
+      toolResults.push({
+        type: "tool_result",
+        tool_use_id: toolBlock.id,
+        content: toolResult,
+      });
+    }
+
+    messages.push({ role: "assistant", content: contentBlocks });
+    messages.push({ role: "user", content: toolResults });
+
+    toolRound++;
+  }
+
+  throw new Error(
+    `Release scan loop for ${artistName} ended without producing a result after ${MAX_TOOL_ROUNDS} rounds`,
   );
 }
 
@@ -634,7 +971,8 @@ async function buildArtistContext(
   ]);
 
   const artistName =
-    (intelligenceRes.data as Record<string, unknown> | null)?.artist_name as string || artistHandle;
+    ((intelligenceRes.data as Record<string, unknown> | null)
+      ?.artist_name as string) || artistHandle;
   const roster = rosterRes.data as Record<string, unknown> | null;
   const dna = dnaRes.data as Record<string, unknown> | null;
 
@@ -677,16 +1015,13 @@ async function buildArtistContext(
       );
     if (dna.worst_format) parts.push(`worst format: ${dna.worst_format}`);
     if (dna.avg_hook_score)
-      parts.push(
-        `hook score: ${Math.round(dna.avg_hook_score as number)}/100`,
-      );
+      parts.push(`hook score: ${Math.round(dna.avg_hook_score as number)}/100`);
     if (dna.avg_viral_score)
       parts.push(
         `viral score: ${Math.round(dna.avg_viral_score as number)}/100`,
       );
     if (dna.primary_genre) parts.push(`genre: ${dna.primary_genre}`);
-    if (parts.length > 0)
-      contextParts.push(`CONTENT DNA: ${parts.join(", ")}`);
+    if (parts.length > 0) contextParts.push(`CONTENT DNA: ${parts.join(", ")}`);
   }
 
   const intel = intelligenceRes.data as Record<string, unknown> | null;
@@ -716,9 +1051,7 @@ async function buildArtistContext(
     );
   }
 
-  const catalogData = (catalogRes.data || []) as Array<
-    Record<string, unknown>
-  >;
+  const catalogData = (catalogRes.data || []) as Array<Record<string, unknown>>;
   if (catalogData.length > 0) {
     const catalogLines = catalogData.map((c) => {
       const parts: string[] = [];
@@ -738,9 +1071,7 @@ async function buildArtistContext(
         );
       return parts.join(", ");
     });
-    contextParts.push(
-      `CATALOG TIKTOK SOUNDS:\n${catalogLines.join("\n")}`,
-    );
+    contextParts.push(`CATALOG TIKTOK SOUNDS:\n${catalogLines.join("\n")}`);
   }
 
   const siData = (siRes || []) as Array<Record<string, unknown>>;
@@ -749,16 +1080,12 @@ async function buildArtistContext(
       const parts: string[] = [];
       parts.push(`"${s.track_name}"`);
       parts.push(`${s.videos_count || 0} videos`);
-      parts.push(
-        `${Number(s.total_views || 0).toLocaleString()} views`,
-      );
+      parts.push(`${Number(s.total_views || 0).toLocaleString()} views`);
       if (s.weekly_new_videos) parts.push(`${s.weekly_new_videos} new/week`);
       parts.push(`analysis status: ${s.si_status || "unknown"}`);
       return parts.join(", ");
     });
-    contextParts.push(
-      `SOUND INTELLIGENCE TRACKED:\n${siLines.join("\n")}`,
-    );
+    contextParts.push(`SOUND INTELLIGENCE TRACKED:\n${siLines.join("\n")}`);
   }
 
   const sentiment = sentimentRes.data as Record<string, unknown> | null;
@@ -820,17 +1147,63 @@ async function generateFocusForArtist(
     context,
     anthropicApiKey,
   );
+  const release = normalizeReleaseIntel(result.next_release ?? result);
+  const resultWithRelease = withReleaseFields(result, release);
 
   // Phase 3: Store result immediately (survives batch timeout)
   await supabase
     .from("artist_intelligence")
     .update({
-      weekly_pulse: result,
+      weekly_pulse: resultWithRelease,
       weekly_pulse_generated_at: new Date().toISOString(),
     })
-    .eq("artist_handle", artistHandle);
+    .eq("artist_handle", artistHandle)
+    .eq("label_id", labelId);
 
-  return result;
+  await persistReleaseIntel(supabase, artistHandle, labelId, release);
+
+  return resultWithRelease;
+}
+
+async function scanReleaseForArtist(
+  supabase: ReturnType<typeof createClient>,
+  artistHandle: string,
+  labelId: string,
+  anthropicApiKey: string,
+): Promise<NextReleaseIntel> {
+  const { context, artistName } = await buildArtistContext(
+    supabase,
+    artistHandle,
+    labelId,
+  );
+
+  const release = await runReleaseScanLoop(
+    supabase,
+    artistName,
+    context,
+    anthropicApiKey,
+  );
+
+  const { data: current } = await supabase
+    .from("artist_intelligence")
+    .select("weekly_pulse")
+    .eq("artist_handle", artistHandle)
+    .eq("label_id", labelId)
+    .maybeSingle();
+
+  const mergedPulse = mergeReleaseIntoPulse(current?.weekly_pulse, release);
+
+  await supabase
+    .from("artist_intelligence")
+    .update({
+      weekly_pulse: mergedPulse,
+    })
+    .eq("artist_handle", artistHandle)
+    .eq("label_id", labelId);
+
+  await persistReleaseIntel(supabase, artistHandle, labelId, release);
+
+  return release;
 }
 
 // ── Deno serve ──────────────────────────────────────────
@@ -851,10 +1224,7 @@ Deno.serve(async (req: Request) => {
     const supabase = createClient(supabaseUrl, serviceKey);
 
     if (!anthropicApiKey) {
-      return jsonResponse(
-        { error: "ANTHROPIC_API_KEY not configured" },
-        500,
-      );
+      return jsonResponse({ error: "ANTHROPIC_API_KEY not configured" }, 500);
     }
 
     const authHeader = req.headers.get("Authorization");
@@ -863,49 +1233,75 @@ Deno.serve(async (req: Request) => {
     }
 
     const body = await req.json();
-    const { artist_handle, label_id, batch } = body;
+    const { artist_handle, label_id, batch, release_scan_only } = body;
 
-    if (!label_id) {
+    if (!label_id && !(batch && release_scan_only)) {
       return jsonResponse({ error: "label_id required" }, 400);
     }
 
     if (batch) {
+      const labels =
+        release_scan_only && !label_id
+          ? (
+              await supabase
+                .from("labels")
+                .select("id, name")
+                .eq("is_active", true)
+            ).data || []
+          : [{ id: label_id, name: "selected label" }];
+
       // Batch mode: process artists sequentially.
       // Each result is stored to DB immediately after completion,
       // so even if the HTTP connection times out, completed artists
       // retain their results.
-      const { data: roster } = await supabase
-        .from("roster_dashboard_metrics")
-        .select("artist_handle, artist_name")
-        .eq("label_id", label_id);
-
       const results: Record<string, ArtistFocusResult> = {};
+      const releaseResults: Record<string, NextReleaseIntel> = {};
       const errors: Record<string, string> = {};
 
-      for (const r of (roster || []) as Array<Record<string, string>>) {
-        try {
-          console.log(
-            `\n═══ Generating focus for ${r.artist_name} (@${r.artist_handle}) ═══`,
-          );
-          results[r.artist_handle] = await generateFocusForArtist(
-            supabase,
-            r.artist_handle,
-            label_id,
-            anthropicApiKey,
-          );
-          console.log(`═══ Done: ${r.artist_name} ═══`);
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err);
-          errors[r.artist_handle] = msg;
-          console.error(`═══ FAILED: ${r.artist_handle}: ${msg} ═══`);
+      for (const label of labels as Array<{ id: string; name: string }>) {
+        const { data: roster } = await supabase
+          .from("roster_dashboard_metrics")
+          .select("artist_handle, artist_name")
+          .eq("label_id", label.id);
+
+        for (const r of (roster || []) as Array<Record<string, string>>) {
+          const resultKey = `${label.id}:${r.artist_handle}`;
+          try {
+            console.log(
+              `\n═══ ${release_scan_only ? "Scanning release" : "Generating focus"} for ${r.artist_name} (@${r.artist_handle}) — ${label.name} ═══`,
+            );
+            if (release_scan_only) {
+              releaseResults[resultKey] = await scanReleaseForArtist(
+                supabase,
+                r.artist_handle,
+                label.id,
+                anthropicApiKey,
+              );
+            } else {
+              results[resultKey] = await generateFocusForArtist(
+                supabase,
+                r.artist_handle,
+                label.id,
+                anthropicApiKey,
+              );
+            }
+            console.log(`═══ Done: ${r.artist_name} ═══`);
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            errors[resultKey] = msg;
+            console.error(`═══ FAILED: ${resultKey}: ${msg} ═══`);
+          }
         }
       }
 
       return jsonResponse({
         batch: true,
-        processed: Object.keys(results).length,
+        release_scan_only: !!release_scan_only,
+        processed: release_scan_only
+          ? Object.keys(releaseResults).length
+          : Object.keys(results).length,
         failed: Object.keys(errors).length,
-        results,
+        results: release_scan_only ? releaseResults : results,
         errors: Object.keys(errors).length > 0 ? errors : undefined,
       });
     }
@@ -916,12 +1312,19 @@ Deno.serve(async (req: Request) => {
     }
 
     console.log(`\n═══ Generating focus for @${artist_handle} ═══`);
-    const result = await generateFocusForArtist(
-      supabase,
-      artist_handle,
-      label_id,
-      anthropicApiKey,
-    );
+    const result = release_scan_only
+      ? await scanReleaseForArtist(
+          supabase,
+          artist_handle,
+          label_id,
+          anthropicApiKey,
+        )
+      : await generateFocusForArtist(
+          supabase,
+          artist_handle,
+          label_id,
+          anthropicApiKey,
+        );
 
     return jsonResponse({ artist_handle, focus: result });
   } catch (err) {
